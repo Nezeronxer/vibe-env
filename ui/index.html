@@ -1,5 +1,23 @@
 <!doctype html>
 <html lang="en">
-<head><meta charset="utf-8"><title>Nightshift</title></head>
-<body><h1>Nightshift</h1></body>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>Nightshift</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="app" id="app">
+  <aside class="side" aria-label="Projects" id="side"></aside>
+  <main class="main" id="main" tabindex="-1"></main>
+</div>
+<aside class="card" id="card" hidden aria-label="Task"></aside>
+<div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+<dialog id="dlg"></dialog>
+<script src="i18n.js"></script>
+<script src="logic.js"></script>
+<script src="mock-loader.js"></script>
+<script src="app.js"></script>
+</body>
 </html>
