@@ -85,6 +85,12 @@ impl Engine {
     /// answer; otherwise it waits for the next run of `to` (the executor by default) and the feed
     /// notes when it was delivered. A task that has landed cannot take it.
     pub fn note(&self, id: &str, to: Option<String>, text: &str) -> Result<NoteResult, String> {
+        self.note_tracked(id, to, text).map(|r| r.0)
+    }
+
+    /// `note` and the id of the note kept (None when it was not kept: an answer, or a task that cannot take it).
+    /// The "note delivered" line of the task's log carries the same id (`LogEvent.note_id`).
+    pub(crate) fn note_tracked(&self, id: &str, to: Option<String>, text: &str) -> Result<(NoteResult, Option<String>), String> {
         let t = self.task(id).ok_or("task_not_found")?;
         // in a swarm "A".."E" is a variant (G11.4); no addressee = everyone
         let swarm = t.swarm.is_some();
@@ -99,8 +105,8 @@ impl Engine {
         };
         let all = swarm && to.is_none() && variant.is_none();
         match t.status {
-            Status::Done | Status::DoneNotPushed | Status::Reverted => return Ok(NoteResult::NotDelivered("task_already_merged".into())),
-            Status::Cancelled => return Ok(NoteResult::NotDelivered("task_cancelled".into())),
+            Status::Done | Status::DoneNotPushed | Status::Reverted => return Ok((NoteResult::NotDelivered("task_already_merged".into()), None)),
+            Status::Cancelled => return Ok((NoteResult::NotDelivered("task_cancelled".into()), None)),
             _ => {}
         }
         let text = text.trim();
@@ -111,22 +117,23 @@ impl Engine {
             && t.question.as_ref().is_some_and(|q| q.kind == QuestionKind::Agent)
             && self.state(id).special.is_none();
         if asks {
-            return self.answer(id, text).map(|_| NoteResult::Answered);
+            return self.answer(id, text).map(|_| (NoteResult::Answered, None));
         }
-        let note = Note { id: uuid::Uuid::new_v4().to_string(), to, text: text.to_string(), at: self.now(), delivered: false, variant, all, delivered_to: vec![] };
+        let note_id = uuid::Uuid::new_v4().to_string();
+        let note = Note { id: note_id.clone(), to, text: text.to_string(), at: self.now(), delivered: false, variant, all, delivered_to: vec![] };
         self.update_state(id, |s| s.notes.push(note))?;
         self.log(id, LogKind::Human, &format!("note: {text}"));
-        Ok(NoteResult::Queued)
+        Ok((NoteResult::Queued, Some(note_id)))
     }
 
     /// Notes for the run of `role` that starts now: marks them delivered (and says so in the feed).
-    pub(super) fn take_notes(&self, id: &str, role: RoleKind) -> Vec<String> {
+    pub(super) fn take_notes(&self, id: &str, role: RoleKind) -> Vec<(String, String)> {
         self.take_lane_notes(id, role, None)
     }
 
     /// Same for a lane of a swarm (`label` = the variant, part or voter): its own notes, the ones to
     /// everyone (once per agent) and those for its role.
-    pub(super) fn take_lane_notes(&self, id: &str, role: RoleKind, label: Option<&str>) -> Vec<String> {
+    pub(super) fn take_lane_notes(&self, id: &str, role: RoleKind, label: Option<&str>) -> Vec<(String, String)> {
         let writes = matches!(role, RoleKind::Worker | RoleKind::TestAuthor | RoleKind::Integrator);
         let key = format!("{role:?}/{}", label.unwrap_or(""));
         let mut texts = vec![];
@@ -142,7 +149,7 @@ impl Engine {
                 if hit {
                     n.delivered = true;
                     n.delivered_to.push(key.clone());
-                    texts.push(n.text.clone());
+                    texts.push((n.id.clone(), n.text.clone()));
                 }
             }
         });
@@ -150,9 +157,10 @@ impl Engine {
     }
 
     /// Says in the feed that the notes went to the run that starts now (just before it starts).
-    pub(super) fn announce_notes(&self, id: &str, role: RoleKind, label: Option<&str>, texts: &[String]) {
-        for t in texts {
+    pub(super) fn announce_notes(&self, id: &str, role: RoleKind, label: Option<&str>, texts: &[(String, String)]) {
+        for (note_id, t) in texts {
             let mut ev = LogEvent::new(self.now(), LogKind::Human, &format!("note delivered: {t}"));
+            ev.note_id = Some(note_id.clone());
             ev.role = Some(role);
             ev.variant = label.map(str::to_string);
             self.log_ev(id, ev);
@@ -622,7 +630,7 @@ impl Engine {
     }
 
     /// When the env's used-up limit resets, if it is used up now.
-    pub(super) fn limit_wait(&self, env: &str, now: DateTime<Local>) -> Option<DateTime<Local>> {
+    pub(crate) fn limit_wait(&self, env: &str, now: DateTime<Local>) -> Option<DateTime<Local>> {
         let Some(EnvLimits::Known(ws)) = lk(&self.store).limits(env) else { return None };
         ws.iter()
             .filter(|w| w.exhausted)

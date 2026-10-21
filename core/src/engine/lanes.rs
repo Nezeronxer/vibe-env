@@ -103,7 +103,7 @@ impl Engine {
     }
 
     /// Runs a git operation that writes into the `.git` of the project of `path`, alone.
-    pub(super) fn with_git<R>(&self, path: &std::path::Path, f: impl FnOnce() -> R) -> R {
+    pub(crate) fn with_git<R>(&self, path: &std::path::Path, f: impl FnOnce() -> R) -> R {
         let key = Self::git_dir_of(path);
         let key = key.canonicalize().unwrap_or(key); // /var and /private/var are one place
         let lock = lk(&self.repo_locks).entry(key).or_default().clone();
@@ -114,10 +114,10 @@ impl Engine {
     pub(super) fn add_wt(&self, repo: &std::path::Path, dir: &std::path::Path, id: &str, branch: &str, base: &str) -> Result<PathBuf, git::GitError> {
         self.with_git(repo, || git::create_worktree(repo, dir, id, branch, base))
     }
-    pub(super) fn rm_wt(&self, repo: &std::path::Path, wt: &std::path::Path, delete_branch: bool) -> Result<(), git::GitError> {
+    pub(crate) fn rm_wt(&self, repo: &std::path::Path, wt: &std::path::Path, delete_branch: bool) -> Result<(), git::GitError> {
         self.with_git(repo, || git::remove_worktree(repo, wt, delete_branch))
     }
-    pub(super) fn add_ro(&self, repo: &std::path::Path, dir: &std::path::Path, base: &str) -> Result<PathBuf, git::GitError> {
+    pub(crate) fn add_ro(&self, repo: &std::path::Path, dir: &std::path::Path, base: &str) -> Result<PathBuf, git::GitError> {
         self.with_git(repo, || git::create_readonly_copy(repo, dir, base))
     }
     pub(super) fn g_commit(&self, wt: &std::path::Path, msg: &str) -> Result<Option<String>, git::GitError> {
@@ -289,7 +289,7 @@ impl Engine {
                 None => (l.prompt)(vendor, resume.is_some()),
             };
             if !notes.is_empty() {
-                text = format!("{text}\n\n{}", prompt::notes_block(&notes));
+                text = format!("{text}\n\n{}", prompt::notes_block(&notes.iter().map(|n| n.1.clone()).collect::<Vec<_>>()));
             }
             let system = prompt::system_for(vendor, role);
             let ro = super::roles::is_read_only(role);

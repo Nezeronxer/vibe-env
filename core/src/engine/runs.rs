@@ -13,7 +13,7 @@ pub(super) const MAX_RUN_TRIES: usize = 16;
 
 /// What a run reported, folded.
 #[derive(Default)]
-pub(super) struct Folded {
+pub(crate) struct Folded {
     pub windows: Option<Vec<LimitWindow>>,
     pub cost: Option<f64>,
     /// `Some(resets)` = the env said "limit".
@@ -24,7 +24,7 @@ pub(super) struct Folded {
     pub done: Option<(Option<String>, String, bool)>,
 }
 
-pub(super) fn fold(events: &[AgentEvent]) -> Folded {
+pub(crate) fn fold(events: &[AgentEvent]) -> Folded {
     let mut f = Folded::default();
     for e in events {
         match e {
@@ -87,6 +87,19 @@ pub(super) fn stall_decision(nudged: bool, session: &Option<String>) -> Stall {
 }
 
 impl Engine {
+    /// Adds a cost to the day of the env (what a chat's run costs too).
+    pub(crate) fn add_day_cost(&self, env: &str, cost: f64) {
+        let _ = lk(&self.store).add_day_spend(env, self.now().date_naive(), cost, 0.0);
+    }
+
+    /// When a limit the run hit resets: the time of the message, else a used-up window of the run, else one
+    /// stored earlier (None = unknown, `LIMIT_WAIT_MINS` is waited).
+    pub(crate) fn limit_reset(&self, env: &str, resets: Option<DateTime<Local>>, windows: Option<&Vec<LimitWindow>>) -> Option<DateTime<Local>> {
+        resets
+            .or_else(|| windows.and_then(|w| w.iter().filter(|x| x.exhausted).filter_map(|x| x.resets_at).max()))
+            .or_else(|| self.limit_wait(env, self.now()))
+    }
+
     /// Adds a cost to the task and to the day of its env: the one way a cost is written.
     pub(super) fn add_cost(&self, task_id: &str, env: &str, role: RoleKind, cost: f64) {
         let t = {
@@ -94,9 +107,9 @@ impl Engine {
             let Some(mut t) = st.task(task_id) else { return };
             t.cost_usd = Some(t.cost_usd.unwrap_or(0.0) + cost);
             let _ = st.upsert_task(&t);
-            let _ = st.add_day_spend(env, self.now().date_naive(), cost, 0.0);
             t
         };
+        self.add_day_cost(env, cost);
         self.emit(EngineEvent::TaskChanged(t));
         self.log(task_id, LogKind::Stage, &format!("{COST_LOG}{cost:.4} ({role:?})"));
     }
@@ -123,9 +136,7 @@ impl Engine {
         }
         if let Some(resets) = f.limit {
             // the time comes from the message, else from a used-up window of this run, else from one stored earlier
-            let resets = resets
-                .or_else(|| f.windows.as_ref().and_then(|w| w.iter().filter(|x| x.exhausted).filter_map(|x| x.resets_at).max()))
-                .or_else(|| self.limit_wait(cx.env, self.now()));
+            let resets = self.limit_reset(cx.env, resets, f.windows.as_ref());
             self.record_limit_hit(cx.env, resets);
             if let Some(fb) = cx.fallback.clone().filter(|b| cx.choice.as_ref() != Some(b) && !cx.tried_fallback) {
                 cx.tried_fallback = true;

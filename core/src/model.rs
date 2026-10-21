@@ -243,11 +243,14 @@ pub struct LogEvent {
     pub model: Option<String>,
     #[serde(default)]
     pub variant: Option<String>,
+    /// The note of the person a "note delivered" line is about.
+    #[serde(default)]
+    pub note_id: Option<String>,
 }
 
 impl LogEvent {
     pub fn new(at: DateTime<Local>, kind: LogKind, text: &str) -> LogEvent {
-        LogEvent { at, kind, text: text.to_string(), role: None, model: None, variant: None }
+        LogEvent { at, kind, text: text.to_string(), role: None, model: None, variant: None, note_id: None }
     }
 }
 #[derive(Serialize, Deserialize, Clone, Debug)]

@@ -10,8 +10,8 @@ use crate::prompt::{self, Vendor};
 use chrono::Duration as CDuration;
 
 /// Keys of the questions the engine asks itself; the UI translates them.
-pub(super) const AUTH_REQUIRED: &str = "auth_required";
-pub(super) const ENV_UNAVAILABLE: &str = "env_unavailable";
+pub(crate) const AUTH_REQUIRED: &str = "auth_required";
+pub(crate) const ENV_UNAVAILABLE: &str = "env_unavailable";
 pub(super) const WAITING_LIMIT: &str = "waiting_limit_reset";
 pub(super) const BUDGET_EXCEEDED: &str = "budget_exceeded";
 pub(super) const DAY_BUDGET_EXCEEDED: &str = "day_budget_exceeded";
@@ -21,7 +21,7 @@ pub(super) const SPECIAL_AUTH: &str = "auth";
 /// "Add $5" on a budget question.
 pub(super) const BUDGET_STEP_USD: f64 = 5.0;
 /// A limit with no known reset time is waited out this long.
-pub(super) const LIMIT_WAIT_MINS: i64 = 30;
+pub(crate) const LIMIT_WAIT_MINS: i64 = 30;
 /// Log line of a finished run: `cost_usd: <amount> (<role>)`. `summary_since` adds these up.
 pub(super) const COST_LOG: &str = "cost_usd: ";
 
@@ -76,7 +76,7 @@ pub(super) fn vendor_name(v: Vendor) -> &'static str {
     }
 }
 
-pub(super) struct Picked {
+pub(crate) struct Picked {
     pub cli_arg: Option<String>,
     pub label: String,
     pub vendor: Vendor,
@@ -84,7 +84,7 @@ pub(super) struct Picked {
 }
 
 /// The model of a choice in a catalog: the CLI argument, the caption, and whose template it gets.
-pub(super) fn pick(cat: &Catalog, env: &str, choice: Option<&ModelChoice>) -> Picked {
+pub(crate) fn pick(cat: &Catalog, env: &str, choice: Option<&ModelChoice>) -> Picked {
     let Some(c) = choice else {
         return Picked { cli_arg: None, label: "default".into(), vendor: Vendor::from_name(env), note: None };
     };
@@ -175,7 +175,7 @@ impl Engine {
                 t.rendered_prompt = Some(s);
             }
             if !notes.is_empty() {
-                text = format!("{text}\n\n{}", prompt::notes_block(&notes));
+                text = format!("{text}\n\n{}", prompt::notes_block(&notes.iter().map(|n| n.1.clone()).collect::<Vec<_>>()));
             }
             let system = prompt::system_for(vendor, role);
 
@@ -478,7 +478,7 @@ impl Engine {
 
     // ---- limits, cost, login, env ----
 
-    pub(super) fn record_usage(&self, env: &str, windows: Vec<LimitWindow>) {
+    pub(crate) fn record_usage(&self, env: &str, windows: Vec<LimitWindow>) {
         let new = EnvLimits::Known(windows);
         let changed = {
             let st = lk(&self.store);
@@ -494,7 +494,8 @@ impl Engine {
     }
 
     /// The env said "limit": a used-up window until the reset (or for a while when the time is unknown).
-    pub(super) fn record_limit_hit(&self, env: &str, resets: Option<DateTime<Local>>) {
+    /// Returns the time the env is waited for.
+    pub(crate) fn record_limit_hit(&self, env: &str, resets: Option<DateTime<Local>>) -> DateTime<Local> {
         let now = self.now();
         let until = resets.unwrap_or(now + CDuration::minutes(LIMIT_WAIT_MINS));
         let w = LimitWindow {
@@ -521,6 +522,7 @@ impl Engine {
             let _ = st.set_limits(env, EnvLimits::Known(ws));
         }
         self.emit(EngineEvent::LimitsChanged(env.to_string()));
+        until
     }
 
     /// The task waits for the env to come back; it goes on by itself (the same env, never another).

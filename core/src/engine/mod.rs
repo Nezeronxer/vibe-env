@@ -22,6 +22,10 @@ mod util;
 mod watch;
 
 pub use ops::{is_snoozed, HandOff, NoteResult, Summary, SummaryItem};
+// what the chat shares with the engine's own runs: one way to pick a model, fold a run, record a limit
+pub(crate) use roles::{pick, Picked, AUTH_REQUIRED, ENV_UNAVAILABLE};
+pub(crate) use runs::fold;
+pub(crate) use util::tail;
 
 use crate::agent::Adapter;
 use crate::git;
@@ -223,6 +227,16 @@ impl Engine {
     /// The provider of `Run.extra_env` per env (task 13 binds it to `Kits::env_vars`).
     pub fn set_env_vars(&self, f: EnvVars) {
         *lk(&self.env_vars) = Some(f);
+    }
+
+    /// The variables of an env's runs (kit secrets); empty until `set_env_vars`.
+    pub(crate) fn env_vars_of(&self, env: &str) -> Vec<(String, String)> {
+        lk(&self.env_vars).as_ref().map(|f| f(env)).unwrap_or_default()
+    }
+
+    /// Where the app keeps its copies of projects (the chat's go to `.chats` in it).
+    pub(crate) fn worktrees_dir(&self) -> &std::path::Path {
+        &self.worktrees_dir
     }
 
     /// Starts the scheduler. Tasks left in an active stage by a previous run are picked up again:
@@ -715,7 +729,7 @@ impl Engine {
 
     // ---- helpers ----
 
-    fn now(&self) -> DateTime<Local> {
+    pub(crate) fn now(&self) -> DateTime<Local> {
         (self.clock)()
     }
 
@@ -728,7 +742,7 @@ impl Engine {
     }
 
     /// The adapter of an env. A run in progress keeps the one it started with (`set_adapters`).
-    fn adapter(&self, id: &str) -> Option<Arc<dyn Adapter>> {
+    pub(crate) fn adapter(&self, id: &str) -> Option<Arc<dyn Adapter>> {
         lk(&self.adapters).iter().find(|a| a.id() == id).cloned()
     }
 
