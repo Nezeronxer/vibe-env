@@ -411,3 +411,12 @@ pub fn load_token() -> Option<String>; pub fn save_token(t: &str) -> Result<(), 
 - Открыто (решение пользователя, G14): при выключенном «Качестве» исполнитель получает текст как есть, `rendered_prompt` пуст.
 - Тесты: `core/tests/engine_v2*.rs`, `engine_prompt.rs`, общий harness `core/tests/common/` (`Routed` - сценарии фейка по роли), таймаут ожидания 90 с.
 - Не сделано, таск 10: рой, Надзиратель, `submit_convoy`, `pick_variant`, `stop_swarm`, `nudge`.
+
+### Из таска 11 - чат со средой
+
+- `core::chat::Chats::new(engine, adapters: Vec<Arc<dyn Adapter>>, dir: PathBuf /* копии чатов, не worktrees движка */, clock: Clock) -> Arc<Chats>`; `set_adapters`, `set_env_vars(EnvVars)`, `shutdown()`. Таск 13 передаёт те же адаптеры и часы, что Engine, и зовёт `set_adapters` вместе с движком.
+- `send(ChatTarget::{Existing(id), New{env, project_id}}, msg_id, text) -> Result<ChatId, String>` (JSON `{existing: id}` | `{new: {env, project_id}}`), `list(env) -> Vec<ChatSummary>`, `messages(id, before, limit)` (страницы по 200), `retry(id, msg_id)`, `remove(id)`, `subscribe() -> Receiver<ChatEvent>`, `not_a_task(chat, task_id)`, `terminal(id) -> Terminal{env, copy, session, command: Option<Command>, resumed}`.
+- `ChatEvent::{Msg(ChatMsg), Changed(ChatId), Removed(ChatId)}`. `ChatSummary{id, env, project_id, title, state, task_id, last, updated_at, archived, convoy, swarm}`; `ChatState` по срочности: `WaitsYou, Failed, Working, Queued, Done, Talk` (NeedsHuman/AwaitingOutward/MergeBlocked → WaitsYou; Failed/DoneNotPushed → Failed; PausedLimit/HandedOff → Working). Архив в конце, свежие первыми; архив через `Settings.keep.archive_days`.
+- Строки чата (роль System, `ключ: подробности`, `reply_to` = сообщение человека): `this_is_task`, `task_not_created`, `not_answered` (model_rejected|auth_required|…), `will_answer_after: HH:MM`, `new_session_started`, `note_queued`, `note_delivered: HH:MM`, `answer_passed`, `note_not_passed`, `back_to_question`. Подпись ответа - `ChatMsg.model` = «<адаптер> · <модель версия>».
+- Адресат заметки: задача в NeedsHuman с вопросом агента, иначе последняя открытая задача чата. Ошибки: `empty_message`, `chat_not_found`, `cancel_task_first`, `already_coding`. Копия чата: `<dir>/<chat id>`.
+- Не сделано: очередь ответов и ожидание лимита живут в памяти (после перезапуска - `retry`); цепочки запасных моделей при отказе модели в чате нет; `ChatMsg.tool` чат не пишет.

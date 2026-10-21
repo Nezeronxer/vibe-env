@@ -9,7 +9,7 @@ window.STATE =
   "briefFile": "2026-10-21-brief.md",
   "memoryFile": "CLAUDE.md",
   "startedAt": "2026-10-21T08:41:14+03:00",
-  "updatedAt": "2026-10-21T17:10:19+03:00",
+  "updatedAt": "2026-10-21T17:51:09+03:00",
   "finishedAt": null,
   "stages": [
     {
@@ -49,13 +49,13 @@ window.STATE =
       "id": "build",
       "status": "active",
       "startedAt": "2026-10-21T09:02:22+03:00",
-      "note": "готовы 01-03, 05, 06, 08, 09, 12, 14, 15; идут 10 и 11"
+      "note": "готовы 01-03, 05, 06, 08, 09, 12, 14, 15; 11 ждёт ревью; 10 прерван по лимиту"
     },
     {
       "id": "review",
       "status": "active",
       "startedAt": "2026-10-21T10:07:22+03:00",
-      "note": "проверены все готовые"
+      "note": "11 на ревью"
     },
     {
       "id": "final",
@@ -556,8 +556,11 @@ window.STATE =
         "core/tests/engine_swarm*.rs"
       ],
       "wave": 6,
-      "status": "in-progress",
-      "startedAt": "2026-10-21T17:10:19+03:00"
+      "status": "pending",
+      "startedAt": "2026-10-21T17:10:19+03:00",
+      "concerns": [
+        "прерван по лимиту: недописанный код в core/src/engine и core/src/swarm в рабочем дереве, не закоммичен"
+      ]
     },
     {
       "id": "11",
@@ -594,7 +597,7 @@ window.STATE =
         "core/tests/chat*.rs"
       ],
       "wave": 6,
-      "status": "in-progress",
+      "status": "review",
       "startedAt": "2026-10-21T17:10:19+03:00"
     },
     {
