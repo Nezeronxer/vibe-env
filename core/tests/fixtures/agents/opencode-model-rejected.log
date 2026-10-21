@@ -1,0 +1,3 @@
+{"type":"error","timestamp":1792579935253,"sessionID":"ses_ea1e8e4e6ffeKyji6mGFyPD6Ua","error":{"name":"UnknownError","data":{"message":"Unexpected server error. Check server logs for details.","ref":"err_93b292c5"}}}
+timestamp=2026-10-21T10:52:15.243Z level=ERROR run=18cec646 message="share subscriber failed" type=message.updated cause="Cause([Fail(ProviderModelNotFoundError: Model not found: bogus/model.)])"
+timestamp=2026-10-21T10:52:15.253Z level=ERROR run=18cec646 message=failed ref=err_93b292c5 error="ProviderModelNotFoundError: Model not found: bogus/model." cause="ProviderModelNotFoundError: Model not found: bogus/model."
