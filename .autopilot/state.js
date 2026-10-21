@@ -9,7 +9,7 @@ window.STATE =
   "briefFile": "2026-10-21-brief.md",
   "memoryFile": "CLAUDE.md",
   "startedAt": "2026-10-21T08:41:14+03:00",
-  "updatedAt": "2026-10-21T17:51:09+03:00",
+  "updatedAt": "2026-10-21T19:33:33+03:00",
   "finishedAt": null,
   "stages": [
     {
@@ -49,13 +49,13 @@ window.STATE =
       "id": "build",
       "status": "active",
       "startedAt": "2026-10-21T09:02:22+03:00",
-      "note": "готовы 01-03, 05, 06, 08, 09, 12, 14, 15; 11 ждёт ревью; 10 прерван по лимиту"
+      "note": "готовы 01-03, 05, 06, 08, 09, 10, 12, 14, 15; 11 в ремонте"
     },
     {
       "id": "review",
       "status": "active",
       "startedAt": "2026-10-21T10:07:22+03:00",
-      "note": "11 на ревью"
+      "note": "11: ремонт по ревью"
     },
     {
       "id": "final",
@@ -519,7 +519,7 @@ window.STATE =
     {
       "id": "10",
       "retries": 0,
-      "repairs": 0,
+      "repairs": 1,
       "title": "Рой и фабрика в движке: три режима, поручения, Надзиратель, очередь слияния",
       "requirements": [
         "G08",
@@ -556,16 +556,24 @@ window.STATE =
         "core/tests/engine_swarm*.rs"
       ],
       "wave": 6,
-      "status": "pending",
+      "status": "done",
       "startedAt": "2026-10-21T17:10:19+03:00",
       "concerns": [
-        "прерван по лимиту: недописанный код в core/src/engine и core/src/swarm в рабочем дереве, не закоммичен"
-      ]
+        "бригада вливает часть копированием файлов, а не rebase + ff_branch",
+        "автовыбор роя не сдвигается заморозкой",
+        "hide_untracked/restore_paths пишут в git копии вне with_git (без гонки, нет комментария); git_dir_of молча откатывается на path при нераспознанном .git"
+      ],
+      "finishedAt": "2026-10-21T19:33:33+03:00",
+      "commit": "b3df9d0",
+      "tests": {
+        "passed": 341,
+        "failed": 0
+      }
     },
     {
       "id": "11",
       "retries": 0,
-      "repairs": 0,
+      "repairs": 1,
       "title": "Чат с моделью среды: разговор, задача из сообщения, заметки агентам",
       "requirements": [
         "R03",
@@ -597,8 +605,11 @@ window.STATE =
         "core/tests/chat*.rs"
       ],
       "wave": 6,
-      "status": "review",
-      "startedAt": "2026-10-21T17:10:19+03:00"
+      "status": "repair",
+      "startedAt": "2026-10-21T17:10:19+03:00",
+      "concerns": [
+        "ремонт включает: сообщения ролей и действия агентов в ленте чата (решение пользователя по G05)"
+      ]
     },
     {
       "id": "12",
@@ -701,7 +712,8 @@ window.STATE =
         "ui/"
       ],
       "wave": 7,
-      "status": "pending"
+      "status": "pending",
+      "concerns": []
     },
     {
       "id": "14",
