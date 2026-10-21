@@ -526,6 +526,9 @@ pub enum StepState {
     Done,
     Skipped(String),
     Failed(String),
+    /// The step waits in a queue since this moment (the merge queue of a project, G08.4): the one
+    /// that runs is `Running`, those that wait are `Queued`, in the order they were put there.
+    Queued(DateTime<Local>),
 }
 
 /// Spec 29: on; spec only for vague tasks; plan + critic; tests first; e2e off; best-of-2 for risky tasks.

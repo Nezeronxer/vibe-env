@@ -86,10 +86,18 @@ impl Engine {
     /// notes when it was delivered. A task that has landed cannot take it.
     pub fn note(&self, id: &str, to: Option<String>, text: &str) -> Result<NoteResult, String> {
         let t = self.task(id).ok_or("task_not_found")?;
+        // in a swarm "A".."E" is a variant (G11.4); no addressee = everyone
+        let swarm = t.swarm.is_some();
+        let mut variant = None;
         let to = match to.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
+            Some(n) if swarm && n.len() == 1 && n.chars().all(|c| c.is_ascii_uppercase()) => {
+                variant = Some(n.to_string());
+                None
+            }
             Some(n) => Some(role_of(n).ok_or_else(|| format!("unknown_role: {n}"))?),
             None => None,
         };
+        let all = swarm && to.is_none() && variant.is_none();
         match t.status {
             Status::Done | Status::DoneNotPushed | Status::Reverted => return Ok(NoteResult::NotDelivered("task_already_merged".into())),
             Status::Cancelled => return Ok(NoteResult::NotDelivered("task_cancelled".into())),
@@ -105,7 +113,7 @@ impl Engine {
         if asks {
             return self.answer(id, text).map(|_| NoteResult::Answered);
         }
-        let note = Note { id: uuid::Uuid::new_v4().to_string(), to, text: text.to_string(), at: self.now(), delivered: false };
+        let note = Note { id: uuid::Uuid::new_v4().to_string(), to, text: text.to_string(), at: self.now(), delivered: false, variant, all, delivered_to: vec![] };
         self.update_state(id, |s| s.notes.push(note))?;
         self.log(id, LogKind::Human, &format!("note: {text}"));
         Ok(NoteResult::Queued)
@@ -113,22 +121,42 @@ impl Engine {
 
     /// Notes for the run of `role` that starts now: marks them delivered (and says so in the feed).
     pub(super) fn take_notes(&self, id: &str, role: RoleKind) -> Vec<String> {
+        self.take_lane_notes(id, role, None)
+    }
+
+    /// Same for a lane of a swarm (`label` = the variant, part or voter): its own notes, the ones to
+    /// everyone (once per agent) and those for its role.
+    pub(super) fn take_lane_notes(&self, id: &str, role: RoleKind, label: Option<&str>) -> Vec<String> {
         let writes = matches!(role, RoleKind::Worker | RoleKind::TestAuthor | RoleKind::Integrator);
+        let key = format!("{role:?}/{}", label.unwrap_or(""));
         let mut texts = vec![];
         let _ = self.update_state(id, |s| {
-            for n in s.notes.iter_mut().filter(|n| !n.delivered) {
-                if n.to == Some(role) || (n.to.is_none() && writes) {
+            for n in s.notes.iter_mut() {
+                let hit = if let Some(v) = &n.variant {
+                    !n.delivered && label == Some(v.as_str())
+                } else if n.all {
+                    !n.delivered_to.contains(&key)
+                } else {
+                    !n.delivered && (n.to == Some(role) || (n.to.is_none() && writes && label.is_none()))
+                };
+                if hit {
                     n.delivered = true;
+                    n.delivered_to.push(key.clone());
                     texts.push(n.text.clone());
                 }
             }
         });
-        for t in &texts {
+        texts
+    }
+
+    /// Says in the feed that the notes went to the run that starts now (just before it starts).
+    pub(super) fn announce_notes(&self, id: &str, role: RoleKind, label: Option<&str>, texts: &[String]) {
+        for t in texts {
             let mut ev = LogEvent::new(self.now(), LogKind::Human, &format!("note delivered: {t}"));
             ev.role = Some(role);
+            ev.variant = label.map(str::to_string);
             self.log_ev(id, ev);
         }
-        texts
     }
 
     /// The person's answer to "push / PR?" (G01.8). PR project: push and PR, only push, no.
@@ -165,7 +193,7 @@ impl Engine {
             }
             (true, _) => {
                 t.status = Status::Reverted;
-                t.outcome.error = git::push(&p.path, &p.base_branch).err().map(|e| e.to_string());
+                t.outcome.error = self.g_push(&p.path, &p.base_branch).err().map(|e| e.to_string());
                 self.save(&t)?;
                 self.emit(EngineEvent::ProjectChanged(p.id.clone()));
             }
@@ -175,7 +203,7 @@ impl Engine {
             }
             (false, OutwardChoice::PushOnly) => {
                 // the branch goes to origin, no PR is opened: done, with a note
-                match git::push(&p.path, &t.branch) {
+                match self.g_push(&p.path, &t.branch) {
                     Ok(()) => {
                         t.outcome.error = Some(flow::PR_NOT_OPENED.into());
                         self.log(id, LogKind::Git, &format!("pushed {}", t.branch));
@@ -251,7 +279,7 @@ impl Engine {
         }
         let at = self.now();
         if let Some(h) = &hint {
-            self.update_state(id, |s| s.notes.push(Note { id: uuid::Uuid::new_v4().to_string(), to: None, text: h.clone(), at, delivered: false }))?;
+            self.update_state(id, |s| s.notes.push(Note { id: uuid::Uuid::new_v4().to_string(), to: None, text: h.clone(), at, delivered: false, variant: None, all: false, delivered_to: vec![] }))?;
         }
         self.update_state(id, |s| {
             if switched {
@@ -338,6 +366,7 @@ impl Engine {
                 }
             }
         }
+        self.seat_cv.notify_all(); // lanes waiting for a seat see the freeze at once
         if was != on {
             self.emit(EngineEvent::Frozen(on));
         }
@@ -383,7 +412,7 @@ impl Engine {
         }
         let wt = t.worktree.clone().filter(|w| w.exists()).ok_or("no_worktree")?;
         if !git::rebase_in_progress(&wt) {
-            git::commit_all(&wt, &t.title).map_err(|e| e.to_string())?;
+            self.g_commit(&wt, &t.title).map_err(|e| e.to_string())?;
         }
         for (s, st) in t.steps.iter_mut() {
             if matches!(s, Step::Gates | Step::E2e | Step::Review | Step::Merge) && !matches!(st, StepState::Skipped(_)) {
@@ -536,6 +565,9 @@ impl Engine {
         let retrying = t.outcome.error.as_deref().is_some_and(|e| e.starts_with(roles::ENV_UNAVAILABLE));
         if let Err(why) = self.env_available(env, retrying) {
             self.park(t, &format!("{}: {why}", roles::ENV_UNAVAILABLE), now + CDuration::seconds(ENV_RETRY_SECS));
+            return false;
+        }
+        if !self.dependencies_landed(t, tasks) {
             return false;
         }
         match &t.start {

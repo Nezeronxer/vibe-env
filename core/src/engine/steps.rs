@@ -288,7 +288,7 @@ impl Engine {
                         self.ask_role(t, p, RoleKind::TestAuthor, Status::Working, q, session)?;
                         return Ok(Flow::Stop);
                     }
-                    let sha = git::commit_all(&wt, "tests").map_err(|e| e.to_string())?;
+                    let sha = self.g_commit(&wt, "tests").map_err(|e| e.to_string())?;
                     let files: Vec<String> = git::diffstat(&wt, &p.base_branch).into_iter().map(|f| f.path).collect();
                     let Some(sha) = sha.filter(|_| !files.is_empty()) else {
                         self.stage(t, "tests skipped: no_tests_written");

@@ -33,7 +33,7 @@ pub(super) enum Flow {
 
 pub(super) type Res = Result<Flow, String>;
 
-fn gerr(e: GitError) -> String {
+pub(super) fn gerr(e: GitError) -> String {
     let s = e.to_string();
     // "git: hidden_list_unreadable: ..." is a key for the person, not a git message
     s.strip_prefix("git: hidden_list_unreadable").map(|r| format!("hidden_list_unreadable{r}")).unwrap_or(s)
@@ -120,6 +120,8 @@ impl Engine {
                 return;
             }
             let r = match t.status {
+                // the split of a convoy is a run of the Coordinator in a task of its own, not a coding task
+                Status::Queued | Status::Preparing | Status::Working if super::convoy::is_plan(&t) => self.convoy_plan(&mut t, &p, cancel),
                 Status::Queued | Status::Preparing => self.prepare(&mut t, &p, cancel),
                 Status::Working => self.work(&mut t, &p, cancel),
                 Status::Checking => self.check_step(&mut t, &p, cancel),
@@ -141,7 +143,7 @@ impl Engine {
         }
     }
 
-    fn set(&self, t: &mut Task, s: Status) -> Result<(), String> {
+    pub(super) fn set(&self, t: &mut Task, s: Status) -> Result<(), String> {
         t.status = s;
         self.save(t)
     }
@@ -207,15 +209,15 @@ impl Engine {
         if !notes.is_empty() {
             self.update_state(&t.id, |s| s.notes = notes)?;
         }
-        if t.outcome.error.as_deref().is_some_and(|e| e.starts_with("waiting_") || e.starts_with("env_unavailable")) {
+        if t.outcome.error.as_deref().is_some_and(|e| e.starts_with("waiting_") || e.starts_with("env_unavailable") || e.starts_with("dependency_blocked")) {
             t.outcome.error = None;
         }
         self.ensure_steps(t, p);
         // interrupted earlier: prepare again from scratch
         if let Some(wt) = t.worktree.take() {
-            git::remove_worktree(&p.path, &wt, true).map_err(gerr)?;
+            self.rm_wt(&p.path, &wt, true).map_err(gerr)?;
         }
-        let wt = git::create_worktree(&p.path, &self.worktrees_dir, &t.id, &t.branch, &p.base_branch).map_err(gerr)?;
+        let wt = self.add_wt(&p.path, &self.worktrees_dir, &t.id, &t.branch, &p.base_branch).map_err(gerr)?;
         t.worktree = Some(wt.clone());
         self.save(t)?;
         self.log(&t.id, LogKind::Git, &format!("worktree {} on {}", wt.display(), t.branch));
@@ -239,6 +241,11 @@ impl Engine {
     /// The first step of the stage that is not done: the preparatory ones, then the code.
     fn work(&self, t: &mut Task, p: &Project, cancel: &AtomicBool) -> Res {
         self.ensure_steps(t, p);
+        if !t.quality.on && !self.state(&t.id).quality_off_noted {
+            // G14: with "Quality" off the executor gets the person's words as they are; the feed says so, once
+            self.update_state(&t.id, |s| s.quality_off_noted = true)?;
+            self.stage(t, "prompt_not_rewritten: quality_off");
+        }
         if t.quality.on {
             match first_pending(t, &[Step::Plan, Step::Spec, Step::Critique, Step::TestsFirst]) {
                 Some(Step::Plan) => return self.step_plan(t, p, cancel),
@@ -247,6 +254,9 @@ impl Engine {
                 Some(Step::TestsFirst) => return self.step_tests_first(t, p, cancel),
                 _ => {}
             }
+        }
+        if let Some(r) = self.swarm_code(t, p, cancel) {
+            return r;
         }
         self.step_code(t, p, cancel)
     }
@@ -277,13 +287,21 @@ impl Engine {
         let (wt2, base) = (wt.clone(), p.base_branch.clone());
         let continue_next = st.continue_next;
         let last_prompt = RefCell::new(None::<(String, bool)>);
-        let initial = |v: Vendor| -> String {
+        let initial_plain = |v: Vendor| -> String {
             if !quality_on {
                 return user_text.clone();
             }
             match &brief {
                 Some(b) => prompt::render(v, RoleKind::Worker, b, &RoleInputs { tests_exist, tests_readonly: test_files.clone(), ..Default::default() }),
                 None => prompt::render_simple(&user_text, rewrite_err.as_deref().unwrap_or("no breakdown")),
+            }
+        };
+        let hint = st.worker_hint.clone();
+        let initial = |v: Vendor| -> String {
+            let text = initial_plain(v);
+            match &hint {
+                Some(h) => format!("{text}\n\n{h}"),
+                None => text,
             }
         };
         let prompt_fn = |v: Vendor, switched: bool| -> String {
@@ -340,10 +358,10 @@ impl Engine {
         if !sig.body.is_empty() {
             t.outcome.summary = Some(sig.body.chars().take(500).collect());
         }
-        if git::uncommit_hidden(&wt, &p.base_branch).map_err(gerr)? {
+        if self.g_uncommit(&wt, &p.base_branch).map_err(gerr)? {
             self.log(&t.id, LogKind::Git, "agent committed a copied local file; its commits were folded back without it");
         }
-        git::commit_all(&wt, &t.title).map_err(gerr)?;
+        self.g_commit(&wt, &t.title).map_err(gerr)?;
         if let Some(reason) = sig.deferred {
             if self.defer(t, &reason)? {
                 return Ok(Flow::Stop);
@@ -373,7 +391,7 @@ impl Engine {
     }
 
     /// The executor's edits to the test author's files are undone and committed away. Returns the files it touched.
-    fn protect_tests(&self, t: &Task, wt: &std::path::Path) -> Result<Vec<String>, String> {
+    pub(super) fn protect_tests(&self, t: &Task, wt: &std::path::Path) -> Result<Vec<String>, String> {
         let st = self.state(&t.id);
         let Some(from) = st.tests_commit.clone().filter(|_| !st.test_files.is_empty()) else { return Ok(vec![]) };
         let touched: Vec<String> = git::changed_paths(wt, &from, "HEAD").into_iter().filter(|p| st.test_files.contains(p)).collect();
@@ -381,15 +399,15 @@ impl Engine {
             return Ok(touched);
         }
         git::restore_paths(wt, &from, &touched).map_err(gerr)?;
-        git::commit_all(wt, "restore tests").map_err(gerr)?;
+        self.g_commit(wt, "restore tests").map_err(gerr)?;
         Ok(touched)
     }
 
     /// `DEFERRED:` from the executor: the task goes back to the queue with its copy and session, up to two
-    /// times. Returns false when it may not wait any more (the signal is then ignored).
+    /// times (G08.3); a third time it fails with the reason.
     fn defer(&self, t: &mut Task, reason: &str) -> Result<bool, String> {
         let left = match t.start {
-            StartWhen::AfterMerge { left: 0 } => return Ok(false),
+            StartWhen::AfterMerge { left: 0 } => return Err(format!("deferred_too_often: {reason}")),
             StartWhen::AfterMerge { left } => left - 1,
             _ => 1,
         };
@@ -406,7 +424,7 @@ impl Engine {
         let mut pend = self.pending(&t.id);
         if stage == Status::Working {
             if let Some(wt) = t.worktree.clone().filter(|w| !git::rebase_in_progress(w)) {
-                git::commit_all(&wt, &t.title).map_err(gerr)?;
+                self.g_commit(&wt, &t.title).map_err(gerr)?;
             }
         }
         let until = resets.unwrap_or_else(|| self.now() + CDuration::minutes(super::roles::LIMIT_WAIT_MINS));
@@ -420,28 +438,34 @@ impl Engine {
         Ok(Flow::Stop)
     }
 
-    /// The gates (spec 142): the project's tests and every extra check. None = cancelled; Some(true) = all green,
-    /// or nothing to run.
-    fn run_gates(&self, t: &mut Task, p: &Project, cancel: &AtomicBool) -> Result<Option<bool>, String> {
-        let wt = t.worktree.clone().ok_or("no_worktree")?;
+    /// The gates (spec 142) run in `wt`: the project's tests and every extra check. None = cancelled.
+    pub(super) fn gate_results(&self, id: &str, p: &Project, wt: &std::path::Path, cancel: &AtomicBool) -> Option<Vec<GateResult>> {
         let mut checks: Vec<(String, String)> = vec![];
         if let Some(c) = p.check_cmd.as_deref().filter(|c| !c.trim().is_empty()) {
             checks.push(("tests".into(), c.to_string()));
         }
         checks.extend(p.extra_checks.iter().filter(|(_, c)| !c.trim().is_empty()).cloned());
-        t.outcome.tests = None;
-        t.outcome.gates.clear();
-        if checks.is_empty() {
-            self.log(&t.id, LogKind::Check, "no tests in project - reviewer only");
-            return Ok(Some(true));
-        }
         let mut results = vec![];
         for (name, cmd) in checks {
-            self.log(&t.id, LogKind::Check, &format!("$ {cmd}"));
-            let Some((passed, out)) = sh(&wt, &cmd, cancel) else { return Ok(None) };
+            self.log(id, LogKind::Check, &format!("$ {cmd}"));
+            let (passed, out) = sh(wt, &cmd, cancel)?;
             let tl = tail(&out, 60);
-            self.log(&t.id, LogKind::Check, &format!("{}\n{tl}", if passed { "passed" } else { "failed" }));
+            self.log(id, LogKind::Check, &format!("{}\n{tl}", if passed { "passed" } else { "failed" }));
             results.push(GateResult { name, passed, tail: tl });
+        }
+        Some(results)
+    }
+
+    /// The gates in the task's copy; the result goes on the task. None = cancelled; Some(true) = all green,
+    /// or nothing to run.
+    fn run_gates(&self, t: &mut Task, p: &Project, cancel: &AtomicBool) -> Result<Option<bool>, String> {
+        let wt = t.worktree.clone().ok_or("no_worktree")?;
+        t.outcome.tests = None;
+        t.outcome.gates.clear();
+        let Some(results) = self.gate_results(&t.id, p, &wt, cancel) else { return Ok(None) };
+        if results.is_empty() {
+            self.log(&t.id, LogKind::Check, "no tests in project - reviewer only");
+            return Ok(Some(true));
         }
         t.outcome.tests = results.iter().find(|r| r.name == "tests").map(|r| TestResult { passed: r.passed, tail: r.tail.clone() });
         let all = results.iter().all(|r| r.passed);
@@ -509,6 +533,14 @@ impl Engine {
     }
 
     fn review(&self, t: &mut Task, p: &Project, cancel: &AtomicBool) -> Res {
+        if let Some(r) = self.swarm_review(t, p, cancel) {
+            return r;
+        }
+        self.review_plain(t, p, cancel)
+    }
+
+    /// The one reviewer (a run of its own, read-only) judges the work.
+    pub(super) fn review_plain(&self, t: &mut Task, p: &Project, cancel: &AtomicBool) -> Res {
         let wt = t.worktree.clone().ok_or("no_worktree")?;
         self.stage(t, &format!("reviewing ({})", t.agent));
         self.set_step(t, Step::Review, StepState::Running)?;
@@ -531,6 +563,11 @@ impl Engine {
             }
             super::steps::Structured::Parsed(x) => x,
         };
+        self.apply_verdict(t, approved, issues)
+    }
+
+    /// What a verdict does: approved goes to the merge queue, changes go back to the executor (up to the cap).
+    pub(super) fn apply_verdict(&self, t: &mut Task, approved: bool, issues: Vec<String>) -> Res {
         t.outcome.review = Some(Review { approved, issues: issues.clone() });
         if approved {
             self.set_step(t, Step::Review, StepState::Done)?;
@@ -560,6 +597,8 @@ impl Engine {
         }
         if t.outcome.commit.is_none() {
             let lock = self.merge_lock(&p.id);
+            // the place in the queue: `Queued(since)` while another task merges, `Running` for the one that does (G08.4)
+            self.set_step(t, Step::Merge, StepState::Queued(self.now()))?;
             // waiting for another task's merge must still notice cancel / shutdown
             let _one = loop {
                 match lock.try_lock() {
@@ -581,7 +620,7 @@ impl Engine {
                 let conflict = if git::rebase_in_progress(&wt) {
                     Some(String::new())
                 } else {
-                    match git::rebase_onto(&wt, &p.base_branch) {
+                    match self.g_rebase(&wt, &p.base_branch) {
                         Ok(()) => None,
                         Err(GitError::Conflict(m)) => Some(m),
                         Err(e) => return Err(gerr(e)),
@@ -621,7 +660,7 @@ impl Engine {
                     Some(s) => format!("{}\n\n{s}", t.title),
                     None => t.title.clone(),
                 };
-                match git::squash_to_base(&p.path, &wt, &p.base_branch, &msg) {
+                match self.g_squash(&p.path, &wt, &p.base_branch, &msg) {
                     Ok(sha) => {
                         self.log(&t.id, LogKind::Git, &format!("{} ← {sha}", p.base_branch));
                         t.outcome.commit = Some(sha);
@@ -634,6 +673,7 @@ impl Engine {
                     Err(GitError::AdvanceBlocked(m)) => {
                         t.resume_at = Some(self.now() + CDuration::seconds(MERGE_RETRY_SECS));
                         t.outcome.error = Some("merge_blocked_dirty_main".into());
+                        self.set_step(t, Step::Merge, StepState::Pending)?;
                         self.set(t, Status::MergeBlocked)?;
                         self.log(&t.id, LogKind::Git, &format!("merge postponed: {m}"));
                         return Ok(Flow::Stop);
@@ -644,6 +684,8 @@ impl Engine {
             if !merged {
                 return Err(format!("{} keeps moving, merge gave up", p.base_branch));
             }
+            // landed: the next in the queue is first now, so this one must not still look like it merges
+            self.set_step(t, Step::Merge, StepState::Done)?;
         }
         self.finish(t, p)
     }
@@ -701,7 +743,7 @@ impl Engine {
             if left.lines().any(|l| l.starts_with("+<<<<<<<") || l.starts_with("+>>>>>>>")) {
                 return Ok(Some(false));
             }
-            match git::rebase_continue(&wt) {
+            match self.g_rebase_continue(&wt) {
                 Ok(()) => {
                     self.log(&t.id, LogKind::Git, "conflict resolved, rebase continued");
                     return Ok(Some(true));
@@ -716,7 +758,7 @@ impl Engine {
 
     fn finish(&self, t: &mut Task, p: &Project) -> Res {
         if let Some(wt) = t.worktree.take() {
-            git::remove_worktree(&p.path, &wt, p.finish != Finish::Pr).map_err(gerr)?;
+            self.rm_wt(&p.path, &wt, p.finish != Finish::Pr).map_err(gerr)?;
         }
         t.outcome.error = None;
         if p.finish == Finish::Local {
@@ -749,7 +791,12 @@ impl Engine {
         }
         let _ = self.save(t);
         self.clear_pending(&t.id);
+        // the copies of a swarm live until the task is removed (G11.5): their record stays
+        let sw = self.state(&t.id).swarm;
         self.clear_state(&t.id);
+        if !sw.variants.is_empty() || !sw.parts.is_empty() || !sw.council.proposals.is_empty() {
+            let _ = self.update_state(&t.id, |s| s.swarm = sw);
+        }
         let line = summary_line(t);
         self.stage(t, &line);
         self.notify(NoticeKind::Done, t, p, line, vec![]);
@@ -772,9 +819,9 @@ impl Engine {
                         _ => "-",
                     }
                 );
-                git::open_pr(&p.path, &t.branch, &p.base_branch, &t.title, &body).map(|u| t.outcome.pr_url = Some(u))
+                self.g_open_pr(&p.path, &t.branch, &p.base_branch, &t.title, &body).map(|u| t.outcome.pr_url = Some(u))
             }
-            _ => git::push(&p.path, &p.base_branch),
+            _ => self.g_push(&p.path, &p.base_branch),
         };
         match r {
             Ok(()) => {

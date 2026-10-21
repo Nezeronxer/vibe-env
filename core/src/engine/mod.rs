@@ -7,12 +7,19 @@
 //!
 //! One env per task (G22): every run of every role takes its adapter from `Task.agent` and nowhere else.
 //! The v1 project fields `reviewer` and `fallback_agent` are not read; seeing them is only noted in the log.
+mod convoy;
+mod council;
+mod crew;
 mod flow;
+mod lanes;
 mod ops;
+mod race;
 mod roles;
+mod runs;
 mod state;
 mod steps;
 mod util;
+mod watch;
 
 pub use ops::{is_snoozed, HandOff, NoteResult, Summary, SummaryItem};
 
@@ -98,6 +105,12 @@ struct Running {
     stopping: bool,
     /// task id -> cancel flag of whoever holds the claim
     tasks: HashMap<TaskId, Arc<AtomicBool>>,
+    /// task id -> env of the claim (for counting seats)
+    claim_env: HashMap<TaskId, EnvId>,
+    /// Tasks that run a swarm's lanes right now: their own seat is the lanes' (the lanes take the seats).
+    swarming: std::collections::HashSet<TaskId>,
+    /// Seats taken by lanes (variants, parts, voters) per env.
+    lanes: HashMap<EnvId, usize>,
     /// Tasks somebody waits to take the claim of (`hold`): the scheduler leaves them alone, else it would
     /// restart a task at the very moment a command stopped it.
     wanted: HashMap<TaskId, usize>,
@@ -114,9 +127,13 @@ impl Drop for Held<'_> {
     fn drop(&mut self) {
         let mut r = lk(&self.e.running);
         r.tasks.remove(&self.id);
+        r.claim_env.remove(&self.id);
+        r.swarming.remove(&self.id);
         if self.wished {
             self.e.unwish(&mut r, &self.id);
         }
+        drop(r);
+        self.e.seat_cv.notify_all();
     }
 }
 
@@ -145,6 +162,11 @@ pub struct Engine {
     /// The person is away (the app's idle / lock detection): night tasks may start.
     away: AtomicBool,
     state_lock: Mutex<()>,
+    /// Everything that writes into the `.git` of a project (worktrees, branches, rebase, merge) goes one
+    /// at a time per project: git itself fails with `cannot lock ref` when two of them meet. Keyed by the git dir.
+    repo_locks: Mutex<HashMap<PathBuf, Arc<Mutex<()>>>>,
+    /// Signalled when a seat or a claim is given back, or a run is cancelled (`take_seat` waits on it).
+    seat_cv: std::sync::Condvar,
     env_vars: Mutex<Option<EnvVars>>,
     auth: Mutex<HashMap<EnvId, AuthWait>>,
     /// env -> (when checked, answer of `Adapter::available`)
@@ -180,6 +202,8 @@ impl Engine {
             frozen: AtomicBool::new(false),
             away: AtomicBool::new(false),
             state_lock: Mutex::new(()),
+            repo_locks: Mutex::new(HashMap::new()),
+            seat_cv: std::sync::Condvar::new(),
             env_vars: Mutex::new(None),
             auth: Mutex::new(HashMap::new()),
             avail: Mutex::new(HashMap::new()),
@@ -229,6 +253,7 @@ impl Engine {
                 f.store(true, Ordering::SeqCst);
             }
         }
+        self.seat_cv.notify_all();
         if let Some(h) = lk(&self.scheduler).take() {
             let _ = h.join();
         }
@@ -249,6 +274,12 @@ impl Engine {
     }
 
     pub fn submit(&self, t: NewTask) -> Result<TaskId, String> {
+        self.submit_full(t, None, None, vec![], None)
+    }
+
+    /// `submit` with what a convoy adds: the id the task must have (its dependents name it), the convoy,
+    /// and the tasks that must land first.
+    pub(super) fn submit_full(&self, t: NewTask, id: Option<TaskId>, convoy_id: Option<String>, depends_on: Vec<TaskId>, steps: Option<Vec<(Step, StepState)>>) -> Result<TaskId, String> {
         let prompt = t.prompt.trim().to_string();
         if prompt.is_empty() {
             return Err("empty_prompt".into());
@@ -257,13 +288,16 @@ impl Engine {
             return Err("prompt_too_long".into());
         }
         let p = self.project(&t.project_id).ok_or("project_not_found")?;
+        if t.swarm.as_ref().is_some_and(|s| !(2..=5).contains(&s.n)) {
+            return Err("swarm_size: 2 to 5 agents".into()); // G11.7
+        }
         let agent = t.agent.clone().unwrap_or_else(|| p.agent.clone());
         if self.adapter(&agent).is_none() {
             return Err(format!("agent_not_found: {agent}"));
         }
         let settings = lk(&self.store).settings();
         let env = settings.envs.get(&agent).cloned().unwrap_or_default();
-        let id = uuid::Uuid::new_v4().to_string();
+        let id = id.unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
         let title = util::title_of(&prompt);
         // the models of the roles are a snapshot of the env's settings now (spec 16)
         let mut models = env.roles.clone();
@@ -285,9 +319,11 @@ impl Engine {
             swarm: t.swarm,
             start: t.start.unwrap_or(StartWhen::Now),
             budget_usd: Some(settings.limits.task_usd),
+            convoy_id,
+            depends_on,
             ..Task::default()
         };
-        task.steps = flow::initial_steps(&quality, &p);
+        task.steps = steps.unwrap_or_else(|| flow::initial_steps(&quality, &p));
         task.quality = quality;
         self.note_v1_settings(&p);
         self.save(&task)?;
@@ -307,6 +343,10 @@ impl Engine {
         let Some(t) = self.task(id).filter(|t| asks(t)) else { return Err("not_waiting".into()) };
         let special = self.state(id).special;
         let stage = self.pending(id).stage.unwrap_or(Status::Working);
+        if special.as_deref() == Some(race::SPECIAL_SWARM_STOPPED) {
+            // «рой остановлен» is the person's own state, not a question of an agent: only `pick_variant` leaves it
+            return Err(race::SPECIAL_SWARM_STOPPED.into());
+        }
         if let Some(key) = special {
             return self.answer_special(&t, &key, text, stage);
         }
@@ -339,11 +379,14 @@ impl Engine {
             t.resume_at = None;
             t.finished_at = Some(now);
         })?;
+        if let Some(p) = self.project(&t.project_id) {
+            self.drop_swarm_copies(id, &p);
+        }
         self.clear_pending(id);
         self.clear_state(id);
         self.log(id, LogKind::Stage, "cancelled");
         if let (Some(wt), Some(p)) = (t.worktree.take(), self.project(&t.project_id)) {
-            git::remove_worktree(&p.path, &wt, true).map_err(|e| e.to_string())?;
+            self.rm_wt(&p.path, &wt, true).map_err(|e| e.to_string())?;
             self.save(&t)?;
         }
         Ok(())
@@ -364,11 +407,12 @@ impl Engine {
             Status::Failed | Status::Cancelled | Status::Done | Status::Reverted => {
                 // failed tasks keep their worktree; removing it with the branch gives a clean start
                 if let Some(wt) = t.worktree.take() {
-                    git::remove_worktree(&p.path, &wt, true).map_err(|e| e.to_string())?;
+                    self.rm_wt(&p.path, &wt, true).map_err(|e| e.to_string())?;
                 }
+                self.drop_swarm_copies(id, &p);
                 self.clear_pending(id);
                 self.clear_state(id);
-                git::forget_merged(&p.path, &t.branch); // else the new work would count as landed
+                self.g_forget(&p.path, &t.branch); // else the new work would count as landed
                 t.status = Status::Queued;
                 t.session = None;
                 t.attempts = 0;
@@ -398,7 +442,10 @@ impl Engine {
         let _h = self.hold(id, true)?;
         let t = self.task(id).ok_or("task_not_found")?;
         if let (Some(wt), Some(p)) = (&t.worktree, self.project(&t.project_id)) {
-            git::remove_worktree(&p.path, wt, true).map_err(|e| e.to_string())?;
+            self.rm_wt(&p.path, wt, true).map_err(|e| e.to_string())?;
+        }
+        if let Some(p) = self.project(&t.project_id) {
+            self.drop_swarm_copies(id, &p);
         }
         self.clear_pending(id);
         self.clear_state(id);
@@ -419,7 +466,7 @@ impl Engine {
             let pr = t.outcome.pr_url.is_some() || p.finish == Finish::Pr;
             return Err(if pr { "pr_no_undo" } else { "no_commit" }.into());
         };
-        let new = git::revert(&p.path, &p.base_branch, &sha).map_err(|e| e.to_string())?;
+        let new = self.g_revert(&p.path, &p.base_branch, &sha).map_err(|e| e.to_string())?;
         self.log(id, LogKind::Git, &format!("reverted {sha} as {new}"));
         let was_pushed = t.status == Status::Done && p.finish == Finish::Push;
         t.status = Status::Reverted;
@@ -432,7 +479,7 @@ impl Engine {
             self.save(&t)?;
             self.notify(NoticeKind::Outward, &t, &p, format!("revert {}", &new[..new.len().min(7)]), options);
         } else if was_pushed {
-            git::push(&p.path, &p.base_branch).map_err(|e| e.to_string())?;
+            self.g_push(&p.path, &p.base_branch).map_err(|e| e.to_string())?;
             self.log(id, LogKind::Git, &format!("pushed {}", p.base_branch));
         }
         Ok(())
@@ -440,7 +487,7 @@ impl Engine {
 
     pub fn push_base(&self, project_id: &str) -> Result<(), String> {
         let p = self.project(&project_id.to_string()).ok_or("project_not_found")?;
-        git::push(&p.path, &p.base_branch).map_err(|e| e.to_string())?;
+        self.g_push(&p.path, &p.base_branch).map_err(|e| e.to_string())?;
         self.emit(EngineEvent::ProjectChanged(p.id.clone()));
         if p.finish == Finish::Push {
             // their commits are on base, which is on origin now
@@ -466,7 +513,7 @@ impl Engine {
 
     pub fn pull_base(&self, project_id: &str) -> Result<(), String> {
         let p = self.project(&project_id.to_string()).ok_or("project_not_found")?;
-        git::fetch_ff(&p.path, &p.base_branch).map_err(|e| e.to_string())?;
+        self.g_fetch_ff(&p.path, &p.base_branch).map_err(|e| e.to_string())?;
         self.emit(EngineEvent::ProjectChanged(p.id));
         Ok(())
     }
@@ -497,10 +544,12 @@ impl Engine {
         let mut used: HashMap<String, usize> = HashMap::new();
         {
             let r = lk(&self.running);
-            for t in tasks.iter().filter(|t| r.tasks.contains_key(&t.id)) {
+            // a task running a swarm's lanes holds no seat of its own: the lanes hold theirs
+            for t in tasks.iter().filter(|t| r.tasks.contains_key(&t.id) && !r.swarming.contains(&t.id)) {
                 *used.entry(t.agent.clone()).or_default() += 1;
             }
         }
+        let lane_seats = |env: &str| lk(&self.running).lanes.get(env).copied().unwrap_or(0);
         let cap = settings.max_parallel.max(1) as usize;
         let due = |t: &Task| t.resume_at.map(|r| r <= now).unwrap_or(true);
         let continuing = |t: &Task| {
@@ -511,7 +560,7 @@ impl Engine {
         // continuing tasks first, then the queue in submit order
         let ready = tasks.iter().filter(|t| continuing(t)).chain(tasks.iter().filter(|t| t.status == Status::Queued));
         for t in ready {
-            if used.get(&t.agent).copied().unwrap_or(0) >= cap || !due(t) {
+            if used.get(&t.agent).copied().unwrap_or(0) + lane_seats(&t.agent) >= cap || !due(t) {
                 continue;
             }
             if t.status == Status::Queued && !self.may_start(t, &tasks, &settings, now) {
@@ -536,7 +585,9 @@ impl Engine {
                 }
             });
             if r.is_err() {
-                lk(&self.running).tasks.remove(&t.id);
+                let mut r = lk(&self.running);
+                r.tasks.remove(&t.id);
+                r.claim_env.remove(&t.id);
                 continue;
             }
             if seen == Status::PausedLimit {
@@ -569,12 +620,16 @@ impl Engine {
     }
 
     fn claim_as(&self, id: &str, wished: bool) -> Option<Arc<AtomicBool>> {
+        let env = self.task(id).map(|t| t.agent); // before the running lock: the store is never taken inside it
         let mut r = lk(&self.running);
         if r.stopping || r.tasks.contains_key(id) || (!wished && r.wanted.contains_key(id)) {
             return None;
         }
         let f = Arc::new(AtomicBool::new(false));
         r.tasks.insert(id.to_string(), f.clone());
+        if let Some(e) = env {
+            r.claim_env.insert(id.to_string(), e);
+        }
         Some(f)
     }
 
@@ -599,7 +654,10 @@ impl Engine {
                     return Err("stopping".into());
                 }
                 match r.tasks.get(id) {
-                    Some(f) if kill => f.store(true, Ordering::SeqCst),
+                    Some(f) if kill => {
+                        f.store(true, Ordering::SeqCst);
+                        self.seat_cv.notify_all(); // a lane waiting for a seat must see the cancel
+                    }
                     Some(_) => {}
                     None => {}
                 }

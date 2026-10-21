@@ -296,22 +296,23 @@ fn deferred_puts_the_task_back_in_the_queue_with_its_copy_and_session_at_most_tw
     let w = fake(vec![
         vec![write("part1.txt", "1"), done("Did the first part.\nDEFERRED: needs the login work first")],
         vec![write("part2.txt", "2"), done("Did the second.\nDEFERRED: still not ready")],
-        vec![write("part3.txt", "3"), done("All done.\nDEFERRED: once more?")], // a third wait is not allowed: the line is ignored
+        vec![write("part3.txt", "3"), done("All done.\nDEFERRED: once more?")], // a third wait is "Не вышло" with the reason (G08.3)
     ]);
-    let e = env.engine(env.store(&p, |_| {}), vec![w.clone(), reviewer(1)], Arc::new(RecordingNotifier::default()), None);
+    let n = Arc::new(RecordingNotifier::default());
+    let e = env.engine(env.store(&p, |_| {}), vec![w.clone(), reviewer(1)], n.clone(), None);
 
     let id = submit(&e, &p, "Do it in parts");
-    let t = wait_status(&e, &id, Status::Done);
+    let t = wait_status(&e, &id, Status::Failed);
 
     let c = w.calls();
     assert_eq!(c.len(), 3);
     assert_eq!(c[1].resume.as_deref(), Some("fake-session-0"), "the same session after the wait");
     assert_eq!(c[2].resume.as_deref(), Some("fake-session-0"));
     assert_eq!(t.start, StartWhen::AfterMerge { left: 0 });
+    assert_eq!(t.outcome.error.as_deref(), Some("deferred_too_often: once more?"));
     assert!(has_log(&e, &id, "deferred: needs the login work first"));
-    for f in ["part1.txt", "part2.txt", "part3.txt"] {
-        assert!(g(&env.repo, &["ls-tree", "-r", "--name-only", "main"]).contains(f), "{f}");
-    }
+    // the two put-offs were silent: the only call is the failure
+    assert_eq!(kinds_of(&n), vec![NoticeKind::Failed]);
 }
 
 #[test]

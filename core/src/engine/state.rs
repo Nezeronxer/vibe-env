@@ -14,11 +14,20 @@ use std::path::PathBuf;
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub(super) struct Note {
     pub id: String,
-    /// None = whoever writes next (the executor).
+    /// None = whoever writes next (the executor); in a swarm (`all`) every agent.
     pub to: Option<RoleKind>,
     pub text: String,
     pub at: DateTime<Local>,
     pub delivered: bool,
+    /// A swarm's variant (or part, or voter) the note is for: "A", "B" ... (G11.4).
+    #[serde(default)]
+    pub variant: Option<String>,
+    /// "To everyone" of a swarm: each agent gets it once, with its next run.
+    #[serde(default)]
+    pub all: bool,
+    /// Whom an `all` note reached: `role` or `role/variant`.
+    #[serde(default)]
+    pub delivered_to: Vec<String>,
 }
 
 /// The model a session was started on: a resumed session stays on it (G18.5).
@@ -54,6 +63,157 @@ pub(super) struct TaskState {
     pub special: Option<String>,
     /// The worker starts a new session in the same copy: its prompt is "continue what was begun".
     pub continue_next: bool,
+    /// What the swarm decided for the executor (the council's approach, a crew part's brief): added to its prompt.
+    #[serde(default)]
+    pub worker_hint: Option<String>,
+    /// The swarm's own bookkeeping (variants, parts, votes).
+    #[serde(default)]
+    pub swarm: SwarmRt,
+    /// `prompt_not_rewritten: quality_off` was written for this task.
+    #[serde(default)]
+    pub quality_off_noted: bool,
+    /// The Watcher nudged the role in this call and waits for the second silence (G08.2).
+    #[serde(default)]
+    pub nudged: bool,
+}
+
+/// Where a lane (a variant, a part of a crew) stands.
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub(super) enum LaneState {
+    /// Waits for a seat.
+    #[default]
+    Waiting,
+    Running,
+    /// Race: gates green. Crew: landed in the task's branch.
+    Passed,
+    Failed,
+    /// Stopped by a limit, a login or a freeze: starts again where it was.
+    Interrupted,
+    /// Its agent asked the person (`NEEDS_HUMAN`): it waits for the answer, then goes on in the same session.
+    Asking,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub(super) struct Variant {
+    pub id: String,
+    pub model: ModelChoice,
+    pub branch: String,
+    pub worktree: PathBuf,
+    pub session: Option<String>,
+    pub pin: Option<Pin>,
+    pub state: LaneState,
+    /// Failed gate rounds of this variant.
+    pub attempts: u32,
+    /// What the executor is told next (the output of red gates).
+    pub next_prompt: Option<String>,
+    pub gates: Vec<GateResult>,
+    pub green: u32,
+    pub total: u32,
+    pub summary: Option<String>,
+    /// correctness, coverage, simplicity, risk.
+    pub scores: Option<[u8; 4]>,
+    /// The reviewer's words on the marks.
+    pub why: Option<String>,
+    pub why_failed: Option<String>,
+    pub started_at: Option<DateTime<Local>>,
+    pub finished_at: Option<DateTime<Local>>,
+    /// path, insertions, deletions
+    pub files: Vec<(String, u32, u32)>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub(super) struct Advice {
+    pub variant: String,
+    pub text: String,
+    pub autopick_at: DateTime<Local>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub(super) struct PartRt {
+    pub id: String,
+    pub title: String,
+    pub files: Vec<String>,
+    pub brief: String,
+    pub model: ModelChoice,
+    pub branch: String,
+    pub worktree: PathBuf,
+    pub session: Option<String>,
+    pub pin: Option<Pin>,
+    pub state: LaneState,
+    pub attempts: u32,
+    pub next_prompt: Option<String>,
+    pub why_failed: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub(super) struct Member {
+    pub id: String,
+    pub model: ModelChoice,
+    pub session: Option<String>,
+    pub pin: Option<Pin>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub(super) struct VoteRec {
+    pub voter: String,
+    pub choice: String,
+    pub why: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub(super) struct Proposal {
+    pub id: String,
+    pub model: String,
+    pub text: String,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, Default)]
+pub(super) struct CouncilRt {
+    pub members: Vec<Member>,
+    pub proposals: Vec<Proposal>,
+    pub votes: Vec<VoteRec>,
+    pub winner: Option<String>,
+    /// "votes" or "reviewer" (a tie).
+    pub decided_by: Option<String>,
+    pub decided: bool,
+    /// The votes on the last review.
+    pub review_votes: Vec<VoteRec>,
+    /// Members that gave nothing in a phase (`propose:A`, `vote:B`): they are not asked again.
+    #[serde(default)]
+    pub out: Vec<String>,
+}
+
+/// A question of a lane that has not reached the person yet.
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub(super) struct Asked {
+    pub label: String,
+    /// `Variant`, `Part` or `Member`.
+    pub kind: String,
+    pub question: String,
+    pub options: Vec<String>,
+    pub session: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, Default)]
+pub(super) struct SwarmRt {
+    /// Questions of lanes waiting their turn to be put to the person.
+    pub asking: Vec<Asked>,
+    /// The lane whose question the person is answering now.
+    pub asked_lane: Option<String>,
+    pub variants: Vec<Variant>,
+    pub advice: Option<Advice>,
+    pub picked: Option<String>,
+    /// `person` or `timer`.
+    pub picked_by: Option<String>,
+    pub stopped: bool,
+    /// The swarm did not get there: the task goes on (`resume_failed`) as a single executor in the best copy.
+    pub collapsed: bool,
+    pub parts: Vec<PartRt>,
+    pub split_tries: u8,
+    pub sequential: bool,
+    pub landed_all: bool,
+    pub council: CouncilRt,
 }
 
 impl Engine {
