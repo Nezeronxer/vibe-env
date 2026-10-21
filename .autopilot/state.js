@@ -9,7 +9,7 @@ window.STATE =
   "briefFile": "2026-10-21-brief.md",
   "memoryFile": "CLAUDE.md",
   "startedAt": "2026-10-21T08:41:14+03:00",
-  "updatedAt": "2026-10-21T15:39:32+03:00",
+  "updatedAt": "2026-10-21T17:10:19+03:00",
   "finishedAt": null,
   "stages": [
     {
@@ -49,7 +49,7 @@ window.STATE =
       "id": "build",
       "status": "active",
       "startedAt": "2026-10-21T09:02:22+03:00",
-      "note": "готовы 01-03, 05, 06, 08, 12, 14, 15; идёт движок v2"
+      "note": "готовы 01-03, 05, 06, 08, 09, 12, 14, 15; идут 10 и 11"
     },
     {
       "id": "review",
@@ -406,7 +406,7 @@ window.STATE =
     {
       "id": "09",
       "retries": 0,
-      "repairs": 0,
+      "repairs": 1,
       "title": "Движок v2: роли, «Качество», промпт под модель, одна среда на задачу, лимиты, ночь, заморозка",
       "requirements": [
         "R01",
@@ -504,8 +504,17 @@ window.STATE =
         "hidden_specs"
       ],
       "wave": 5,
-      "status": "in-progress",
-      "startedAt": "2026-10-21T14:19:01+03:00"
+      "status": "done",
+      "startedAt": "2026-10-21T14:19:01+03:00",
+      "tests": {
+        "passed": 284,
+        "failed": 0
+      },
+      "finishedAt": "2026-10-21T17:10:19+03:00",
+      "commit": "5195c56",
+      "concerns": [
+        "G14: при выключенном «Качестве» промпт уходит как есть - ждёт решения пользователя"
+      ]
     },
     {
       "id": "10",
@@ -547,7 +556,8 @@ window.STATE =
         "core/tests/engine_swarm*.rs"
       ],
       "wave": 6,
-      "status": "pending"
+      "status": "in-progress",
+      "startedAt": "2026-10-21T17:10:19+03:00"
     },
     {
       "id": "11",
@@ -584,7 +594,8 @@ window.STATE =
         "core/tests/chat*.rs"
       ],
       "wave": 6,
-      "status": "pending"
+      "status": "in-progress",
+      "startedAt": "2026-10-21T17:10:19+03:00"
     },
     {
       "id": "12",
@@ -864,7 +875,7 @@ window.STATE =
   ],
   "singlePass": null,
   "tests": {
-    "passed": 227,
+    "passed": 426,
     "failed": 0
   },
   "debt": {
