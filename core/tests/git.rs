@@ -1,0 +1,435 @@
+use nightshift_core::git::*;
+use std::fs;
+use std::path::{Path, PathBuf};
+use std::process::Command;
+use tempfile::TempDir;
+
+fn g(dir: &Path, args: &[&str]) -> String {
+    let o = Command::new("git").current_dir(dir).args(args).output().unwrap();
+    assert!(o.status.success(), "git {:?}: {}", args, String::from_utf8_lossy(&o.stderr));
+    String::from_utf8_lossy(&o.stdout).trim().to_string()
+}
+
+fn new_repo() -> (TempDir, PathBuf) {
+    let d = tempfile::tempdir().unwrap();
+    let p = d.path().join("repo");
+    fs::create_dir(&p).unwrap();
+    g(&p, &["init", "-q", "-b", "main"]);
+    g(&p, &["config", "user.email", "t@example.com"]);
+    g(&p, &["config", "user.name", "T"]);
+    fs::write(p.join("a.txt"), "one\n").unwrap();
+    g(&p, &["add", "-A"]);
+    g(&p, &["commit", "-q", "-m", "init"]);
+    (d, p)
+}
+
+fn wt_for(d: &TempDir, repo: &Path, id: &str, branch: &str) -> PathBuf {
+    let wt = create_worktree(repo, &d.path().join("wts"), id, branch, "main").unwrap();
+    g(&wt, &["config", "user.email", "t@example.com"]);
+    g(&wt, &["config", "user.name", "T"]);
+    wt
+}
+
+fn count(repo: &Path, rev: &str) -> u32 {
+    g(repo, &["rev-list", "--count", rev]).parse().unwrap()
+}
+
+fn task_with_change(d: &TempDir, repo: &Path, id: &str, branch: &str, file: &str, body: &str) -> PathBuf {
+    let wt = wt_for(d, repo, id, branch);
+    fs::write(wt.join(file), body).unwrap();
+    assert!(commit_all(&wt, "wip").unwrap().is_some());
+    wt
+}
+
+fn commit_in(dir: &Path, file: &str, body: &str, msg: &str) {
+    fs::write(dir.join(file), body).unwrap();
+    g(dir, &["add", "-A"]);
+    g(dir, &["commit", "-q", "-m", msg]);
+}
+
+#[test]
+fn worktree_is_created_and_removed_with_its_branch() {
+    let (d, repo) = new_repo();
+    let wt = wt_for(&d, &repo, "t1", "ns/abc12345-fix");
+    assert!(wt.join("a.txt").exists());
+    assert_eq!(g(&wt, &["symbolic-ref", "--short", "HEAD"]), "ns/abc12345-fix");
+    remove_worktree(&repo, &wt, true).unwrap();
+    assert!(!wt.exists());
+    assert_eq!(g(&repo, &["branch", "--list", "ns/*"]), "");
+}
+
+#[test]
+fn remove_worktree_can_keep_the_branch() {
+    let (d, repo) = new_repo();
+    let wt = wt_for(&d, &repo, "t1", "ns/abc12345-keep");
+    remove_worktree(&repo, &wt, false).unwrap();
+    assert!(g(&repo, &["branch", "--list", "ns/*"]).contains("ns/abc12345-keep"));
+}
+
+#[test]
+fn commit_all_returns_none_when_nothing_changed() {
+    let (d, repo) = new_repo();
+    let wt = wt_for(&d, &repo, "t1", "ns/aaaa1111-x");
+    assert_eq!(commit_all(&wt, "nothing").unwrap(), None);
+    fs::write(wt.join("new.txt"), "x").unwrap();
+    let sha = commit_all(&wt, "add new").unwrap().expect("sha");
+    assert_eq!(sha, g(&wt, &["rev-parse", "HEAD"]));
+    assert_eq!(commit_all(&wt, "again").unwrap(), None);
+}
+
+#[test]
+fn rebase_conflict_is_reported_and_can_be_resolved() {
+    let (d, repo) = new_repo();
+    let wt = wt_for(&d, &repo, "t1", "ns/aaaa1111-x");
+    fs::write(wt.join("a.txt"), "task side\n").unwrap();
+    commit_all(&wt, "task edit").unwrap();
+    commit_in(&repo, "a.txt", "main side\n", "main edit");
+
+    let err = rebase_onto(&wt, "main").unwrap_err();
+    assert!(matches!(err, GitError::Conflict(_)), "got {err:?}");
+
+    fs::write(wt.join("a.txt"), "resolved\n").unwrap();
+    rebase_continue(&wt).unwrap();
+    assert_eq!(fs::read_to_string(wt.join("a.txt")).unwrap(), "resolved\n");
+    assert_eq!(count(&wt, "main..HEAD"), 1);
+}
+
+#[test]
+fn clean_rebase_moves_branch_onto_new_base() {
+    let (d, repo) = new_repo();
+    let wt = task_with_change(&d, &repo, "t1", "ns/aaaa1111-x", "t.txt", "t\n");
+    commit_in(&repo, "m.txt", "m\n", "main moves");
+    rebase_onto(&wt, "main").unwrap();
+    assert!(wt.join("m.txt").exists() && wt.join("t.txt").exists());
+}
+
+#[test]
+fn diff_and_diffstat_describe_the_task_changes() {
+    let (d, repo) = new_repo();
+    let wt = wt_for(&d, &repo, "t1", "ns/aaaa1111-x");
+    fs::write(wt.join("a.txt"), "one\ntwo\nthree\n").unwrap();
+    fs::write(wt.join("b.txt"), "x\n").unwrap();
+    commit_all(&wt, "c").unwrap();
+    let mut st = diffstat(&wt, "main");
+    st.sort_by(|a, b| a.path.cmp(&b.path));
+    // counted by hand: a.txt gets two new lines, b.txt one
+    assert_eq!(st, vec![
+        FileStat { path: "a.txt".into(), insertions: 2, deletions: 0 },
+        FileStat { path: "b.txt".into(), insertions: 1, deletions: 0 },
+    ]);
+    assert!(diff(&wt, "main", 100_000).contains("+three"));
+    assert!(diff(&wt, "main", 20).contains("[diff truncated]"));
+}
+
+#[test]
+fn squash_gives_exactly_one_commit_with_the_task_message() {
+    let (d, repo) = new_repo();
+    let wt = wt_for(&d, &repo, "t1", "ns/aaaa1111-x");
+    for i in 0..3 {
+        fs::write(wt.join(format!("f{i}.txt")), "x").unwrap();
+        commit_all(&wt, &format!("step {i}")).unwrap();
+    }
+    assert_eq!(count(&repo, "main"), 1);
+    let sha = squash_to_base(&repo, &wt, "main", "Add three files").unwrap();
+    assert_eq!(count(&repo, "main"), 2);
+    assert_eq!(g(&repo, &["rev-parse", "main"]), sha);
+    assert_eq!(g(&repo, &["log", "-1", "--format=%s", "main"]), "Add three files");
+    assert_eq!(g(&repo, &["ls-tree", "-r", "--name-only", "main"]), "a.txt\nf0.txt\nf1.txt\nf2.txt");
+}
+
+#[test]
+fn advance_rule1_human_on_clean_main_gets_fast_forward() {
+    let (d, repo) = new_repo();
+    let wt = task_with_change(&d, &repo, "t1", "ns/aaaa1111-x", "t.txt", "task\n");
+    squash_to_base(&repo, &wt, "main", "Task").unwrap();
+    assert_eq!(fs::read_to_string(repo.join("t.txt")).unwrap(), "task\n");
+    assert_eq!(g(&repo, &["status", "--porcelain"]), "");
+}
+
+#[test]
+fn advance_rule2_dirty_main_blocks_and_keeps_humans_edit() {
+    let (d, repo) = new_repo();
+    let wt = task_with_change(&d, &repo, "t1", "ns/aaaa1111-x", "t.txt", "task\n");
+    fs::write(repo.join("a.txt"), "human work in progress\n").unwrap();
+    let before = g(&repo, &["rev-parse", "main"]);
+    let err = squash_to_base(&repo, &wt, "main", "Task").unwrap_err();
+    assert!(matches!(err, GitError::AdvanceBlocked(_)), "got {err:?}");
+    assert_eq!(fs::read_to_string(repo.join("a.txt")).unwrap(), "human work in progress\n");
+    assert_eq!(g(&repo, &["rev-parse", "main"]), before);
+    assert!(!repo.join("t.txt").exists());
+    // after the human commits, rebase + squash go through
+    g(&repo, &["commit", "-q", "-am", "human commit"]);
+    rebase_onto(&wt, "main").unwrap();
+    squash_to_base(&repo, &wt, "main", "Task").unwrap();
+    assert_eq!(fs::read_to_string(repo.join("a.txt")).unwrap(), "human work in progress\n");
+}
+
+#[test]
+fn advance_rule3_human_on_other_branch_main_moves_and_files_stay() {
+    let (d, repo) = new_repo();
+    g(&repo, &["checkout", "-q", "-b", "feature"]);
+    fs::write(repo.join("a.txt"), "feature edit\n").unwrap();
+    fs::write(repo.join("scratch.txt"), "uncommitted\n").unwrap();
+    let head_before = g(&repo, &["rev-parse", "HEAD"]);
+    let wt = task_with_change(&d, &repo, "t1", "ns/aaaa1111-x", "t.txt", "task\n");
+    let sha = squash_to_base(&repo, &wt, "main", "Task").unwrap();
+    assert_eq!(g(&repo, &["rev-parse", "main"]), sha);
+    assert_eq!(g(&repo, &["symbolic-ref", "--short", "HEAD"]), "feature");
+    assert_eq!(g(&repo, &["rev-parse", "HEAD"]), head_before);
+    assert_eq!(fs::read_to_string(repo.join("a.txt")).unwrap(), "feature edit\n");
+    assert_eq!(fs::read_to_string(repo.join("scratch.txt")).unwrap(), "uncommitted\n");
+    assert!(!repo.join("t.txt").exists());
+}
+
+#[test]
+fn squash_after_main_moved_asks_for_a_new_rebase() {
+    let (d, repo) = new_repo();
+    let wt = task_with_change(&d, &repo, "t1", "ns/aaaa1111-x", "t.txt", "task\n");
+    commit_in(&repo, "m.txt", "m", "other");
+    assert!(matches!(squash_to_base(&repo, &wt, "main", "Task"), Err(GitError::Other(_))));
+}
+
+#[test]
+fn revert_undoes_the_squash_commit() {
+    let (d, repo) = new_repo();
+    let wt = task_with_change(&d, &repo, "t1", "ns/aaaa1111-x", "t.txt", "task\n");
+    let sha = squash_to_base(&repo, &wt, "main", "Add t").unwrap();
+    assert!(repo.join("t.txt").exists());
+    let rv = revert(&repo, "main", &sha).unwrap();
+    assert_eq!(g(&repo, &["rev-parse", "main"]), rv);
+    assert!(!repo.join("t.txt").exists());
+    assert!(repo.join("a.txt").exists());
+    assert_eq!(count(&repo, "main"), 3);
+    assert!(g(&repo, &["log", "-1", "--format=%s", "main"]).starts_with("Revert"));
+}
+
+#[test]
+fn revert_works_while_human_is_on_another_branch() {
+    let (d, repo) = new_repo();
+    let wt = task_with_change(&d, &repo, "t1", "ns/aaaa1111-x", "t.txt", "task\n");
+    let sha = squash_to_base(&repo, &wt, "main", "Add t").unwrap();
+    g(&repo, &["checkout", "-q", "-b", "other"]);
+    revert(&repo, "main", &sha).unwrap();
+    assert_eq!(g(&repo, &["ls-tree", "-r", "--name-only", "main"]), "a.txt");
+}
+
+fn with_origin(d: &TempDir, repo: &Path) -> PathBuf {
+    let bare = d.path().join("origin.git");
+    g(d.path(), &["init", "-q", "--bare", "-b", "main", bare.to_str().unwrap()]);
+    g(repo, &["remote", "add", "origin", bare.to_str().unwrap()]);
+    g(repo, &["push", "-q", "-u", "origin", "main"]);
+    bare
+}
+
+fn other_clone_pushes(d: &TempDir, bare: &Path) {
+    let other = d.path().join("other");
+    g(d.path(), &["clone", "-q", bare.to_str().unwrap(), other.to_str().unwrap()]);
+    g(&other, &["config", "user.email", "o@example.com"]);
+    g(&other, &["config", "user.name", "O"]);
+    commit_in(&other, "o.txt", "o", "theirs");
+    g(&other, &["push", "-q", "origin", "main"]);
+}
+
+#[test]
+fn push_to_local_bare_origin_works() {
+    let (d, repo) = new_repo();
+    let bare = with_origin(&d, &repo);
+    commit_in(&repo, "n.txt", "n", "n");
+    push(&repo, "main").unwrap();
+    assert_eq!(g(&bare, &["rev-parse", "main"]), g(&repo, &["rev-parse", "main"]));
+}
+
+#[test]
+fn rejected_push_is_a_push_error_and_remote_is_untouched() {
+    let (d, repo) = new_repo();
+    let bare = with_origin(&d, &repo);
+    other_clone_pushes(&d, &bare);
+    let theirs = g(&bare, &["rev-parse", "main"]);
+    commit_in(&repo, "n.txt", "n", "mine");
+    let err = push(&repo, "main").unwrap_err();
+    assert!(matches!(err, GitError::Push(_)), "got {err:?}");
+    assert_eq!(g(&bare, &["rev-parse", "main"]), theirs);
+}
+
+#[test]
+fn repo_info_reports_ahead_behind_dirty_and_origin() {
+    let (d, repo) = new_repo();
+    let bare = with_origin(&d, &repo);
+    let i = repo_info(&repo);
+    assert!(i.is_repo);
+    assert_eq!(i.base_branch.as_deref(), Some("main"));
+    assert_eq!(i.current_branch.as_deref(), Some("main"));
+    assert_eq!(i.origin_url.as_deref(), Some(bare.to_str().unwrap()));
+    assert_eq!((i.ahead, i.behind, i.dirty), (0, 0, false));
+
+    commit_in(&repo, "n.txt", "n", "n");
+    fs::write(repo.join("a.txt"), "edited\n").unwrap();
+    let i = repo_info(&repo);
+    assert_eq!((i.ahead, i.behind, i.dirty), (1, 0, true));
+}
+
+#[test]
+fn repo_info_on_non_repo() {
+    let d = tempfile::tempdir().unwrap();
+    let i = repo_info(d.path());
+    assert!(!i.is_repo);
+    assert!(i.base_branch.is_none());
+}
+
+#[test]
+fn fetch_ff_brings_in_remote_commits() {
+    let (d, repo) = new_repo();
+    let bare = with_origin(&d, &repo);
+    other_clone_pushes(&d, &bare);
+    fetch_ff(&repo, "main").unwrap();
+    assert!(repo.join("o.txt").exists());
+    assert_eq!(repo_info(&repo).behind, 0);
+}
+
+#[test]
+fn only_merged_ns_branches_are_deleted() {
+    let (d, repo) = new_repo();
+    let wt1 = task_with_change(&d, &repo, "t1", "ns/11111111-done", "one.txt", "1\n");
+    squash_to_base(&repo, &wt1, "main", "Task one").unwrap();
+    remove_worktree(&repo, &wt1, false).unwrap();
+    let wt2 = task_with_change(&d, &repo, "t2", "ns/22222222-open", "two.txt", "2\n");
+    remove_worktree(&repo, &wt2, false).unwrap();
+    g(&repo, &["branch", "feature-merged"]);
+
+    let mut l = list_ns_branches(&repo);
+    l.sort();
+    assert_eq!(l, vec![("ns/11111111-done".to_string(), true), ("ns/22222222-open".to_string(), false)]);
+
+    assert_eq!(delete_merged_ns_branches(&repo).unwrap(), 1);
+    let left = g(&repo, &["branch", "--format=%(refname:short)"]);
+    let mut left: Vec<&str> = left.lines().collect();
+    left.sort();
+    assert_eq!(left, vec!["feature-merged", "main", "ns/22222222-open"]);
+}
+
+#[test]
+fn init_repo_makes_a_repo_with_one_commit_and_skips_env_files() {
+    let d = tempfile::tempdir().unwrap();
+    let p = d.path().join("proj");
+    fs::create_dir(&p).unwrap();
+    fs::write(p.join("code.rs"), "fn main(){}").unwrap();
+    fs::write(p.join(".env"), "SECRET=1").unwrap();
+    fs::create_dir_all(p.join("sub/deep")).unwrap();
+    fs::write(p.join("sub/.env"), "SECRET=2").unwrap();
+    fs::write(p.join("sub/deep/.env.local"), "SECRET=3").unwrap();
+    fs::write(p.join("sub/keep.txt"), "k").unwrap();
+    init_repo(&p).unwrap();
+    assert!(repo_info(&p).is_repo);
+    assert_eq!(count(&p, "HEAD"), 1);
+    assert_eq!(g(&p, &["ls-tree", "-r", "--name-only", "HEAD"]), "code.rs\nsub/keep.txt");
+    init_repo(&p).unwrap();
+    assert_eq!(count(&p, "HEAD"), 1);
+}
+
+#[test]
+fn detect_commands_by_project_type() {
+    let cases: Vec<(&str, Vec<(&str, &str)>, Option<&str>, Option<&str>)> = vec![
+        ("npm with lock", vec![("package.json", r#"{"scripts":{"test":"jest"}}"#), ("package-lock.json", "{}")], Some("npm test"), Some("npm ci")),
+        ("npm no lock", vec![("package.json", r#"{"scripts":{"test":"jest"}}"#)], Some("npm test"), Some("npm install")),
+        ("npm without test script", vec![("package.json", r#"{"scripts":{"build":"x"}}"#)], None, None),
+        ("npm placeholder test", vec![("package.json", r#"{"scripts":{"test":"echo \"Error: no test specified\" && exit 1"}}"#)], None, None),
+        ("cargo", vec![("Cargo.toml", "[package]")], Some("cargo test"), None),
+        ("python", vec![("pyproject.toml", "[project]")], Some("pytest"), None),
+        ("go", vec![("go.mod", "module x")], Some("go test ./..."), None),
+        ("make with test", vec![("Makefile", "build:\n\tcc x\n\ntest:\n\t./run\n")], Some("make test"), None),
+        ("make without test", vec![("Makefile", "build:\n\tcc x\n")], None, None),
+        ("empty", vec![], None, None),
+    ];
+    for (name, files, check, setup) in cases {
+        let d = tempfile::tempdir().unwrap();
+        for (f, c) in files {
+            fs::write(d.path().join(f), c).unwrap();
+        }
+        let (c, s) = detect_commands(d.path());
+        assert_eq!((c.as_deref(), s.as_deref()), (check, setup), "case: {name}");
+    }
+}
+
+#[test]
+fn web_url_from_ssh_and_https_origins() {
+    let (_d, repo) = new_repo();
+    for (origin, want) in [
+        ("git@github.com:o/r.git", Some("https://github.com/o/r")),
+        ("https://github.com/o/r.git", Some("https://github.com/o/r")),
+        ("https://user:tok@github.com/o/r", Some("https://github.com/o/r")),
+        ("ssh://git@example.com:2222/o/r.git", Some("https://example.com/o/r")),
+        ("/some/local/bare.git", None),
+    ] {
+        let _ = Command::new("git").current_dir(&repo).args(["remote", "remove", "origin"]).output();
+        g(&repo, &["remote", "add", "origin", origin]);
+        assert_eq!(repo_info(&repo).web_url.as_deref(), want, "origin {origin}");
+    }
+}
+
+#[test]
+fn base_checked_out_in_linked_worktree_follows_the_same_rules() {
+    let (d, repo) = new_repo();
+    g(&repo, &["checkout", "-q", "-b", "other"]);
+    let human_wt = d.path().join("human-main");
+    g(&repo, &["worktree", "add", "-q", human_wt.to_str().unwrap(), "main"]);
+    let wt = task_with_change(&d, &repo, "t1", "ns/aaaa1111-x", "t.txt", "task\n");
+
+    // dirty linked copy: blocked, edit untouched
+    fs::write(human_wt.join("a.txt"), "wip\n").unwrap();
+    let before = g(&repo, &["rev-parse", "main"]);
+    assert!(matches!(squash_to_base(&repo, &wt, "main", "Task"), Err(GitError::AdvanceBlocked(_))));
+    assert_eq!(fs::read_to_string(human_wt.join("a.txt")).unwrap(), "wip\n");
+    assert_eq!(g(&repo, &["rev-parse", "main"]), before);
+
+    // clean linked copy: fast-forwarded in place
+    g(&human_wt, &["checkout", "-q", "--", "a.txt"]);
+    squash_to_base(&repo, &wt, "main", "Task").unwrap();
+    assert_eq!(fs::read_to_string(human_wt.join("t.txt")).unwrap(), "task\n");
+}
+
+#[test]
+fn paths_with_spaces_and_cyrillic_work() {
+    let d = tempfile::tempdir().unwrap();
+    let repo = d.path().join("мой проект");
+    fs::create_dir(&repo).unwrap();
+    g(&repo, &["init", "-q", "-b", "main"]);
+    g(&repo, &["config", "user.email", "t@example.com"]);
+    g(&repo, &["config", "user.name", "T"]);
+    commit_in(&repo, "a.txt", "one\n", "init");
+    let wt = create_worktree(&repo, &d.path().join("рабочие копии"), "t1", "ns/aaaa1111-x", "main").unwrap();
+    fs::write(wt.join("файл.txt"), "x").unwrap();
+    commit_all(&wt, "add").unwrap().unwrap();
+    squash_to_base(&repo, &wt, "main", "Задача").unwrap();
+    assert_eq!(g(&repo, &["log", "-1", "--format=%s", "main"]), "Задача");
+    remove_worktree(&repo, &wt, true).unwrap();
+    assert!(!wt.exists());
+}
+
+#[test]
+fn two_worktrees_and_humans_uncommitted_file_stay_independent() {
+    let (d, repo) = new_repo();
+    fs::write(repo.join("human-notes.txt"), "mine\n").unwrap(); // untracked, in the main copy
+    let w1 = task_with_change(&d, &repo, "t1", "ns/11111111-a", "one.txt", "1\n");
+    let w2 = task_with_change(&d, &repo, "t2", "ns/22222222-b", "two.txt", "2\n");
+    assert!(!w1.join("two.txt").exists() && !w2.join("one.txt").exists());
+    assert!(!w1.join("human-notes.txt").exists() && !w2.join("human-notes.txt").exists());
+    assert_eq!(count(&repo, "main"), 1);
+
+    squash_to_base(&repo, &w1, "main", "First").unwrap();
+    rebase_onto(&w2, "main").unwrap();
+    squash_to_base(&repo, &w2, "main", "Second").unwrap();
+    assert_eq!(count(&repo, "main"), 3);
+    assert_eq!(g(&repo, &["ls-tree", "-r", "--name-only", "main"]), "a.txt\none.txt\ntwo.txt");
+    assert_eq!(fs::read_to_string(repo.join("human-notes.txt")).unwrap(), "mine\n");
+}
+
+#[test]
+fn revert_that_cannot_apply_cleanly_is_a_conflict() {
+    let (d, repo) = new_repo();
+    let wt = wt_for(&d, &repo, "t1", "ns/aaaa1111-x");
+    fs::write(wt.join("a.txt"), "task\n").unwrap();
+    commit_all(&wt, "c").unwrap();
+    let sha = squash_to_base(&repo, &wt, "main", "Edit a").unwrap();
+    commit_in(&repo, "a.txt", "later human edit\n", "later");
+    assert!(matches!(revert(&repo, "main", &sha), Err(GitError::Conflict(_))));
+}

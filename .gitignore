@@ -7,3 +7,4 @@ __pycache__/
 target/
 dist/
 .autopilot/serve.pid
+app/gen/

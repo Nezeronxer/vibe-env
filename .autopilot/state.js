@@ -9,7 +9,7 @@ window.STATE =
   "briefFile": "2026-10-21-brief.md",
   "memoryFile": "CLAUDE.md",
   "startedAt": "2026-10-21T08:41:14+03:00",
-  "updatedAt": "2026-10-21T09:02:22+03:00",
+  "updatedAt": "2026-10-21T10:13:20+03:00",
   "finishedAt": null,
   "stages": [
     {
@@ -52,7 +52,9 @@ window.STATE =
     },
     {
       "id": "review",
-      "status": "pending"
+      "status": "active",
+      "startedAt": "2026-10-21T10:07:22+03:00",
+      "note": "на ревью 01"
     },
     {
       "id": "final",
@@ -93,9 +95,10 @@ window.STATE =
         "app/",
         "ui/"
       ],
-      "status": "pending",
+      "status": "review",
       "retries": 0,
-      "repairs": 0
+      "repairs": 1,
+      "startedAt": "2026-10-21T09:03:14+03:00"
     },
     {
       "id": "02",

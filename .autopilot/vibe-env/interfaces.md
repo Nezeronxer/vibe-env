@@ -262,3 +262,15 @@ pub fn load_token() -> Option<String>; pub fn save_token(t: &str) -> Result<(), 
 ## Что построили таски
 
 (дописывается по мере готовности тасков)
+
+### Из таска 01 - каркас
+
+- Тесты ядра: `cargo test -p nightshift-core` (файлы `core/tests/{store,git,gh,agent}.rs`); один файл - `--test git`. Сборка окна: `cargo build -p nightshift-app` (tauri-cli не нужен).
+- `Store`: мутации возвращают `Result<_, StoreError>`; `append_log(&self, …)`; `read_log(id, limit: usize) -> Vec<LogEvent>`; есть `remove_task(id)`, `project(id)`.
+- `model`: `Project::new(name, path, base)`, `Default for Settings`.
+- `git`: `dirty` - только отслеживаемые файлы. `open_pr` сам пушит ветку, затем `gh pr create`. `NIGHTSHIFT_GH` подменяет бинарь gh (для тестов). Влитая squash-ем ветка помечается ref `refs/ns-merged/<branch>`. `squash_to_base`, если main сдвинулась после rebase → `GitError::Other("... moved since rebase")` - движок должен сделать rebase заново.
+- `agent`: `FakeAdapter::new(scripts).with_id(id)`, `.calls() -> Vec<Run>` (что передавалось), `FakeStep::Sleep(ms)`; fake запускается как `sh -c`, печатает JSON-строки. `Run`, `AgentEvent`: Clone/Debug. `adapters()` пока пустой - заполняет таск 02.
+- `git`: `RepoInfo.web_url: Option<String>` - https-ссылка из origin (git@/https/ssh → https://host/o/r, без логина/токена; локальный путь → None). Запасная подпись Nightshift - только если в самом репо нет user.name/email.
+- `agent::run_blocking`: cancel убивает всю группу процессов (unix); stderr дочитывается через join - фоновый процесс с открытым stderr задержит возврат.
+- `notify`: `NoticeKind::is_loud()`.
+- `telegram`: `TelegramHandle` (пока пустой Notifier), `load_token` → None, `save_token` → Err - реализует таск 04.
