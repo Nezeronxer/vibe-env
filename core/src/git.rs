@@ -29,6 +29,9 @@ pub enum GitError {
     Conflict(String),
     #[error("advance blocked: {0}")]
     AdvanceBlocked(String),
+    /// Base got new commits after the rebase (or while advancing it): rebase again.
+    #[error("base moved: {0}")]
+    BaseMoved(String),
     #[error("push failed: {0}")]
     Push(String),
     #[error("gh: {0}")]
@@ -40,17 +43,35 @@ pub enum GitError {
 const NS_PREFIX: &str = "ns/";
 const MARKER_NS: &str = "refs/ns-merged/";
 
-/// The Nightshift fallback signature is used only when the config seen from `dir`
-/// (repo/worktree + global) lacks user.name or user.email; a real signature is never overridden.
-fn identity_missing(dir: &Path) -> bool {
-    ["user.name", "user.email"].iter().any(|k| {
-        Command::new("git")
-            .current_dir(dir)
-            .args(["config", "--get", k])
-            .output()
-            .map(|o| String::from_utf8_lossy(&o.stdout).trim().is_empty())
-            .unwrap_or(true)
-    })
+static SIGNED: std::sync::Mutex<Vec<PathBuf>> = std::sync::Mutex::new(Vec::new());
+
+/// `-c` args giving only the missing half of the signature (name and/or email) a Nightshift
+/// fallback; a configured value is never overridden. Dirs (repo / worktree roots) that
+/// already have both are remembered; incomplete ones are re-checked so later config is seen.
+fn identity_args(dir: &Path) -> Vec<String> {
+    if SIGNED.lock().unwrap().iter().any(|d| d == dir) {
+        return vec![];
+    }
+    let out = Command::new("git")
+        .current_dir(dir)
+        .args(["config", "--get-regexp", r"^user\.(name|email)$"])
+        .output()
+        .map(|o| String::from_utf8_lossy(&o.stdout).to_string())
+        .unwrap_or_default();
+    let has = |k: &str| {
+        out.lines().any(|l| l.split_once(' ').is_some_and(|(key, v)| key == k && !v.trim().is_empty()))
+    };
+    let mut args = vec![];
+    if !has("user.name") {
+        args.extend(["-c".to_string(), "user.name=Nightshift".to_string()]);
+    }
+    if !has("user.email") {
+        args.extend(["-c".to_string(), "user.email=nightshift@localhost".to_string()]);
+    }
+    if args.is_empty() {
+        SIGNED.lock().unwrap().push(dir.to_path_buf());
+    }
+    args
 }
 
 fn git_cmd(dir: &Path) -> Command {
@@ -58,10 +79,8 @@ fn git_cmd(dir: &Path) -> Command {
     c.current_dir(dir)
         .env("GIT_TERMINAL_PROMPT", "0")
         .env("GIT_EDITOR", "true")
-        .env("LC_ALL", "C");
-    if identity_missing(dir) {
-        c.args(["-c", "user.name=Nightshift", "-c", "user.email=nightshift@localhost"]);
-    }
+        .env("LC_ALL", "C")
+        .args(identity_args(dir));
     c
 }
 
@@ -208,8 +227,76 @@ pub fn remove_worktree(repo: &Path, wt: &Path, delete_branch: bool) -> Result<()
     Ok(())
 }
 
-pub fn commit_all(wt: &Path, msg: &str) -> Result<Option<String>, GitError> {
+/// File in the worktree's private git dir listing untracked paths `add -A` must skip.
+fn hidden_list(wt: &Path) -> Option<PathBuf> {
+    let gd = PathBuf::from(try_out(wt, &["rev-parse", "--git-dir"])?);
+    Some(if gd.is_absolute() { gd } else { wt.join(gd) }.join("ns-hidden"))
+}
+
+/// Keeps files copied into the worktree (`.env*` etc.) out of every commit the app makes there,
+/// whatever `.gitignore` says now or later, without touching the human's repo (its
+/// `info/exclude` is shared by all worktrees).
+pub fn hide_untracked(wt: &Path, paths: &[String]) -> Result<(), GitError> {
+    let f = hidden_list(wt).ok_or_else(|| GitError::Other(format!("not a worktree: {}", wt.display())))?;
+    let mut all = std::fs::read_to_string(&f).unwrap_or_default();
+    for p in paths {
+        all.push_str(p);
+        all.push('\n');
+    }
+    std::fs::write(&f, all).map_err(|e| GitError::Other(format!("{}: {e}", f.display())))
+}
+
+/// `-- :(literal)p ...` for the hidden paths; None when there are none.
+fn hidden_specs(wt: &Path) -> Option<Vec<String>> {
+    let hidden = hidden_list(wt).and_then(|f| std::fs::read_to_string(f).ok()).unwrap_or_default();
+    let specs: Vec<String> = hidden.lines().filter(|l| !l.is_empty()).map(|l| format!(":(literal){l}")).collect();
+    (!specs.is_empty()).then_some(specs)
+}
+
+fn run_with(wt: &Path, head: &[&str], specs: &[String]) -> Result<Out, GitError> {
+    let mut args: Vec<&str> = head.to_vec();
+    args.push("--");
+    args.extend(specs.iter().map(String::as_str));
+    run(wt, &args)
+}
+
+/// `git add -A`, then the hidden paths are put back as HEAD has them (out of the index if HEAD
+/// lacks them). Naming ignored paths here is fine, unlike in an `add` pathspec.
+fn add_all(wt: &Path) -> Result<(), GitError> {
     ok(wt, &["add", "-A"])?;
+    if let Some(specs) = hidden_specs(wt) {
+        let o = run_with(wt, &["reset", "-q"], &specs)?;
+        if !o.ok {
+            return Err(GitError::Other(format!("git reset hidden paths: {}", o.stderr)));
+        }
+    }
+    Ok(())
+}
+
+/// Hidden paths that a commit of the branch since it forked from `base` added or changed.
+pub fn hidden_committed(wt: &Path, base: &str) -> Vec<String> {
+    let Some(specs) = hidden_specs(wt) else { return vec![] };
+    let range = format!("{}..HEAD", merge_base(wt, base));
+    let out = run_with(wt, &["log", "--format=", "--name-only", &range], &specs).map(|o| o.stdout).unwrap_or_default();
+    let mut v: Vec<String> = out.lines().filter(|l| !l.is_empty()).map(str::to_string).collect();
+    v.sort();
+    v.dedup();
+    v
+}
+
+/// Someone (the agent) committed a hidden path: fold the branch back into the index
+/// (`reset --soft` to the fork point, files stay) so the next `commit_all` leaves it out and
+/// no commit of the branch keeps it. Ok(true) when it did that.
+pub fn uncommit_hidden(wt: &Path, base: &str) -> Result<bool, GitError> {
+    if hidden_committed(wt, base).is_empty() {
+        return Ok(false);
+    }
+    ok(wt, &["reset", "-q", "--soft", &merge_base(wt, base)])?;
+    Ok(true)
+}
+
+pub fn commit_all(wt: &Path, msg: &str) -> Result<Option<String>, GitError> {
+    add_all(wt)?;
     if run(wt, &["diff", "--cached", "--quiet"])?.ok {
         return Ok(None);
     }
@@ -217,7 +304,8 @@ pub fn commit_all(wt: &Path, msg: &str) -> Result<Option<String>, GitError> {
     Ok(Some(ok(wt, &["rev-parse", "HEAD"])?))
 }
 
-fn rebase_in_progress(wt: &Path) -> bool {
+/// A rebase stopped in `wt` (conflict waiting to be resolved).
+pub fn rebase_in_progress(wt: &Path) -> bool {
     ["rebase-merge", "rebase-apply"].iter().any(|d| {
         try_out(wt, &["rev-parse", "--git-path", d])
             .map(|p| {
@@ -240,7 +328,7 @@ pub fn rebase_onto(wt: &Path, base: &str) -> Result<(), GitError> {
 }
 
 pub fn rebase_continue(wt: &Path) -> Result<(), GitError> {
-    ok(wt, &["add", "-A"])?;
+    add_all(wt)?;
     let o = run(wt, &["rebase", "--continue"])?;
     if o.ok {
         Ok(())
@@ -297,7 +385,7 @@ fn checkout_of(repo: &Path, base: &str) -> Option<PathBuf> {
 /// 3. checked out nowhere   -> `update-ref` guarded by the old value
 fn advance(repo: &Path, base: &str, old: &str, new: &str) -> Result<(), GitError> {
     let r = format!("refs/heads/{base}");
-    let moved = || GitError::Other(format!("{base} moved since rebase"));
+    let moved = || GitError::BaseMoved(format!("{base} moved while advancing it"));
     let tip_is_old = || try_out(repo, &["rev-parse", &r]).as_deref() == Some(old);
     if !tip_is_old() {
         return Err(moved());
@@ -327,16 +415,29 @@ fn advance(repo: &Path, base: &str, old: &str, new: &str) -> Result<(), GitError
 pub fn squash_to_base(repo: &Path, wt: &Path, base: &str, msg: &str) -> Result<String, GitError> {
     let old = ok(repo, &["rev-parse", &format!("refs/heads/{base}")])?;
     if !run(wt, &["merge-base", "--is-ancestor", &old, "HEAD"])?.ok {
-        return Err(GitError::Other(format!("{base} moved since rebase")));
+        return Err(GitError::BaseMoved(format!("{base} moved since rebase")));
     }
     let tree = ok(wt, &["rev-parse", "HEAD^{tree}"])?;
     let new = ok(repo, &["commit-tree", &tree, "-p", &old, "-m", msg])?;
-    advance(repo, base, &old, &new)?;
     // Squashed branches are not ancestors of base; remember the merge so cleanup can tell.
+    // Written before advancing: a crash right after the advance still leaves the marker
+    // (`merged_commit` only trusts it once it is part of base).
     if let Some(b) = try_out(wt, &["symbolic-ref", "--short", "-q", "HEAD"]) {
         let _ = run(repo, &["update-ref", &format!("{MARKER_NS}{b}"), &new]);
     }
+    advance(repo, base, &old, &new)?;
     Ok(new)
+}
+
+/// Forgets that `branch` landed (retry starts new work on the same branch name).
+pub fn forget_merged(repo: &Path, branch: &str) {
+    let _ = run(repo, &["update-ref", "-d", &format!("{MARKER_NS}{branch}")]);
+}
+
+/// The squash commit of `branch` if it already landed on `base` (see `squash_to_base`).
+pub fn merged_commit(repo: &Path, base: &str, branch: &str) -> Option<String> {
+    let m = try_out(repo, &["rev-parse", "--verify", "--quiet", &format!("{MARKER_NS}{branch}")])?;
+    run(repo, &["merge-base", "--is-ancestor", &m, base]).ok().filter(|o| o.ok).map(|_| m)
 }
 
 /// New commit on `base` that undoes `sha`, built from trees only (the working copy is not used).

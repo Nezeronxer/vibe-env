@@ -186,7 +186,7 @@ fn squash_after_main_moved_asks_for_a_new_rebase() {
     let (d, repo) = new_repo();
     let wt = task_with_change(&d, &repo, "t1", "ns/aaaa1111-x", "t.txt", "task\n");
     commit_in(&repo, "m.txt", "m", "other");
-    assert!(matches!(squash_to_base(&repo, &wt, "main", "Task"), Err(GitError::Other(_))));
+    assert!(matches!(squash_to_base(&repo, &wt, "main", "Task"), Err(GitError::BaseMoved(_))));
 }
 
 #[test]
@@ -400,6 +400,8 @@ fn paths_with_spaces_and_cyrillic_work() {
     fs::write(wt.join("файл.txt"), "x").unwrap();
     commit_all(&wt, "add").unwrap().unwrap();
     squash_to_base(&repo, &wt, "main", "Задача").unwrap();
+    assert_eq!(fs::read_to_string(repo.join("файл.txt")).unwrap(), "x");
+    assert_eq!(g(&repo, &["status", "--porcelain"]), "");
     assert_eq!(g(&repo, &["log", "-1", "--format=%s", "main"]), "Задача");
     remove_worktree(&repo, &wt, true).unwrap();
     assert!(!wt.exists());
