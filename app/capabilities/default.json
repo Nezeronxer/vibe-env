@@ -1,6 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
+  "description": "Main window: listen to events and pick a folder. Notifications and the hotkey are driven from Rust.",
   "windows": ["main"],
-  "permissions": ["core:default"]
+  "permissions": ["core:event:default", "dialog:allow-open"]
 }
