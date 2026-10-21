@@ -9,7 +9,7 @@ window.STATE =
   "briefFile": "2026-10-21-brief.md",
   "memoryFile": "CLAUDE.md",
   "startedAt": "2026-10-21T08:41:14+03:00",
-  "updatedAt": "2026-10-21T10:13:20+03:00",
+  "updatedAt": "2026-10-21T10:14:53+03:00",
   "finishedAt": null,
   "stages": [
     {
@@ -48,13 +48,13 @@ window.STATE =
       "id": "build",
       "status": "active",
       "startedAt": "2026-10-21T09:02:22+03:00",
-      "note": "0 из 7 тасков готовы"
+      "note": "1 из 7 тасков готовы"
     },
     {
       "id": "review",
       "status": "active",
       "startedAt": "2026-10-21T10:07:22+03:00",
-      "note": "на ревью 01"
+      "note": "проверено 1 из 7"
     },
     {
       "id": "final",
@@ -63,7 +63,7 @@ window.STATE =
   ],
   "requirements": {
     "total": 23,
-    "done": 0,
+    "done": 1,
     "inTicket": 23,
     "inSpec": 0,
     "placeholder": 0,
@@ -95,10 +95,20 @@ window.STATE =
         "app/",
         "ui/"
       ],
-      "status": "review",
+      "status": "done",
       "retries": 0,
       "repairs": 1,
-      "startedAt": "2026-10-21T09:03:14+03:00"
+      "startedAt": "2026-10-21T09:03:14+03:00",
+      "finishedAt": "2026-10-21T10:14:53+03:00",
+      "commit": "483310e",
+      "tests": {
+        "passed": 40,
+        "failed": 0
+      },
+      "concerns": [
+        "run_blocking может зависнуть на фоновом процессе агента - дозапрос",
+        "подпись: кеш и только недостающий ключ - дозапрос"
+      ]
     },
     {
       "id": "02",
@@ -121,9 +131,10 @@ window.STATE =
         "core/tests/fixtures/agents/",
         "core/src/agent/"
       ],
-      "status": "pending",
+      "status": "in-progress",
       "retries": 0,
-      "repairs": 0
+      "repairs": 0,
+      "startedAt": "2026-10-21T10:14:53+03:00"
     },
     {
       "id": "03",
@@ -164,9 +175,10 @@ window.STATE =
       "zone": [
         "core/src/engine/"
       ],
-      "status": "pending",
+      "status": "in-progress",
       "retries": 0,
-      "repairs": 0
+      "repairs": 0,
+      "startedAt": "2026-10-21T10:14:53+03:00"
     },
     {
       "id": "04",
@@ -190,9 +202,10 @@ window.STATE =
       "zone": [
         "core/src/telegram/"
       ],
-      "status": "pending",
+      "status": "in-progress",
       "retries": 0,
-      "repairs": 0
+      "repairs": 0,
+      "startedAt": "2026-10-21T10:14:53+03:00"
     },
     {
       "id": "05",
@@ -295,7 +308,10 @@ window.STATE =
     }
   ],
   "singlePass": null,
-  "tests": null,
+  "tests": {
+    "passed": 40,
+    "failed": 0
+  },
   "debt": {
     "placeholders": [
       "Токен Telegram-бота - вписываешь сам в настройках",
