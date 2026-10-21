@@ -9,7 +9,7 @@ window.STATE =
   "briefFile": "2026-10-21-brief.md",
   "memoryFile": "CLAUDE.md",
   "startedAt": "2026-10-21T08:41:14+03:00",
-  "updatedAt": "2026-10-21T21:01:10+03:00",
+  "updatedAt": "2026-10-21T21:48:23+03:00",
   "finishedAt": null,
   "stages": [
     {
@@ -49,7 +49,7 @@ window.STATE =
       "id": "build",
       "status": "active",
       "startedAt": "2026-10-21T09:02:22+03:00",
-      "note": "готовы 01-03, 05, 06, 08-15; дальше ремонт: проверка значений из наборов и нестабильные тесты; потом 07"
+      "note": "все 14 тасков готовы; идёт ремонт ядра (проверка значений из наборов, нестабильные тесты)"
     },
     {
       "id": "review",
@@ -323,10 +323,20 @@ window.STATE =
         "docs/",
         "scripts/install.sh"
       ],
-      "status": "in-progress",
+      "status": "done",
       "retries": 0,
-      "repairs": 0,
-      "startedAt": "2026-10-21T21:01:10+03:00"
+      "repairs": 1,
+      "startedAt": "2026-10-21T21:01:10+03:00",
+      "finishedAt": "2026-10-21T21:48:23+03:00",
+      "commit": "151cace",
+      "concerns": [
+        "не опубликовано; заглушки <OWNER>, <REPO>, <REPO_URL>, <SECURITY_CONTACT>, <MAINTAINER>, sha256sums SKIP",
+        "скриншот открытого .dmg не снят - фон Finder не отрисовался из оболочки",
+        "theSVG /legal и правила брендов вендоров не проверены",
+        "воркфлоу не запускались на GitHub; checksums без --clobber; пустой черновик при упавшей сборке",
+        "имя «Nightshift» не меняется одной заменой (install.sh, PKGBUILD)",
+        "PKGBUILD и AppImage на Linux не проверены"
+      ]
     },
     {
       "id": "08",
