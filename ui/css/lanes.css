@@ -1,0 +1,41 @@
+/* Lanes (time bars of the roles) - only in the swarm and the factory (story 124). Positions arrive as CSS variables (strict CSP: no style=""). */
+.lanes { --lab: 160px; padding: 0 16px 10px; position: relative; }
+.lane-axis, .lane { display: grid; grid-template-columns: var(--lab) minmax(0, 1fr); align-items: center; }
+.lane-axis { color: var(--ink3); font-size: 11.5px; padding-bottom: 6px; }
+.axis { position: relative; height: 16px; margin-right: 24px; }
+.axis span { position: absolute; left: var(--l); transform: translateX(-50%); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.lane { min-height: 36px; border-top: 1px solid var(--line); }
+.lane-n { display: flex; align-items: center; gap: 8px; min-width: 0; padding-right: 8px; }
+.lane-n > div { min-width: 0; }
+.lane-n b { color: var(--c, var(--ink)); font-weight: 600; line-height: 1.15; display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lane-n b button { background: none; border: 0; padding: 0; font: inherit; color: inherit; text-align: left; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lane-n b button:hover { text-decoration: underline; text-underline-offset: 3px; }
+.lane-n small { display: flex; gap: 5px; align-items: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lane-n small .ic { width: 11px; height: 11px; }
+.track { position: relative; height: 36px; margin-right: 24px; }
+.seg-b { position: absolute; left: var(--l); width: var(--w); top: 7px; height: 22px; display: flex; align-items: center; padding: 0 7px; font-size: 11.5px; font-weight: 600; white-space: nowrap; overflow: hidden; border-radius: 3px;
+  background: color-mix(in srgb, var(--c) 30%, var(--panel)); border-left: 3px solid var(--c); }
+.seg-b.proj { background: transparent; border: 1px dashed var(--line2); color: var(--ink3); font-weight: 500; }
+.seg-b.fail { background: color-mix(in srgb, var(--bad) 35%, var(--panel)); border-left-color: var(--bad); }
+.lane-now-wrap { position: absolute; left: calc(var(--lab) + 16px); right: 40px; top: 22px; bottom: 0; pointer-events: none; }
+.now { position: absolute; left: var(--l); top: -4px; bottom: 0; width: 2px; background: var(--ink); }
+.now span { position: absolute; top: -17px; left: 50%; transform: translateX(-50%); font-size: 11px; font-weight: 700; background: var(--ink); color: var(--bg); padding: 0 5px; border-radius: 2px; white-space: nowrap; }
+.lanes.flush { padding: 0; --lab: 170px; }
+.lanes.flush .lane-now-wrap { left: var(--lab); right: 24px; }
+.legend { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 12px; color: var(--ink2); margin: 14px 0 20px; }
+.legend span { display: inline-flex; gap: 5px; align-items: center; }
+.legend .rl { width: 11px; height: 11px; }
+.proj-l::before { content: ""; width: 18px; height: 10px; border: 1px dashed var(--line2); border-radius: 2px; }
+.lanes-ctl { display: flex; gap: 6px; align-items: center; margin: 0 0 8px; }
+.lanes-more { color: var(--ink3); font-size: 12px; padding: 8px 0 0; }
+/* merge queue: a tube into main */
+.pipe-wrap { margin: 14px 0 0; padding: 12px 14px 14px; background: var(--raised); border-radius: 6px; }
+.pipe-h { display: flex; gap: 12px; align-items: baseline; margin-bottom: 10px; flex-wrap: wrap; }
+.pipe { display: flex; }
+.pipe-tube { flex: 1; min-height: 38px; background: var(--bg); border: 1px solid var(--line2); border-right: 0; display: flex; align-items: center; gap: 8px; padding: 0 8px; justify-content: flex-end; border-radius: var(--r) 0 0 var(--r); overflow: hidden; }
+.pitem { height: 26px; padding: 0 9px; display: inline-flex; align-items: center; gap: 6px; background: var(--raised2); border-radius: 3px; font-size: 12px; white-space: nowrap; }
+.pitem.first { background: var(--ok-bg); color: var(--ok); font-weight: 600; }
+.pitem.ghost { background: transparent; border: 1px dashed var(--ink3); color: var(--ink2); }
+.pitem.blocked { background: var(--bad-bg); color: var(--bad); }
+.pitem.empty { background: transparent; color: var(--ink3); }
+.pipe-main { width: 84px; flex: none; background: var(--ink); color: var(--bg); display: flex; align-items: center; justify-content: center; gap: 6px; font-weight: 700; border-radius: 0 var(--r) var(--r) 0; }

@@ -38,6 +38,9 @@
       let chat = params.chat;
       if (chat === undefined) chat = lastChat.get(e.id) || firstChat(e.id) || 'new';
       lastChat.set(e.id, chat);
+      const swarm = NS.registry.get('swarm');
+      const swt = chat && chat !== 'new' && swarm && !swarm.placeholder ? L.swarmTaskOf(NS.store.chatTasks(chat)) : null;   // the swarm chat is the main surface of its task (story 156)
+      if (swt) return mount('swarm', { env: e.id, chat, task: swt.id });
       return mount('chat', { env: e.id, chat });
     }
     return mount(screen, params);
@@ -61,6 +64,7 @@
     current = { def, params, inst: null };
     renderRail(); if (layout === 'chats') renderSide();
     current.inst = def.mount(root, ctxFor(params)) || null;
+    if (NS.notices) NS.notices.onRoute(s.route);
   }
   const forward = (evt, payload) => { if (current && current.inst && current.inst.update) current.inst.update(evt, payload); };
 
@@ -70,7 +74,11 @@
     const missing = e.state === 'missing' || e.state === 'unavailable';
     const short = e.custom ? e.name : e.name.split(' ')[0];
     const b = h('button', { type: 'button', class: 'env-b', dataset: { env: e.id }, title: e.name + (missing ? ' - ' + t('env.missing_short') : ''),
-      onclick: () => nav('env', { env: e.id }) }, envIcon(e.custom ? 'custom' : e.id), h('span', { text: short }));
+      onclick: () => {
+        const keep = current && current.def.keepEnv;
+        if (keep) nav(typeof keep === 'string' ? keep : current.def.id, Object.assign({}, current.params, { env: e.id }));
+        else nav('env', { env: e.id });
+      } }, envIcon(e.custom ? 'custom' : e.id), h('span', { text: short }));
     if (missing) b.append(h('small', { class: 'sub', text: t('env.missing_short') }));
     return b;
   }
@@ -93,22 +101,22 @@
     for (const e of s.envs) { const b = railBtn(e); railBtns.set(e.id, b); envs.append(b); }
     const foot = h('div', { class: 'rail-foot' });
     for (const d of NS.registry.list().filter((x) => x.rail && x.rail.zone === 'foot').sort((a, b) => a.rail.order - b.rail.order)) {
-      foot.append(h('button', { type: 'button', class: 'env-b' + (current && current.def.id === d.id ? ' on' : ''), title: t(d.rail.labelKey),
-        onclick: () => nav(d.id) }, ic(d.rail.icon), h('span', { text: t(d.rail.labelKey) })));
+      foot.append(h('button', { type: 'button', class: 'env-b' + (current && (current.def.id === d.id || current.def.railId === d.id) ? ' on' : ''), title: t(d.rail.labelKey),
+        onclick: () => nav(d.id, d.keepEnv ? { env: s.lastEnv } : {}) }, ic(d.rail.icon), h('span', { text: t(d.rail.labelKey) })));
     }
-    rail.append(h('div', { class: 'rail-brand', title: 'Nightshift' }, ic('i-moon')), envs, foot);
+    NS.append(rail, [h('div', { class: 'rail-brand', title: 'Nightshift' }, ic('i-moon')), s.frozen ? h('div', { class: 'rail-frozen', role: 'status', text: t('frozen.edge') }) : null, envs, foot]);
     for (const e of s.envs) patchRailBadges(e.id);
     markRail();
   }
   function markRail() {
     for (const [id, b] of railBtns) {
-      const on = !!current && ['chat', 'envstate'].includes(current.def.id) && s.route.env === id;
+      const on = !!current && (['chat', 'envstate', 'swarm'].includes(current.def.id) || !!current.def.keepEnv) && s.route.env === id;
       b.classList.toggle('on', on); if (on) b.setAttribute('aria-current', 'page'); else b.removeAttribute('aria-current');
     }
   }
 
   // ---------- chat list ----------
-  const iconName = (item) => (item.task ? L.iconOf(item.task) : 'chat');
+  const iconName = (item) => (item.task ? (item.task.swarm ? 'swarm' : L.iconOf(item.task)) : 'chat');   // a swarm is a chat of its own with the swarm mark (story 152)
   function chatLine(item) {
     const c = item.chat, tk = item.task;
     if (!tk) return c.last || c.last_text || '';
@@ -184,6 +192,8 @@
       if (v) bar.append(h('span', { text: t('frozen.msg') }), h('button', { type: 'button', class: 'btn sm', text: t('frozen.undo'),
         onclick: () => NS.api.call('freeze', { on: false }).catch((e) => toast(NS.errHuman(NS.api.errText(e)), true)) }));
       s.frozen = !!v;
+      renderRail();                  // "Заморожено" on the edge of the window (story 169)
+      forward('frozen', !!v);
     });
     on('envs', () => { renderRail(); if (current && current.def.layout === 'chats') renderSide(); forward('envs'); });
   }

@@ -12,6 +12,12 @@
 <link rel="stylesheet" href="css/chat.css">
 <link rel="stylesheet" href="css/onboarding.css">
 <link rel="stylesheet" href="css/need.css">
+<link rel="stylesheet" href="css/lanes.css">
+<link rel="stylesheet" href="css/swarm.css">
+<link rel="stylesheet" href="css/factory.css">
+<link rel="stylesheet" href="css/settings.css">
+<link rel="stylesheet" href="css/kits.css">
+<link rel="stylesheet" href="css/notices.css">
 </head>
 <body>
 <!-- Icon sprite: roles (shape + colour + a text label), interface, neutral env mark. Vendor marks are files in icons/. -->
@@ -64,6 +70,8 @@
   <aside class="side" id="side"></aside>
   <div class="shell-main">
     <div class="frozen-bar" id="frozenBar" hidden></div>
+    <div id="noticeBar"></div>
+    <div id="summaryBar"></div>
     <main class="screen" id="screen" tabindex="-1"></main>
   </div>
 </div>
@@ -71,6 +79,7 @@
 <dialog id="dlg"></dialog>
 <!-- Plain scripts, one global namespace NS (works from file:// and under script-src 'self'); order matters. -->
 <script src="i18n.js"></script>
+<script src="i18n-v2.js"></script>
 <script src="logic.js"></script>
 <script src="mock-loader.js"></script>
 <script src="js/core/dom.js"></script>
@@ -87,7 +96,14 @@
 <script src="js/screens/envstate.js"></script>
 <script src="js/screens/onboarding.js"></script>
 <script src="js/screens/placeholders.js"></script>
-<!-- task 15: add the script tags of its screens right here, before app.js -->
+<!-- task 15: swarm, factory, settings (+ projects, kits, import), notices, "Пока тебя не было" -->
+<script src="js/screens/settings.js"></script>
+<script src="js/screens/settings-projects.js"></script>
+<script src="js/screens/kits.js"></script>
+<script src="js/screens/factory.js"></script>
+<script src="js/screens/swarm.js"></script>
+<script src="js/screens/notices.js"></script>
+<script src="js/screens/summary.js"></script>
 <script src="js/app.js"></script>
 </body>
 </html>

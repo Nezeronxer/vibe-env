@@ -243,5 +243,5 @@
     };
   }
 
-  NS.taskCard = { create: createCard, closeMenu: () => { if (closeMenu) closeMenu(); } };   // the screen calls closeMenu() on destroy
+  NS.taskCard = { create: createCard, diffBox, closeMenu: () => { if (closeMenu) closeMenu(); } };   // the screen calls closeMenu() on destroy
 })();

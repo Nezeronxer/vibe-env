@@ -18,6 +18,7 @@
     const openGroups = new Set();
     let selProject = (chatObj && chatObj.project_id) || S.lastProject || (S.settings && S.settings.default_project) || (S.projects[0] && S.projects[0].id) || null;
     const alive = { v: true };
+    const ext = ctx.params.ext || {};                  // the swarm screen reuses this chat as its main surface (story 156): extra composer control, note target
 
     // ---------- header ----------
     const title = h('h1'), sub = h('span', { class: 'hint' });
@@ -50,7 +51,13 @@
       e.stopPropagation();
       closeChatMenu();
       const busy = st.chatTasks(chatId).some((x) => ['wait', 'run', 'queue'].includes(L.kindOf(x)));
-      const m = h('div', { class: 'menu menu-r', role: 'menu' }, h('button', { type: 'button', role: 'menuitem', disabled: busy, title: busy ? t('chat.delete_busy') : '', text: t('chat.delete'),
+      const m = h('div', { class: 'menu menu-r', role: 'menu' },
+        h('button', { type: 'button', role: 'menuitem', text: t('chat.terminal'), onclick: async () => {      // A07.2: the same session in the CLI of the env, read-only copy
+          closeChatMenu();
+          try { await NS.api.call('open_chat_terminal', { id: chatId }); feed.append(h('div', { class: 'sysline bad' }, ic('i-warn'), h('span', { text: t('chat.terminal_warn') }))); toBottom(); }
+          catch (er) { NS.shell.toast(NS.errHuman(NS.api.errText(er)), true); }
+        } }),
+        h('button', { type: 'button', role: 'menuitem', disabled: busy, title: busy ? t('chat.delete_busy') : '', text: t('chat.delete'),
         onclick: async () => {
           closeChatMenu();
           if (!(await NS.projects.confirm(t('chat.delete'), t('chat.delete_text'), t('chat.delete')))) return;
@@ -90,8 +97,9 @@
     };
     function humanNode(m, isPending) {
       const note = !isPending && m.task_id;
+      const to = m.to ? ' · ' + (m.to === 'reviewer' ? t('swarm.to_reviewer') : t('swarm.to_variant', { v: m.to })) : '';     // a note to a swarm: who gets it (story 156)
       return h('div', { class: 'me' }, h('div', {}, h('small', { text: t('feed.you') + ' · ' + NS.hhmm(m.at) }), richText(m.text),
-        isPending ? h('small', { class: 'deliv', text: t('msg.sending') }) : note ? h('small', { class: 'deliv', text: m.delivered_at ? t('msg.delivered', { time: NS.hhmm(m.delivered_at) }) : t('msg.will_pass') }) : null));
+        isPending ? h('small', { class: 'deliv', text: t('msg.sending') }) : note ? h('small', { class: 'deliv', text: (m.delivered_at ? t('msg.delivered', { time: NS.hhmm(m.delivered_at) }) : t('msg.will_pass')) + to }) : null));
     }
     function systemNodes(m) {
       const out = [];
@@ -200,7 +208,7 @@
     wrap.addEventListener('scroll', () => { if (wrap.scrollTop < 60) loadOlder(); });
 
     const composer = NS.composer.create({ envId, chat: chatId, hooks: {
-      projectId: () => selProject, activeTask,
+      projectId: () => selProject, activeTask, noteTo: ext.noteTo,
       addPending(p) { pending.push(p); addPendingNode(p); toBottom(); },
       dropPending(id) { pending = pending.filter((p) => p.id !== id); dropPendingNode(id); },
       sent: async (newId) => {
@@ -212,7 +220,9 @@
       },
     } });
 
-    root.append(h('section', { class: 'convo' }, header, wrap, composer.el));
+    const convoy = chatObj && chatObj.convoy && NS.factory ? NS.factory.convoyBar(chatId) : null;       // "Поручение": overall progress "3 из 5" (story 163)
+    root.append(h('section', { class: 'convo' }, header, convoy ? convoy.el : null, wrap, composer.el));
+    if (ext.decorate) ext.decorate(composer);
     if (isNew) fillProjects();
     drawHeader();
     renderFeed();
@@ -238,6 +248,7 @@
     return {
       update(evt, payload) {
         if (evt === 'task') {
+          if (convoy) convoy.update();
           const c = cards.get(payload.id);
           if (c) c.update(payload);               // only this card is redrawn
           else if (payload.chat_id === chatId) {   // the task arrived after its "Это задача" message: put the card in front of that line
@@ -265,7 +276,7 @@
         else if (evt === 'project') { drawHeader(); }
         else if (evt === 'focus-input') composer.focus();
       },
-      destroy() { alive.v = false; closeChatMenu(); NS.taskCard.closeMenu(); clearInterval(tick); document.removeEventListener('keydown', onKey); limits.destroy(); composer.destroy(); },
+      destroy() { alive.v = false; if (convoy) convoy.destroy(); closeChatMenu(); NS.taskCard.closeMenu(); clearInterval(tick); document.removeEventListener('keydown', onKey); limits.destroy(); composer.destroy(); },
     };
   }
 

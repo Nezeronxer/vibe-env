@@ -325,8 +325,11 @@
     else if (!installed && !custom) state = 'missing';
     else if (raw.needs_login || raw.login_required || raw.signed_out) state = 'login';
     else if (reason || !installed) state = 'unavailable';
-    return { id: raw.id, name: raw.name || raw.id, custom, state, version: raw.version || '', hint: raw.install_hint || raw.hint || '',
+    const env = { id: raw.id, name: raw.name || raw.id, custom, state, version: raw.version || '', hint: raw.install_hint || raw.hint || '',
       reason, kitDir: raw.kit_dir || '' };
+    if (raw.sandbox) env.sandbox = raw.sandbox;      // SandboxInfo from the adapter (rights screen, R17i.3)
+    if (raw.path) env.path = raw.path;               // where the CLI was found
+    return env;
   }
 
   // ---------- feed ----------
@@ -384,11 +387,383 @@
   }
   const draftKey = (env, chatId) => `ns.draft.${env}.${chatId || 'new'}`;
 
+  // ================= task 15: swarm, factory, settings, kits, "while you were away" =================
+  // ---------- swarm ----------
+  const SWARM_MIN = 2, SWARM_MAX = 5, SWARM_DEFAULT = 3;       // story 152, 159
+  function clampSwarmN(v) {
+    const n = Math.round(Number(v));
+    return Number.isFinite(n) ? Math.max(SWARM_MIN, Math.min(SWARM_MAX, n)) : SWARM_DEFAULT;
+  }
+  const stepSwarmN = (n, delta) => clampSwarmN(clampSwarmN(n) + delta);
+
+  // cost only where the environment reports it (spec 30): null -> '' and the screen says "среда не сообщает"
+  function formatCost(usd) {
+    if (usd == null || !Number.isFinite(Number(usd))) return '';
+    const v = Number(usd);
+    return v > 0 && v < 0.01 ? '<$0.01' : '$' + v.toFixed(2);
+  }
+  const formatBudget = (spent, cap) => `${formatCost(spent)} ${cap == null ? '' : 'из $' + (Number.isInteger(Number(cap)) ? Number(cap) : Number(cap).toFixed(2))}`.trim();
+  // whole minutes left until the reviewer's choice is taken automatically; null when there is no timer or it is due
+  function autopickLeft(atIso, now) {
+    if (!atIso) return null;
+    const ms = ts(atIso) - now;
+    return ms > 0 ? Math.ceil(ms / MIN) : null;
+  }
+  // variants for display: passed by score, then still running / waiting, then failed by green tests; "Лучший" = reviewer's advice,
+  // else the best score among passed; when nothing passed the best attempt is the one with the most green tests (story 158)
+  function rankVariants(variants, advice) {
+    const green = (v) => (v.gate ? v.gate.passed : -1);
+    const group = (v) => (v.state === 'passed' ? 0 : v.state === 'failed' ? 2 : 1);
+    const sorted = variants.slice().sort((a, b) => group(a) - group(b)
+      || (group(a) === 0 ? (b.score || 0) - (a.score || 0) : group(a) === 2 ? green(b) - green(a) : 0) || String(a.id).localeCompare(String(b.id)));
+    const passed = sorted.filter((v) => v.state === 'passed');
+    const bestId = advice && advice.variant ? advice.variant : passed.length ? passed[0].id : null;
+    const failed = sorted.filter((v) => v.state === 'failed');
+    const bestFailedId = !passed.length && failed.length && failed.every((v) => v.gate) ? failed[0].id : null;
+    return sorted.map((v) => Object.assign({}, v, { best: v.id === bestId, bestFailed: v.id === bestFailedId, canTake: v.state === 'passed' }));
+  }
+  // council votes [{voter, for}] -> counts, the winner by majority, a tie (the reviewer decides, story 155)
+  function tallyVotes(votes) {
+    const counts = {};
+    for (const v of votes) counts[v.for] = (counts[v.for] || 0) + 1;
+    const top = Math.max(0, ...Object.values(counts));
+    const leaders = Object.keys(counts).filter((k) => counts[k] === top).sort();
+    return { counts, total: votes.length, winner: leaders.length === 1 ? leaders[0] : null, tie: leaders.length > 1 ? leaders : [] };
+  }
+
+  // ---------- factory ----------
+  // a bar [from, to] on an axis [t0, t1] -> {left, width} in percent, clipped to the axis; null when it lies outside
+  function placeBar(from, to, t0, t1) {
+    if (to <= t0 || from >= t1) return null;
+    const l = Math.max(from, t0), r = Math.min(to, t1), span = t1 - t0;
+    return { left: ((l - t0) * 100) / span, width: ((r - l) * 100) / span };
+  }
+  const startMs = (t) => ts(t.started_at) || ts(t.created_at);
+  // the pipe into main: who merges now, who waits, who is blocked, who is still in review (pale)
+  function mergeQueue(tasks) {
+    const by = (status) => tasks.filter((t) => t.status === status).sort((a, b) => startMs(a) - startMs(b));
+    const merging = by('merging');
+    return [].concat(merging.map((t, i) => ({ id: t.id, task: t, kind: i === 0 ? 'head' : 'wait' })),
+      by('merge_blocked').map((t) => ({ id: t.id, task: t, kind: 'blocked' })), by('reviewing').map((t) => ({ id: t.id, task: t, kind: 'ghost' })));
+  }
+  const isActive = (t) => ['wait', 'run'].includes(kindOf(t)) && t.status !== 'handed_off';
+  const STRIP_ROLE = { coordinator: 'coord', council: 'coord', worker: 'exec', reviewer: 'rev' };
+  // aggregated roles of one env: Координатор · Исполнители ×N · Ревьюер · Надзиратель · Очередь (G12.2)
+  function rolesStrip(tasks) {
+    const act = tasks.filter(isActive);
+    if (!act.length) return [];
+    const agg = { coord: [], exec: [], rev: [] };
+    let watcherModel = null;
+    for (const t of act) {
+      const runs = t.runs && t.runs.length ? t.runs : t.status === 'working' ? [{ role: 'worker', model: null, state: 'running' }] : [];
+      for (const r of runs) {
+        const key = STRIP_ROLE[norm(r.role)];
+        if (key) agg[key].push(r);
+        else if (norm(r.role) === 'watcher') watcherModel = r.model || watcherModel;
+      }
+    }
+    const out = [];
+    for (const key of ['coord', 'exec', 'rev']) {
+      const all = agg[key];
+      if (!all.length) continue;
+      const running = all.filter((r) => variant(r.state)[0] === 'running');
+      const pool = running.length ? running : all;
+      out.push({ key, count: running.length, state: running.length ? 'work' : 'idle', models: [...new Set(pool.map((r) => r.model).filter(Boolean))] });
+    }
+    out.push({ key: 'watch', count: 0, state: 'watch', models: watcherModel ? [watcherModel] : [] });
+    const queue = mergeQueue(tasks).length;
+    if (queue) out.push({ key: 'queue', count: queue, state: 'work', models: [] });
+    return out;
+  }
+
+  // bars of one task: runs as they happened, then the steps still to come as dashed "впереди" (PROJ_MIN each)
+  const STEP_ROLE = { plan: 'plan', critique: 'crit', tests: 'test', code: 'exec', gates: 'gate', review: 'rev', merge: 'integ' };
+  const PROJ_MIN = 5;
+  function laneSegments(task, now) {
+    const segs = [], waiting = kindOf(task) === 'wait';
+    for (const r of task.runs || []) {
+      const key = roleKey(r.role), st = variant(r.state)[0];
+      if (!key || ['coord', 'watch'].includes(key) || !r.started_at || st === 'skipped' || st === 'pending') continue;     // a coordinator or the watcher is not a step of the task
+      const from = ts(r.started_at), to = r.finished_at ? ts(r.finished_at) : now;
+      segs.push({ role: key, state: st === 'running' ? (waiting ? 'wait' : 'run') : st === 'failed' ? 'fail' : 'done', from, to: Math.max(to, from), model: r.model || '', variant: r.variant || null });
+    }
+    if (isActive(task)) {
+      let at = now;
+      for (const s of stepBar(task)) if (s.state === 'pending') { segs.push({ role: STEP_ROLE[s.key], state: 'proj', from: at, to: at + PROJ_MIN * MIN }); at += PROJ_MIN * MIN; }
+    }
+    return segs;
+  }
+  // tasks of one env as lanes: the last hour with a stretch ahead (offsetMin scrolls back), most urgent first, at most `max` rows (story 168)
+  function factoryRows(tasks, now, opts) {
+    const o = Object.assign({ windowMin: 60, aheadMin: 20, offsetMin: 0, max: 20 }, opts);
+    const t0 = now - (o.windowMin - o.aheadMin) * MIN - o.offsetMin * MIN, t1 = t0 + o.windowMin * MIN;
+    const rank = (t) => KINDS.indexOf(kindOf(t));
+    const shown = tasks.filter((t) => {
+      if (o.offsetMin === 0 && ['wait', 'fail', 'run', 'queue'].includes(kindOf(t))) return true;
+      const from = startMs(t), to = t.finished_at ? ts(t.finished_at) : now;
+      return to >= t0 && from <= t1;
+    }).sort((a, b) => rank(a) - rank(b) || startMs(b) - startMs(a));
+    const { shown: rows, more } = capList(shown, o.max);
+    return { t0, t1, now, more, rows: rows.map((t) => ({ id: t.id, task: t, kind: kindOf(t),
+      segs: laneSegments(t, now).map((s) => Object.assign({}, s, placeBar(s.from, s.to, t0, t1))).filter((s) => s.left != null) })) };
+  }
+  // "Работают X из N" counts agent runs at work; "Сегодня $" sums what the env itself reported today
+  function factoryStats(tasks, now) {
+    let working = 0, spent = 0, reportsCost = false;
+    const today = new Date(now);
+    for (const t of tasks) {
+      if (t.cost_usd != null) {
+        reportsCost = true;
+        if (sameDay(new Date(startMs(t)), today)) spent += t.cost_usd;
+      }
+      if (kindOf(t) !== 'run' || !info(t.status).live) continue;
+      const running = (t.runs || []).filter((r) => variant(r.state)[0] === 'running').length;
+      working += t.runs && t.runs.length ? running : 1;
+    }
+    return { working, spent: reportsCost ? Math.round(spent * 100) / 100 : null, reportsCost };
+  }
+  // feed of the factory: LogEvent {task_id, at, kind, text, role?} -> entries, newest first, at most 500; tool noise is not shown
+  const FEED_MAX = 500;
+  const FEED_ICON = { check: 'gate', review: 'rev', git: 'queue', stage: 'coord', agent: 'exec', error: 'exec', human: 'coord' };
+  function feedEntries(events, tasks, now) {
+    const byId = new Map(tasks.map((t) => [t.id, t]));
+    const out = events.filter((e) => norm(e.kind) !== 'tool').map((e) => {
+      const rk = roleKey(e.role), task = byId.get(e.task_id);
+      const level = norm(e.kind) === 'error' || rk === 'watch' ? 'bad' : null;
+      return { ms: ts(e.at), at: e.at, taskId: e.task_id, role: rk || FEED_ICON[norm(e.kind)] || 'coord', text: e.text, model: e.model || '', level,
+        acts: rk === 'watch' && !!task && isActive(task) };
+    });
+    for (const t of tasks) if (kindOf(t) === 'wait' && t.question && t.question.text) out.push({ ms: now, at: new Date(now).toISOString(), taskId: t.id, role: 'exec', text: t.question.text, model: '', level: 'warn', acts: false, need: true });
+    return out.sort((a, b) => b.ms - a.ms).slice(0, FEED_MAX);
+  }
+  function filterFeed(entries, mode) {
+    const problems = entries.filter((e) => e.level);
+    return { entries: mode === 'problems' ? problems : entries, count: problems.length };
+  }
+  // a convoy (G08.1): overall progress "3 из 5" and one cell per task
+  function convoyProgress(tasks) {
+    const cell = (t) => (['done', 'done_not_pushed'].includes(t.status) ? 'd' : kindOf(t) === 'fail' ? 'f' : kindOf(t) === 'wait' ? 'w' : kindOf(t) === 'run' ? 'r' : '');
+    const parts = tasks.map(cell);
+    return { done: parts.filter((p) => p === 'd').length, total: tasks.length, parts };
+  }
+
+  // ---------- "Пока тебя не было" ----------
+  const SUMMARY_MAX = 10;
+  // Summary {done, failed, waiting, spent, limits} (summary_since) -> rows by importance, "ещё N" past `max`; no events = no banner
+  function summaryRows(summary, max) {
+    const s = summary || {}, cap = max == null ? SUMMARY_MAX : max;
+    const all = [].concat((s.waiting || []).map((x) => Object.assign({ kind: 'wait' }, x)), (s.failed || []).map((x) => Object.assign({ kind: 'fail' }, x)),
+      (s.done || []).map((x) => Object.assign({ kind: 'done' }, x)), (s.limits || []).map((x) => Object.assign({ kind: 'limit' }, x)));
+    const { shown, more } = capList(all, cap);
+    const money = (s.spent || []).filter((x) => x.usd != null);
+    return { rows: shown, more, empty: !all.length, spent: money.length ? Math.round(money.reduce((a, x) => a + x.usd, 0) * 100) / 100 : null };
+  }
+  // away >= afterMin minutes: from the moment the window lost focus; a stopped heartbeat while focused = the computer slept (A06.1)
+  const SLEEP_GAP = 3 * MIN;
+  function awayDecision(p) {
+    let since = null;
+    if (p.leftAt != null) since = p.leftAt;
+    else if (p.lastAlive != null && p.now - p.lastAlive > SLEEP_GAP) since = p.lastAlive;
+    if (since == null) return { show: false, since: null };
+    return { show: p.now - since >= p.afterMin * MIN, since };
+  }
+  // the chat of a swarm: the live swarm task wins, else the newest one
+  function swarmTaskOf(tasks) {
+    const sw = tasks.filter((t) => t.swarm);
+    if (!sw.length) return null;
+    const live = sw.filter((t) => ['wait', 'run', 'queue'].includes(kindOf(t)));
+    return (live.length ? live : sw).slice().sort((a, b) => ts(b.created_at) - ts(a.created_at))[0];
+  }
+
+  // ---------- settings ----------
+  // story 194: the current env first, then "Для всех сред", then "Проекты"
+  const SETTINGS_SECTIONS = [['env', 'models'], ['env', 'kits'], ['env', 'perms'], ['env', 'run'], ['all', 'quality'], ['all', 'swarm'], ['all', 'limits'], ['all', 'notify'], ['all', 'look'], ['all', 'keys'], ['projects', 'projects']]
+    .map(([group, id]) => ({ group, id }));
+  // -> {ok, value} | {ok: false, why: 'nan' | 'range'}; a decimal comma is accepted
+  function validateNumber(raw, rule) {
+    const s = String(raw == null ? '' : raw).trim();
+    if (!/^-?\d+([.,]\d+)?$/.test(s) || (rule.int && /[.,]/.test(s))) return { ok: false, why: 'nan' };
+    const v = Number(s.replace(',', '.'));
+    if ((rule.min != null && v < rule.min) || (rule.max != null && v > rule.max)) return { ok: false, why: 'range' };
+    return { ok: true, value: v };
+  }
+  function validateTime(raw) {
+    const m = /^(\d{1,2}):(\d{2})$/.exec(String(raw == null ? '' : raw).trim());
+    if (!m || +m[1] > 23 || +m[2] > 59) return { ok: false, why: 'format' };
+    return { ok: true, value: pad2(+m[1]) + ':' + m[2] };
+  }
+  // extra CLI arguments: split like a shell would but never run through one; an unclosed quote is an error
+  function parseArgs(str) {
+    const args = [];
+    let cur = '', has = false, quote = null;
+    const s = String(str);
+    for (let i = 0; i < s.length; i++) {
+      const c = s[i];
+      if (quote) {
+        if (c === quote) quote = null;
+        else if (c === '\\' && quote === '"' && i + 1 < s.length) cur += s[++i];
+        else cur += c;
+      } else if (c === '"' || c === "'") { quote = c; has = true; }
+      else if (c === '\\' && i + 1 < s.length) { cur += s[++i]; has = true; }
+      else if (/\s/.test(c)) { if (has || cur) args.push(cur); cur = ''; has = false; }
+      else { cur += c; has = true; }
+    }
+    if (quote) return { error: 'quotes' };
+    if (has || cur) args.push(cur);
+    return { args };
+  }
+  const formatArgs = (args) => args.map((a) => (a === '' || /[\s"'\\]/.test(a) ? '"' + a.replace(/(["\\])/g, '\\$1') + '"' : a)).join(' ');
+
+  // hotkeys
+  const CODE_KEY = { Period: '.', Comma: ',', Slash: '/', Backquote: '`', Space: 'Space', Enter: 'Enter', Minus: '-', Equal: '=', Semicolon: ';', Quote: "'", BracketLeft: '[', BracketRight: ']', Backslash: '\\' };
+  function accelFromEvent(ev, platform) {
+    const c = ev.code || '';
+    let key = null;
+    if (/^Key[A-Z]$/.test(c)) key = c[3];
+    else if (/^Digit\d$/.test(c)) key = c[5];
+    else if (/^F\d{1,2}$/.test(c)) key = c;
+    else if (CODE_KEY[c]) key = CODE_KEY[c];
+    if (!key) return null;
+    const mods = [ev.ctrlKey && 'Ctrl', ev.altKey && 'Alt', ev.shiftKey && 'Shift', ev.metaKey && (platform === 'mac' ? 'Cmd' : 'Super')].filter(Boolean);
+    return mods.concat(key).join('+');
+  }
+  const RESERVED = ['cmd+q', 'cmd+w', 'cmd+tab', 'cmd+space', 'alt+f4', 'ctrl+alt+delete', 'super+l'];
+  function validateAccel(accel, opts) {
+    const o = opts || {};
+    const parts = String(accel || '').split('+');
+    const key = parts.pop(), mods = parts;
+    const okKey = /^([A-Za-z0-9]|F\d{1,2}|Enter|Space|[.,/`\-=;'\[\]\\])$/.test(key || '');
+    const okMods = mods.every((m) => ['ctrl', 'alt', 'shift', 'cmd', 'super'].includes(m.toLowerCase()));
+    const real = mods.some((m) => ['ctrl', 'alt', 'cmd', 'super'].includes(m.toLowerCase()));
+    if (!okKey || !okMods || (o.needModifier && !real)) return { ok: false, why: 'format' };
+    const norm2 = String(accel).toLowerCase();
+    if (RESERVED.includes(norm2) || (o.taken || []).some((x) => String(x).toLowerCase() === norm2)) return { ok: false, why: 'busy' };
+    return { ok: true };
+  }
+  const KEY_CAP = { Alt: '⌥', Cmd: '⌘', Ctrl: '⌃', Shift: '⇧', Enter: '↵' };
+  function keyLabel(accel, platform) {
+    return String(accel).split('+').map((p) => (p === 'Enter' ? '↵' : platform === 'mac' && KEY_CAP[p] ? KEY_CAP[p] : p));
+  }
+
+  // models per role: select value "family|version" ("" = inherit)
+  const choiceKey = (c) => `${c.family}|${c.version || ''}`;
+  function choiceFromKey(k) {
+    if (!k) return null;
+    const i = k.indexOf('|');
+    return { family: k.slice(0, i), version: k.slice(i + 1) || null };
+  }
+  function roleOptions(catalog, t, inheritKey, current) {
+    const fams = ((catalog && catalog.families) || []).filter((f) => f.id !== 'default');
+    const out = [{ value: '', text: t(inheritKey) }];
+    for (const f of fams) {
+      out.push({ value: f.id + '|', text: t('set.latest_short', { label: f.label }) });
+      for (const v of f.versions || []) out.push({ value: `${f.id}|${v}`, text: `${f.label} ${v}` });
+    }
+    if (current && current.family !== 'default' && !fams.some((f) => f.id === current.family)) out.push({ value: choiceKey(current), text: current.family });
+    return out;
+  }
+  // the newest version of the family when an older one is pinned
+  function pinNewer(catalog, choice) {
+    if (!choice || !choice.version) return null;
+    const fam = ((catalog && catalog.families) || []).find((f) => f.id === choice.family);
+    return fam ? versionRow(fam, choice.version, () => '').newer : null;
+  }
+  // "Сбросить раздел": the keys to DROP from the settings (and from the env's block); the core fills dropped keys with its defaults
+  // (Settings and EnvSettings are #[serde(default)]), so the window keeps no copy of the defaults. null = nothing to reset
+  const RESET = { models: [[], ['default_model', 'roles', 'fallback', 'custom_models']], perms: [[], ['ask_push', 'ask_pr', 'protected_paths']], run: [[], ['cli_path', 'extra_args']],
+    quality: [['quality', 'review_rounds'], []], swarm: [['max_parallel', 'swarm_default', 'attempts', 'stall_min', 'autopick_min'], []], limits: [['limits'], []],
+    notify: [['notify'], []], look: [['look', 'language'], []], keys: [['keys'], []] };
+  const resetPatch = (section) => (RESET[section] ? { settings: RESET[section][0], env: RESET[section][1] } : null);
+
+  // ---------- kits ----------
+  const KIT_GROUPS = ['skills', 'rules', 'hooks', 'mcp', 'agents', 'settings'];
+  const CHANGE = { add: ['+', 0], replace: ['~', 1], same: ['=', 2] };
+  // ImportPlan.entries [{group, label, change, diff}] -> lines "+ Скиллы: a, b" / "~ ..." / "= ...": added, replaced (with its diff), already there
+  function groupChanges(entries) {
+    const lines = new Map();
+    for (const x of entries) {
+      const k = x.change + '|' + x.group;
+      if (!lines.has(k)) lines.set(k, { sign: CHANGE[x.change][0], cls: x.change, group: x.group, names: [], diff: null, order: CHANGE[x.change][1] * 10 + Math.max(0, KIT_GROUPS.indexOf(x.group)) });
+      const l = lines.get(k);
+      l.names.push(x.label);
+      if (x.diff) l.diff = (l.diff || []).concat(String(x.diff).split('\n'));
+    }
+    return [...lines.values()].sort((a, b) => a.order - b.order);
+  }
+  // "Установить" needs a chosen place and at least one thing to add or replace; until then nothing touches the disk
+  const canInstall = (plan, scope) => !!scope && !!plan && (plan.entries || []).some((x) => x.change === 'add' || x.change === 'replace');
+  // entries that run code (hooks, MCP servers, scripted skills, running settings): shown whole, installed off
+  const heldEntries = (plan) => ((plan && plan.entries) || []).filter((x) => x.held);
+  // the keys the person ticked, in the order of the plan; unknown keys are ignored. They are switched on after the install (kits_enable)
+  const enableKeys = (plan, ticked) => { const on = ticked instanceof Set ? ticked : new Set(ticked || []); return heldEntries(plan).map((x) => x.key).filter((k) => on.has(k)); };
+  // KitError (serde tag "kind") as an object or its JSON text -> {key, detail, ...}; old "key: detail" text and anything else is kept whole
+  const KIT_REFUSALS = ['not_a_kit', 'bad_zip', 'unsafe_path', 'symlink', 'file_too_large', 'kit_too_large', 'too_many_files', 'corrupt', 'wrong_env', 'clone_failed', 'unknown_env', 'dest_not_empty',
+    'not_found', 'changed', 'bad_name', 'interrupted', 'io', 'not_applied'];
+  function kitRefusal(raw) {
+    let e = raw;
+    if (typeof e === 'string') { try { e = JSON.parse(e); } catch (x) { e = null; } }
+    if (!e || typeof e !== 'object' || !KIT_REFUSALS.includes(e.kind)) return { key: 'unknown', detail: typeof raw === 'string' ? raw : JSON.stringify(raw) };
+    const str = Object.keys(e).filter((k) => k !== 'kind' && typeof e[k] === 'string').map((k) => e[k]);
+    if (e.kind === 'wrong_env') return { key: 'wrong_env', detail: e.kit_env_name || e.kit_env, env: e.kit_env, target: e.target_env_name || e.target_env };
+    if (e.kind === 'not_applied') return { key: 'not_applied', detail: e.cli || '', keys: e.keys || [] };
+    return { key: e.kind, detail: e.path || str[0] || (e.size != null ? String(e.size) : '') };
+  }
+  // GroupInfo {group, available, active, note, count}: off when the layout is not verified or nothing is there
+  const kitGroupOff = (g) => (g.note === 'layout_unverified' || g.available === false ? 'unverified' : g.active === false || !g.count ? 'empty' : null);
+  const exportSelection = (groups, ticked) => groups.filter((g) => ticked.has(g.group) && !kitGroupOff(g)).map((g) => g.group);
+
+  // "Откуда" of an import in the core form KitSource: link / ssh -> {repo}, *.zip -> {zip}, else {folder}
+  function kitSourceOf(raw) {
+    const v = String(raw == null ? '' : raw).trim();
+    if (!v) return null;
+    if (/^(https?:\/\/|ssh:\/\/|git@)/i.test(v)) return { repo: v };
+    return /\.zip$/i.test(v) ? { zip: v } : { folder: v };
+  }
+
+  // lanes of a swarm built from the runs of its task (RoleRun.variant): shared preparation, a lane per variant, then the choice
+  const PREP = ['plan', 'crit', 'test', 'coord'];
+  function swarmLanes(task, now) {
+    const runs = (task && task.runs) || [];
+    const bar = (r, role, state) => ({ role, state, from: ts(r.started_at), to: r.finished_at ? ts(r.finished_at) : now, model: r.model || '' });
+    const stateOf = (r) => variant(r.state)[0];
+    const live = !!task && isActive(task);
+    const lanes = [];
+    const prep = runs.filter((r) => !r.variant && PREP.includes(roleKey(r.role)) && r.started_at);
+    if (prep.length) lanes.push({ key: 'prep', kind: 'prep', segs: prep.map((r) => bar(r, roleKey(r.role), stateOf(r) === 'running' ? 'run' : stateOf(r) === 'failed' ? 'fail' : 'done')) });
+    const letters = [...new Set(runs.filter((r) => r.variant).map((r) => r.variant))].sort();
+    for (const v of letters) {
+      const mine = runs.filter((r) => r.variant === v && r.started_at);
+      const worker = mine.find((r) => roleKey(r.role) === 'exec');
+      const segs = mine.map((r) => {
+        const k = roleKey(r.role), s = stateOf(r);
+        if (k === 'gate') return bar(r, 'gate', s === 'failed' ? 'fail' : s === 'running' ? 'run' : 'ok');
+        return bar(r, k || 'exec', s === 'running' ? 'run' : s === 'failed' ? 'fail' : 'done');
+      });
+      lanes.push({ key: v, kind: 'variant', variant: v, model: (worker || mine[0] || {}).model || '', segs });
+    }
+    const pick = runs.filter((r) => !r.variant && ['rev', 'integ'].includes(roleKey(r.role)) && r.started_at);
+    const segs = pick.map((r) => bar(r, roleKey(r.role), stateOf(r) === 'running' ? 'run' : stateOf(r) === 'failed' ? 'fail' : 'done'));
+    if (live && !pick.some((r) => roleKey(r.role) === 'rev')) {            // the comparison and the merge are still ahead
+      const at = Math.max(now, ...lanes.flatMap((l) => l.segs.map((x) => x.to)));
+      segs.push({ role: 'rev', state: 'proj', from: at, to: at + 2 * MIN, model: '' }, { role: 'integ', state: 'proj', from: at + 2 * MIN, to: at + 4 * MIN, model: '' });
+    }
+    if (segs.length) lanes.push({ key: 'choice', kind: 'choice', model: (pick.find((r) => roleKey(r.role) === 'rev') || {}).model || '', segs });
+    const all = lanes.flatMap((l) => l.segs);
+    const t0 = all.length ? Math.min(...all.map((x) => x.from)) : now, t1 = all.length ? Math.max(...all.map((x) => x.to)) : now + MIN;
+    return { lanes, t0, t1: t1 > t0 ? t1 : t0 + MIN };
+  }
+
   const api = { MAX_TASK_CHARS, WARN_AT, STALE_MS, ARCHIVE_MS, MSG_LIMIT, KINDS, KIND_LABEL, KIND_ICON, STATUS, variant, info, kindOf, labelKey, iconOf,
     roleKey, chatState, chatArchived, groupChats, badgeText, envCounts, stepBar, retryPushCommand, outwardChoices, taskActions, strongerModel, capList,
     formatDuration, formatElapsed, plural, windowName, formatReset, formatLimit, limitLevel, limitFreshness, pickWindows, limitsView, exhaustedLine,
     swarmHint, defaultFamily, modelLabel, versionRow, groupByVendor, filterFamilies, needsGrouping, normalizeEnv, nextBefore, hasMore, mergeMsgs,
-    whoOf, groupFeed, mockWanted, validateSend, createSendGate, draftKey };
+    whoOf, groupFeed, mockWanted, validateSend, createSendGate, draftKey,
+    SWARM_MIN, SWARM_MAX, clampSwarmN, stepSwarmN, formatCost, formatBudget, autopickLeft, rankVariants, tallyVotes,
+    placeBar, mergeQueue, rolesStrip, laneSegments, factoryRows, factoryStats, feedEntries, filterFeed, convoyProgress, FEED_MAX,
+    summaryRows, awayDecision, swarmTaskOf,
+    SETTINGS_SECTIONS, validateNumber, validateTime, parseArgs, formatArgs, accelFromEvent, validateAccel, keyLabel,
+    choiceKey, choiceFromKey, roleOptions, pinNewer, resetPatch,
+    KIT_GROUPS, groupChanges, canInstall, heldEntries, enableKeys, kitRefusal, kitGroupOff, exportSelection, kitSourceOf, swarmLanes };
   if (typeof module !== 'undefined') module.exports = api;
   root.NSLogic = api;
 })(typeof window !== 'undefined' ? window : globalThis);

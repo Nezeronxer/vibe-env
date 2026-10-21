@@ -1,0 +1,55 @@
+/* Kits (export / import / snapshots) and the import screen "Импорт: <имя>" (story 204-217) */
+.kitnow { display: flex; gap: 10px; align-items: center; max-width: 860px; padding: 12px 14px; margin-bottom: 22px; background: var(--ok-bg); border-radius: 6px; color: var(--ink2); }
+.kitnow img, .kitnow svg { width: 16px; height: 16px; flex: none; }
+.kitnow b { color: var(--ink); }
+.kitnote { color: var(--ink3); font-size: 12.5px; max-width: 860px; margin: -12px 0 20px; }
+.kitstrip { display: flex; gap: 10px; align-items: center; max-width: 860px; padding: 10px 14px; margin-bottom: 16px; background: var(--raised2); border: 1px solid var(--line2); border-radius: var(--r); }
+.kitstrip p { flex: 1; }
+.kg { border-bottom: 1px solid var(--line); }
+.kg summary { list-style: none; display: flex; gap: 10px; align-items: center; padding: 10px 14px; cursor: pointer; }
+.kg summary::-webkit-details-marker { display: none; }
+.kg summary small { margin-left: auto; }
+.kg input { accent-color: var(--ink); margin: 0; }
+.kg ul { padding: 0 14px 10px 38px; display: grid; gap: 2px; color: var(--ink2); font-size: 12.5px; }
+.kg.off summary { opacity: .55; cursor: default; }
+.kg.off summary b { font-weight: 500; }
+.srow.foreign, .srow.refused { background: var(--raised); }
+.srow.refused .d { color: var(--bad); }
+.chg li { display: grid; grid-template-columns: 18px auto minmax(0, 1fr); gap: 10px; align-items: baseline; padding: 9px 14px; border-bottom: 1px solid var(--line); }
+.chg li:last-child { border-bottom: 0; }
+.chg .sg { font: 700 13px var(--mono); }
+.chg .add .sg { color: var(--ok); } .chg .replace .sg { color: var(--ink); } .chg .same { color: var(--ink3); } .chg .same .sg { color: var(--ink3); } .chg .same b { color: var(--ink3); font-weight: 500; }
+.chg small { text-align: right; }
+.chg .dfbox { grid-column: 1 / -1; }
+.chg .diff { background: var(--bg); border: 1px solid var(--line); border-radius: var(--r); padding: 6px 0; }
+.scope { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 24px; align-items: center; padding: 11px 14px; border-bottom: 1px solid var(--line); cursor: pointer; }
+.scope:last-child { border-bottom: 0; }
+.scope b { font-weight: 600; display: block; }
+.scope .d { color: var(--ink3); font-size: 12.5px; }
+.scope input { accent-color: var(--ink); }
+.scope .note { grid-column: 1 / -1; color: var(--ink2); font-size: 12.5px; }
+.hook { display: flex; gap: 12px; align-items: flex-start; padding: 11px 14px; border-bottom: 1px solid var(--line); cursor: pointer; }
+.hook:last-child { border-bottom: 0; }
+.hook input { margin-top: 3px; accent-color: var(--ink); }
+.hook > div { display: grid; gap: 4px; min-width: 0; flex: 1; }
+.hook code, .hook pre { font: 12px var(--mono); background: var(--bg); border: 1px solid var(--line); border-radius: 3px; padding: 4px 8px; white-space: pre-wrap; word-break: break-all; }
+.hook pre { max-height: 240px; overflow: auto; margin: 0; }
+.hook small { display: inline-flex; gap: 5px; align-items: center; }
+.hook small .ic { width: 12px; height: 12px; }
+.hook .tag { display: inline-flex; gap: 6px; align-items: center; font-size: 11.5px; font-weight: 600; color: var(--ink2); }
+.kitgo { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.snaps li { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 12px; align-items: center; padding: 10px 14px; border-bottom: 1px solid var(--line); }
+.snaps li:last-child { border-bottom: 0; }
+.snaps .d { color: var(--ink3); font-size: 12.5px; }
+.snaps .dis { grid-column: 1 / -1; display: grid; gap: 4px; }
+.snaps .dis div { display: flex; gap: 8px; align-items: center; color: var(--ink2); font-size: 12.5px; }
+.snaps .dis code { font: 12px var(--mono); }
+.secret { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 24px; align-items: center; padding: 11px 14px; border-bottom: 1px solid var(--line); }
+.secret:last-child { border-bottom: 0; }
+input[type=password] { background: var(--bg); border: 1px solid var(--line2); border-radius: var(--r); padding: 0 8px; height: 30px; }
+.secret input { width: 280px; }
+.importpage > .lead { color: var(--ink2); margin: 4px 0 18px; max-width: 70ch; }
+.secret b, .secret .d { display: block; }
+.secret .d { color: var(--ink3); font-size: 12.5px; }
+.importpage .kitnote { margin: 8px 0 0; }
+.scope select { margin-top: 6px; }

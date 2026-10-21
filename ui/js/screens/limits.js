@@ -28,7 +28,7 @@
     function draw() {
       closePop();
       clear(el);
-      const v = windowsOf(envId), now = Date.now(), warnAt = (((NS.store.s.settings || {}).limits) || {}).warn_at;
+      const v = windowsOf(envId), now = Date.now(), lim = ((NS.store.s.settings || {}).limits) || {}, warnAt = lim.warn_pct != null ? lim.warn_pct : lim.warn_at;
       if (v.kind !== 'known' || !v.windows.length) {
         const why = v.kind === 'nodata' && v.why ? v.why : t('lim.after_first');
         el.append(h('div', { class: 'lim none', title: why }, h('span', { class: 'lt', text: t('lim.no_data') }), h('small', { text: why })));

@@ -11,3 +11,11 @@
 .tc-need { margin-top: 12px; background: var(--human-bg); border-left: 3px solid var(--human); border-radius: 0 var(--r) var(--r) 0; padding: 10px 12px; }
 .tc-need-h b { color: var(--human); display: inline-flex; gap: 5px; align-items: center; }
 .tc-need .ic { color: inherit; }
+
+/* ---- task 15: the same meaning on the new screens - "нужен ты" (amber only here) ---- */
+.seg-b.wait { background: var(--human-bg); border: 1px solid var(--human); border-left: 3px solid var(--human); color: var(--human); }
+.lane-n small.need { color: var(--human); font-weight: 600; }
+.feed li.prob.warn { background: var(--human-bg); }
+.prog i.w { background: var(--human); }
+.sum-row .ti.wait { color: var(--human); }
+.sum-row.wait .tx b { color: var(--human); }

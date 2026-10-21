@@ -102,9 +102,10 @@
       if (mode.kind === 'hint') return call('resume_failed', { taskId: mode.task.id, hint: text, model: null });
       const active = hooks.activeTask && hooks.activeTask();
       if (active) {
-        if (hooks.addPending) hooks.addPending({ id, text, at: new Date().toISOString() });
+        const to = hooks.noteTo ? hooks.noteTo() : null;               // swarm: "Всем" = null, a variant letter or "reviewer" (story 156)
+        if (hooks.addPending) hooks.addPending({ id, text, at: new Date().toISOString(), to });
         if (active.status === 'needs_human' && active.question) return call('answer', { id: active.id, text });
-        return call('note', { taskId: active.id, to: null, text });      // G05: goes to the next run of the executor
+        return call('note', { taskId: active.id, to, text });      // G05: goes to the next run of the executor
       }
       const target = chat === 'new' || !chat ? { new: { env: envId, project_id: hooks.projectId() } } : { existing: chat };
       if (hooks.addPending) hooks.addPending({ id, text, at: new Date().toISOString() });
