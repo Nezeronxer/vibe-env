@@ -9,7 +9,7 @@ window.STATE =
   "briefFile": "2026-10-21-brief.md",
   "memoryFile": "CLAUDE.md",
   "startedAt": "2026-10-21T08:41:14+03:00",
-  "updatedAt": "2026-10-21T19:57:42+03:00",
+  "updatedAt": "2026-10-21T21:00:58+03:00",
   "finishedAt": null,
   "stages": [
     {
@@ -49,7 +49,7 @@ window.STATE =
       "id": "build",
       "status": "active",
       "startedAt": "2026-10-21T09:02:22+03:00",
-      "note": "готовы 01-03, 05, 06, 08-12, 14, 15; идёт 13"
+      "note": "готовы 01-03, 05, 06, 08-15; дальше ремонт: проверка значений из наборов и нестабильные тесты; потом 07"
     },
     {
       "id": "review",
@@ -561,7 +561,8 @@ window.STATE =
       "concerns": [
         "бригада вливает часть копированием файлов, а не rebase + ff_branch",
         "автовыбор роя не сдвигается заморозкой",
-        "hide_untracked/restore_paths пишут в git копии вне with_git (без гонки, нет комментария); git_dir_of молча откатывается на path при нераспознанном .git"
+        "hide_untracked/restore_paths пишут в git копии вне with_git (без гонки, нет комментария); git_dir_of молча откатывается на path при нераспознанном .git",
+        "engine_swarm_race::when_every_variant_fails… нестабилен под параллельной нагрузкой (5/5 отдельно зелёный) - починить после ремонта 13"
       ],
       "finishedAt": "2026-10-21T19:33:33+03:00",
       "commit": "b3df9d0",
@@ -667,7 +668,7 @@ window.STATE =
     {
       "id": "13",
       "retries": 0,
-      "repairs": 0,
+      "repairs": 1,
       "title": "Приложение v2: новые команды и события, вход и установка сред, присутствие, тихие часы, терминал",
       "requirements": [
         "R07.3",
@@ -720,9 +721,22 @@ window.STATE =
         "ui/"
       ],
       "wave": 7,
-      "status": "in-progress",
-      "concerns": [],
-      "startedAt": "2026-10-21T19:57:42+03:00"
+      "status": "done",
+      "concerns": [
+        "уже идущий запуск при удалении папки проекта падает, удержание ловит задачи до старта",
+        "значения PATH/HOME/XDG_*/CLAUDE_CONFIG_DIR/CODEX_HOME из набора не проверяются - в ремонте после 13",
+        "токен start_fresh не граница доверия (защита - CSP и подтверждение в окне)",
+        "диапазоны настроек: копия в ui/logic.js без теста на совпадение с model::SETTING_RANGES",
+        "CLI, берущая ключ только из extra_env, в терминале его не получит",
+        "Linux-сборка (deb, appimage) не проверена; Adapter::version зовёт --version у 6 сред"
+      ],
+      "startedAt": "2026-10-21T19:57:42+03:00",
+      "finishedAt": "2026-10-21T21:00:58+03:00",
+      "tests": {
+        "passed": 403,
+        "failed": 0
+      },
+      "commit": "e81e7c2"
     },
     {
       "id": "14",
