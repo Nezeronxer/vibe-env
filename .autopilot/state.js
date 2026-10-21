@@ -9,7 +9,7 @@ window.STATE =
   "briefFile": "2026-10-21-brief.md",
   "memoryFile": "CLAUDE.md",
   "startedAt": "2026-10-21T08:41:14+03:00",
-  "updatedAt": "2026-10-21T15:09:27+03:00",
+  "updatedAt": "2026-10-21T15:27:27+03:00",
   "finishedAt": null,
   "stages": [
     {
@@ -626,9 +626,9 @@ window.STATE =
       "finishedAt": "2026-10-21T15:09:27+03:00",
       "commit": "4015b3a",
       "concerns": [
-        "доработка 12a в свежем контексте: ленивая догрузка в ls-tree, откат не затирает изменённое человеком, проверка после записи общего конфига, удаление файла только если не тронут",
         "порядок ключей в переписанном JSON - по алфавиту",
-        "несверенные группы: Cursor, скиллы Codex/Gemini/Qwen, субагенты Codex"
+        "несверенные группы: Cursor, скиллы Codex/Gemini/Qwen, субагенты Codex",
+        "доработка 12a сделана (dcb734e): откат не затирает изменённое, NotApplied, без ленивой догрузки"
       ]
     },
     {
@@ -787,7 +787,7 @@ window.STATE =
     {
       "id": "15",
       "retries": 0,
-      "repairs": 0,
+      "repairs": 1,
       "title": "Интерфейс v2, часть 2: рой, фабрика, настройки, наборы и импорт, «Пока тебя не было»",
       "requirements": [
         "R10.1",
@@ -848,8 +848,12 @@ window.STATE =
         "ui/"
       ],
       "wave": 5,
-      "status": "in-progress",
-      "startedAt": "2026-10-21T14:19:01+03:00"
+      "status": "repair",
+      "startedAt": "2026-10-21T14:19:01+03:00",
+      "tests": {
+        "passed": 156,
+        "failed": 0
+      }
     }
   ],
   "singlePass": null,
