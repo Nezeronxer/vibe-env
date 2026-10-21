@@ -1,0 +1,48 @@
+{
+  "projects": [
+    {
+      "id": "p-1",
+      "name": "demo",
+      "path": "/work/demo",
+      "base_branch": "main",
+      "check_cmd": "cargo test",
+      "setup_cmd": null,
+      "copy_files": [".env*"],
+      "finish": "push",
+      "ask_outward": false,
+      "agent": "codex",
+      "reviewer": "gemini",
+      "fallback_agent": "qwen"
+    }
+  ],
+  "tasks": [
+    {
+      "id": "t-1",
+      "project_id": "p-1",
+      "title": "add b",
+      "prompt": "add b",
+      "agent": "codex",
+      "status": "needs_human",
+      "branch": "ns/aaaaaaaa-add-b",
+      "worktree": "/wt/t-1",
+      "session": "thread-1",
+      "attempts": 1,
+      "review_rounds": 2,
+      "question": { "text": "which db?", "options": ["pg", "sqlite"], "kind": "agent" },
+      "resume_at": null,
+      "outcome": { "summary": null, "files_changed": 0, "insertions": 0, "deletions": 0, "tests": null, "review": null, "commit": null, "pr_url": null, "error": null },
+      "created_at": "2026-10-01T10:00:00+03:00",
+      "started_at": "2026-10-01T10:01:00+03:00",
+      "finished_at": null
+    }
+  ],
+  "settings": {
+    "max_parallel": 4,
+    "paused": true,
+    "language": "ru",
+    "hotkey": "Alt+Space",
+    "telegram": { "enabled": true, "chat_id": 42, "proxy": null, "digest_at": "08:30" },
+    "custom_agents": [{ "id": "mine", "name": "Mine", "run": "echo {prompt}", "resume": null }],
+    "default_project": "p-1"
+  }
+}

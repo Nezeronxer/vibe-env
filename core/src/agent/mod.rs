@@ -2,21 +2,18 @@ pub mod adapters;
 mod fake;
 pub use fake::{FakeAdapter, FakeStep};
 
-use crate::model::Settings;
+use crate::model::{LimitWindow, ModelFamily, RoleKind, Settings};
 use chrono::{DateTime, Local};
 use std::io::{BufRead, BufReader, Read};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-#[derive(Clone, Debug, PartialEq)]
-pub enum Role {
-    Worker,
-    Reviewer,
-}
+/// v1 name of the run's role; every `RoleKind` is a role now.
+pub type Role = RoleKind;
 
 #[derive(Clone, Debug)]
 pub struct Run {
@@ -25,6 +22,58 @@ pub struct Run {
     pub system: String,
     pub resume: Option<String>,
     pub role: Role,
+    /// Model flag value for the CLI (from `models::resolve`); None = no flag.
+    pub model: Option<String>,
+    /// Ask the CLI for its own read-only mode where it has one (`Adapter::read_only_native`).
+    /// A Reviewer run is read-only whatever this says.
+    pub read_only: bool,
+    /// Added to the process environment (kit secrets); never printed or logged.
+    pub extra_env: Vec<(String, String)>,
+    /// Inline JSON schema of the answer, for CLIs that take one (Claude, Codex); others ignore it.
+    pub json_schema: Option<String>,
+    /// Remaining budget for this run; passed only to CLIs that report cost (Claude).
+    pub max_budget_usd: Option<f64>,
+    /// `EnvSettings.extra_args`: appended to the CLI as separate arguments, never through a shell.
+    pub extra_args: Vec<String>,
+}
+
+impl Run {
+    /// A run with every v2 option off.
+    pub fn new(cwd: PathBuf, prompt: String, system: String, role: Role) -> Run {
+        Run {
+            cwd,
+            prompt,
+            system,
+            resume: None,
+            role,
+            model: None,
+            read_only: false,
+            extra_env: vec![],
+            json_schema: None,
+            max_budget_usd: None,
+            extra_args: vec![],
+        }
+    }
+
+    /// Read-only run: asked for, or a Reviewer.
+    pub fn is_read_only(&self) -> bool {
+        self.read_only || self.role == RoleKind::Reviewer
+    }
+}
+
+/// What the env does by itself for safety (stories 201, 219).
+#[derive(Clone, Debug, PartialEq, Default)]
+pub struct SandboxInfo {
+    /// An OS sandbox is on for writing runs.
+    pub sandboxed: bool,
+    /// Push, remote and sudo are banned technically (not only in the prompt).
+    pub push_blocked: bool,
+    /// Commands can reach the network.
+    pub network_open: bool,
+    /// The agent can write outside the task's copy.
+    pub writes_outside_copy: bool,
+    /// Why something is closed or open, e.g. `Claude::network_note`.
+    pub note: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -33,6 +82,19 @@ pub enum AgentEvent {
     Tool { name: String, summary: String },
     Done { session: Option<String>, text: String, is_error: bool },
     Limit { resets_at: Option<DateTime<Local>> },
+    /// Limit windows the env reported during the run (Claude: `rate_limit_event`).
+    Usage(Vec<LimitWindow>),
+    /// Cost of the run in USD, only from an env that reports it.
+    Cost(f64),
+    /// The CLI refused the model (text as the CLI said it).
+    ModelRejected(String),
+    /// The CLI is not logged in.
+    AuthRequired(String),
+}
+
+/// Neutral SandboxInfo of an env with no protection of its own.
+fn unprotected() -> SandboxInfo {
+    SandboxInfo { sandboxed: false, push_blocked: false, network_open: true, writes_outside_copy: true, note: None }
 }
 
 pub trait Adapter: Send + Sync {
@@ -52,18 +114,55 @@ pub trait Adapter: Send + Sync {
     fn guarded(&self) -> bool {
         false
     }
+    /// The env's own model list (a CLI command). Err = no such command or it failed.
+    fn models(&self) -> Result<Vec<ModelFamily>, String> {
+        Err("no model list command".into())
+    }
+    /// Built-in hint list, strongest first; empty where nothing is verified.
+    fn builtin_models(&self) -> Vec<ModelFamily> {
+        vec![]
+    }
+    /// Interactive "continue in terminal" command (arguments as a list, no shell), cwd set.
+    /// None = no template, or the session id is not of the expected format.
+    fn interactive_resume(&self, _session: &str, _cwd: &Path) -> Option<Command> {
+        None
+    }
+    /// The CLI has its own read-only flag (`Run.read_only` is passed to it). False = the engine
+    /// runs such a role in a throwaway copy.
+    fn read_only_native(&self) -> bool {
+        false
+    }
+    /// The CLI reports the cost of a run (`AgentEvent::Cost`).
+    fn reports_cost(&self) -> bool {
+        false
+    }
+    /// Install command, not verified against the vendor.
+    fn install_hint(&self) -> Option<String> {
+        None
+    }
+    fn sandbox_info(&self) -> SandboxInfo {
+        unprotected()
+    }
 }
 
-/// Six built-in engines, then every custom command from the settings.
+/// Six built-in engines (at `EnvSettings.cli_path` when set), then every custom command from the settings.
 pub fn adapters(settings: &Settings) -> Vec<Arc<dyn Adapter>> {
     use adapters::*;
+    let bin = |id: &str, default: &str| {
+        settings
+            .envs
+            .get(id)
+            .and_then(|e| e.cli_path.as_ref())
+            .map(|p| p.to_string_lossy().into_owned())
+            .unwrap_or_else(|| default.to_string())
+    };
     let mut v: Vec<Arc<dyn Adapter>> = vec![
-        Arc::new(Claude::new()),
-        Arc::new(Codex::new()),
-        Arc::new(Gemini::new()),
-        Arc::new(OpenCode::new()),
-        Arc::new(Cursor::new()),
-        Arc::new(Qwen::new()),
+        Arc::new(Claude::with_bin(&bin("claude", "claude"))),
+        Arc::new(Codex::with_bin(&bin("codex", "codex"))),
+        Arc::new(Gemini::with_bin(&bin("gemini", "gemini"))),
+        Arc::new(OpenCode::with_bin(&bin("opencode", "opencode"))),
+        Arc::new(Cursor::with_bin(&bin("cursor", "cursor-agent"))),
+        Arc::new(Qwen::with_bin(&bin("qwen", "qwen"))),
     ];
     // a custom command must not shadow a built-in engine (nor an earlier custom one)
     for c in settings.custom_agents.iter().cloned() {

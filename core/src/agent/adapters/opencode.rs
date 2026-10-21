@@ -2,7 +2,9 @@
 //! Confirmed with `opencode run --help` (1.18.34) and real runs: --format json, --session, --dir,
 //! --auto (auto-approve), --agent. The stream has no final event, so Done is built at EOF.
 use super::common::*;
-use crate::agent::{Adapter, AgentEvent, Role, Run};
+use crate::agent::{Adapter, AgentEvent, Run};
+use crate::model::ModelFamily;
+use std::time::Duration;
 use std::process::Command;
 
 pub struct OpenCode {
@@ -59,12 +61,16 @@ impl Adapter for OpenCode {
     }
     fn command(&self, run: &Run) -> Command {
         let mut c = Command::new(find_bin(&self.bin).unwrap_or_else(|| self.bin.clone().into()));
-        c.current_dir(&run.cwd).args(["run", "--format", "json", "--dir"]).arg(&run.cwd);
-        if run.role == Role::Reviewer {
-            c.args(["--agent", "plan"]); // read-only built-in agent; unverified: opencode.ai/docs/agents
-        } else {
-            c.arg("--auto");
+        // --print-logs: with a refused model the JSON stream only says "Unexpected server error"; the reason
+        // (`ProviderModelNotFoundError: Model not found: ...`) is on stderr, which `finish` then sees.
+        c.current_dir(&run.cwd).args(["run", "--format", "json", "--print-logs", "--log-level", "ERROR", "--dir"]).arg(&run.cwd);
+        // No read-only flag here (`--agent plan` is unverified): the engine runs read-only roles in a throwaway copy.
+        c.arg("--auto");
+        if let Some(m) = &run.model {
+            c.args(["-m", m]);
         }
+        c.envs(run.extra_env.iter().map(|(k, v)| (k, v)));
+        c.args(&run.extra_args);
         if let Some(s) = &run.resume {
             c.args(["--session", s]);
         }
@@ -76,5 +82,28 @@ impl Adapter for OpenCode {
     }
     fn finish(&self, exit_ok: bool, all_text: &str) -> Vec<AgentEvent> {
         synth_done(scan, exit_ok, all_text)
+    }
+    fn install_hint(&self) -> Option<String> {
+        Some("npm i -g opencode-ai (не сверено)".into())
+    }
+    /// `opencode models`: one `provider/model` per line (real output, 1.18.34).
+    fn models(&self) -> Result<Vec<ModelFamily>, String> {
+        let out = capture(&self.bin, &["models"], Duration::from_secs(30))?;
+        let rows: Vec<_> = out
+            .lines()
+            .map(str::trim)
+            .filter(|l| is_model_id(l))
+            .map(|l| (l.to_string(), None, None, false))
+            .collect();
+        if rows.is_empty() {
+            return Err("opencode models: no models in the output".into());
+        }
+        Ok(group_models(&rows, |id| id.split('/').next().unwrap_or("opencode").to_string()))
+    }
+    /// `opencode -s <id>`. unverified: that it works in the interactive mode.
+    fn interactive_resume(&self, session: &str, cwd: &std::path::Path) -> Option<Command> {
+        let mut c = Command::new(find_bin(&self.bin).unwrap_or_else(|| self.bin.clone().into()));
+        c.current_dir(cwd).args(["-s", super::claude::valid_session(session)?]);
+        Some(c)
     }
 }

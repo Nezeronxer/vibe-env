@@ -1,5 +1,7 @@
 //! Helpers shared by all adapters: PATH lookup, limit detection, shell quoting, fallbacks.
 use crate::agent::AgentEvent;
+use crate::model::ModelFamily;
+use crate::models::version_cmp;
 use chrono::{DateTime, Duration, FixedOffset, Local, NaiveTime, TimeZone};
 use regex::Regex;
 use serde_json::Value;
@@ -21,11 +23,6 @@ pub fn find_bin(bin: &str) -> Option<PathBuf> {
 
 pub fn check_installed(bin: &str, hint: &str) -> Result<(), String> {
     find_bin(bin).map(|_| ()).ok_or_else(|| format!("not installed: {hint}"))
-}
-
-/// Single-quote for `sh`.
-pub fn shell_quote(s: &str) -> String {
-    format!("'{}'", s.replace('\'', "'\\''"))
 }
 
 /// Worker rules go to engines without a system-prompt flag as a prompt prefix.
@@ -145,6 +142,176 @@ pub fn failure_event(msg: &str) -> AgentEvent {
     }
 }
 
+/// Phrases that only a CLI's own login / model complaint contains. Searched in the error event and
+/// in the log / stderr tail. Real samples: Qwen (`No auth type is selected`), opencode
+/// (`ProviderModelNotFoundError`), Claude (`issue with the selected model`); the rest is unverified.
+fn strong_auth() -> &'static Regex {
+    static R: OnceLock<Regex> = OnceLock::new();
+    re(&R, r"(?i)not logged in|please (?:run )?[`'/]*(?:\w+ )?log ?in|log ?in required|login required|no auth type is selected|authentication (?:required|failed)|api key (?:not found|is missing|required|not set)|set an auth method")
+}
+fn strong_model() -> &'static Regex {
+    static R: OnceLock<Regex> = OnceLock::new();
+    re(&R, r"(?i)ProviderModelNotFound|(?:issue|problem) with the selected model|(?:cannot|can't) use this model|model_not_found")
+}
+/// Common words that a tool's output may contain for other reasons ("unauthorized" in a test log):
+/// looked for only in the CLI's own error message, never in the tail of the run's output.
+fn wide_auth() -> &'static Regex {
+    static R: OnceLock<Regex> = OnceLock::new();
+    re(&R, r"(?i)unauthorized|not authenticated|invalid api key|incorrect api key|(?:missing|no) api key|credentials? (?:not found|missing|expired)")
+}
+fn wide_model() -> &'static Regex {
+    static R: OnceLock<Regex> = OnceLock::new();
+    re(&R, r"(?i)model not found|unknown model|invalid model|unsupported model|model .{0,80}(?:does not exist|not (?:found|available|supported|exist)|is not supported|may not exist|unavailable)|requested entity was not found")
+}
+
+/// The sentence around the first match in `context`, bounded by quotes, `|` and line ends
+/// (log lines like `error="ProviderModelNotFoundError: ..." cause=...` give just the quoted value).
+fn snippet(re: &Regex, context: &str) -> Option<String> {
+    let m = re.find(context)?;
+    let stop = |c: char| matches!(c, '"' | '\n' | '|');
+    let start = context[..m.start()].rfind(stop).map_or(0, |i| i + 1);
+    let end = context[m.end()..].find(stop).map_or(context.len(), |i| m.end() + i);
+    Some(context[start..end].trim().to_string())
+}
+
+/// The event for a failed run: not logged in, model refused, limit, or a plain failed Done.
+/// `msg` is the error text; `context` (stderr / log tail) is searched too, because a CLI may keep
+/// the real reason out of its error event (opencode prints only "Unexpected server error").
+pub fn classify_failure(msg: &str, context: &str) -> AgentEvent {
+    let both = format!("{msg}\n{context}");
+    let found = |strong: &Regex, wide: &Regex| -> Option<String> {
+        if strong.is_match(msg) || wide.is_match(msg) {
+            Some(msg.trim().to_string())
+        } else {
+            snippet(strong, context)
+        }
+    };
+    if let Some(m) = found(strong_auth(), wide_auth()) {
+        return AgentEvent::AuthRequired(m);
+    }
+    if let Some(m) = found(strong_model(), wide_model()) {
+        return AgentEvent::ModelRejected(m);
+    }
+    match detect_limit(&both) {
+        Some(resets_at) => AgentEvent::Limit { resets_at },
+        None => AgentEvent::Done { session: None, text: msg.trim().to_string(), is_error: true },
+    }
+}
+
+/// Session ids go into a terminal command: letters, digits and `._:-` only, 1..=128 chars,
+/// no leading dash (it would read as a flag).
+pub fn valid_session_id(s: &str) -> bool {
+    !s.is_empty()
+        && s.len() <= 128
+        && !s.starts_with('-')
+        && s.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | ':' | '-'))
+}
+
+/// Runs `bin args` and returns stdout; kills it after `timeout`. Err = text for the person.
+pub fn capture(bin: &str, args: &[&str], timeout: std::time::Duration) -> Result<String, String> {
+    use std::io::Read;
+    use std::process::Stdio;
+    let path = find_bin(bin).ok_or_else(|| format!("not installed: {bin}"))?;
+    let mut child = std::process::Command::new(path)
+        .args(args)
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|e| format!("{bin}: {e}"))?;
+    let (mut out, mut err) = (child.stdout.take().unwrap(), child.stderr.take().unwrap());
+    let reader = std::thread::spawn(move || {
+        let (mut o, mut e) = (String::new(), String::new());
+        let _ = out.read_to_string(&mut o);
+        let _ = err.read_to_string(&mut e);
+        (o, e)
+    });
+    let start = std::time::Instant::now();
+    let status = loop {
+        match child.try_wait() {
+            Ok(Some(s)) => break s,
+            Ok(None) if start.elapsed() < timeout => std::thread::sleep(std::time::Duration::from_millis(20)),
+            Ok(None) => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return Err(format!("{bin} {}: timed out", args.join(" ")));
+            }
+            Err(e) => return Err(format!("{bin}: {e}")),
+        }
+    };
+    let (o, e) = reader.join().unwrap_or_default();
+    if status.success() {
+        Ok(o)
+    } else {
+        Err(format!("{bin} {}: {}", args.join(" "), tail(&e)))
+    }
+}
+
+/// One built-in family; `versions` are `(version, exact CLI identifier)`, newest first.
+pub fn builtin_family(id: &str, label: &str, vendor: &str, blurb: &str, versions: &[(&str, &str)]) -> ModelFamily {
+    ModelFamily {
+        id: id.into(),
+        label: label.into(),
+        vendor: vendor.into(),
+        blurb: Some(blurb.into()),
+        versions: versions.iter().map(|(v, _)| v.to_string()).collect(),
+        default: false,
+        exact: versions.iter().map(|(v, e)| (v.to_string(), e.to_string())).collect(),
+    }
+}
+
+/// A model id as a CLI prints it: no spaces, no leading dash.
+pub fn is_model_id(s: &str) -> bool {
+    !s.is_empty() && !s.starts_with('-') && s.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | ':' | '/' | '@' | '+' | '-'))
+}
+
+pub fn strip_ansi(s: &str) -> String {
+    static ANSI: OnceLock<Regex> = OnceLock::new();
+    re(&ANSI, r"\x1b\[[0-9;]*[A-Za-z]").replace_all(s, "").into_owned()
+}
+
+/// Folds `(id, label, blurb, is_default)` rows of a CLI model list into families: `name-1.2`
+/// becomes family `name` with version `1.2` (newest first), other ids stay a family of their own.
+/// `ModelFamily.exact` keeps each version's id exactly as the CLI printed it.
+pub fn group_models(rows: &[(String, Option<String>, Option<String>, bool)], vendor: impl Fn(&str) -> String) -> Vec<ModelFamily> {
+    static VER: OnceLock<Regex> = OnceLock::new();
+    let ver = re(&VER, r"^(.+?)-(\d+(?:\.\d+)*)$");
+    let mut out: Vec<ModelFamily> = vec![];
+    for (id, label, blurb, default) in rows {
+        let (family, version) = match ver.captures(id) {
+            Some(c) => (c[1].to_string(), Some(c[2].to_string())),
+            None => (id.clone(), None),
+        };
+        let at = match out.iter().position(|f| f.id == family) {
+            Some(i) => i,
+            None => {
+                out.push(ModelFamily {
+                    id: family.clone(),
+                    label: label.clone().unwrap_or_else(|| family.clone()),
+                    vendor: vendor(&family),
+                    blurb: blurb.clone(),
+                    versions: vec![],
+                    default: false,
+                    exact: Default::default(),
+                });
+                out.len() - 1
+            }
+        };
+        let f = &mut out[at];
+        f.default |= *default;
+        if let Some(v) = version {
+            if !f.versions.contains(&v) {
+                f.versions.push(v.clone());
+            }
+            f.exact.insert(v, id.clone()); // the CLI's own id, as listed
+        }
+    }
+    for f in &mut out {
+        f.versions.sort_by(|a, b| version_cmp(b, a));
+    }
+    out
+}
+
 /// One-line summary of tool input: first known key, flattened and cut.
 pub fn summarize(input: &Value) -> String {
     let v = ["file_path", "path", "command", "pattern", "url", "query", "description", "filePath"]
@@ -199,9 +366,9 @@ pub fn synth_done(scan: impl Fn(&str) -> Scan, exit_ok: bool, all_text: &str) ->
     }
     if error.is_some() || !exit_ok {
         let msg = error.unwrap_or_else(|| tail(all_text));
-        return vec![match failure_event(&msg) {
+        return vec![match classify_failure(&msg, &tail(all_text)) {
             AgentEvent::Done { text, is_error, .. } => AgentEvent::Done { session, text, is_error },
-            limit => limit,
+            other => other,
         }];
     }
     vec![AgentEvent::Done { session, text: text.trim().to_string(), is_error: false }]
@@ -213,5 +380,5 @@ pub fn finish_without_result(exit_ok: bool, all_text: &str) -> Vec<AgentEvent> {
         return vec![];
     }
     let msg = if exit_ok { "engine ended without a result".to_string() } else { tail(all_text) };
-    vec![failure_event(&msg)]
+    vec![classify_failure(&msg, "")]
 }

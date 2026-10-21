@@ -4,7 +4,8 @@
 //! The event names are documented (init/message/tool_use/tool_result/error/result); field names
 //! below are unverified: headless.md has no JSON examples.
 use super::common::*;
-use crate::agent::{Adapter, AgentEvent, Role, Run};
+use crate::agent::{Adapter, AgentEvent, Run};
+use crate::model::ModelFamily;
 use std::process::Command;
 
 pub struct Gemini {
@@ -63,8 +64,13 @@ impl Adapter for Gemini {
     }
     fn command(&self, run: &Run) -> Command {
         let mut c = Command::new(find_bin(&self.bin).unwrap_or_else(|| self.bin.clone().into()));
-        let mode = if run.role == Role::Reviewer { "plan" } else { "yolo" };
-        c.current_dir(&run.cwd).args(["--output-format", "stream-json", "--approval-mode", mode]);
+        let mode = if run.is_read_only() { "plan" } else { "yolo" };
+        c.current_dir(&run.cwd).args(["--output-format", "stream-json"]).arg(format!("--approval-mode={mode}"));
+        if let Some(m) = &run.model {
+            c.args(["-m", m]);
+        }
+        c.envs(run.extra_env.iter().map(|(k, v)| (k, v)));
+        c.args(&run.extra_args);
         if let Some(s) = &run.resume {
             // unverified: cli-reference documents `-r <session-id> "query"`, not whether it works with -p
             c.args(["--resume", s]);
@@ -78,5 +84,39 @@ impl Adapter for Gemini {
     }
     fn finish(&self, exit_ok: bool, all_text: &str) -> Vec<AgentEvent> {
         synth_done(scan, exit_ok, all_text)
+    }
+    fn read_only_native(&self) -> bool {
+        true
+    }
+    fn install_hint(&self) -> Option<String> {
+        Some("npm i -g @google/gemini-cli (не сверено)".into())
+    }
+    fn interactive_resume(&self, session: &str, cwd: &std::path::Path) -> Option<Command> {
+        let mut c = Command::new(find_bin(&self.bin).unwrap_or_else(|| self.bin.clone().into()));
+        c.current_dir(cwd).args(["--resume", super::claude::valid_session(session)?]);
+        Some(c)
+    }
+    /// No list command (research-clis §3). Names: Gemini API models page (ai.google.dev/gemini-api/docs/models),
+    /// read 2026-10-21, not checked against the CLI. Only stable / preview text models; Gemini 4 Argon
+    /// ("new model" banner) is left out until the page lists it as a regular model.
+    fn builtin_models(&self) -> Vec<ModelFamily> {
+        let note = |b: &str| format!("{b} (Google docs, 2026-10-21; не сверено с CLI)");
+        vec![
+            builtin_family("pro", "Gemini Pro", "google", &note("Stronger, long context."), &[("3.1", "gemini-3.1-pro-preview"), ("2.5", "gemini-2.5-pro")]),
+            builtin_family(
+                "flash",
+                "Gemini Flash",
+                "google",
+                &note("Fast and cheap."),
+                &[("3.8", "gemini-3.8-flash"), ("3.6", "gemini-3.6-flash"), ("2.5", "gemini-2.5-flash")],
+            ),
+            builtin_family(
+                "flash-lite",
+                "Gemini Flash-Lite",
+                "google",
+                &note("Fastest and cheapest."),
+                &[("3.5", "gemini-3.5-flash-lite"), ("3.1", "gemini-3.1-flash-lite"), ("2.5", "gemini-2.5-flash-lite")],
+            ),
+        ]
     }
 }

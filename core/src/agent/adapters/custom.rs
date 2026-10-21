@@ -71,7 +71,9 @@ impl Adapter for Custom {
             .arg("sh")
             .arg(with_system(&run.system, &run.prompt))
             .arg(&run.cwd)
-            .arg(run.resume.as_deref().unwrap_or(""));
+            .arg(run.resume.as_deref().unwrap_or(""))
+            .envs(run.extra_env.iter().map(|(k, v)| (k, v)));
+        // model, read_only, json_schema, extra_args do not apply: the command decides all of it itself
         c
     }
     fn parse(&self, line: &str) -> Vec<AgentEvent> {

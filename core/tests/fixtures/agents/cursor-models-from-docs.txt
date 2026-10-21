@@ -1,0 +1,6 @@
+Available models
+
+auto - Auto (current)
+sonnet-4.5 - Claude Sonnet 4.5
+sonnet-4 - Claude Sonnet 4
+gpt-5 - GPT-5

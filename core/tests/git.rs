@@ -435,3 +435,189 @@ fn revert_that_cannot_apply_cleanly_is_a_conflict() {
     commit_in(&repo, "a.txt", "later human edit\n", "later");
     assert!(matches!(revert(&repo, "main", &sha), Err(GitError::Conflict(_))));
 }
+
+#[test]
+fn readonly_copy_is_clean_after_refresh_and_the_humans_folder_is_untouched() {
+    let (d, repo) = new_repo();
+    let copy = create_readonly_copy(&repo, &d.path().join("chat-1"), "main").unwrap();
+    assert_eq!(fs::read_to_string(copy.join("a.txt")).unwrap(), "one\n");
+    assert_eq!(g(&copy, &["branch", "--show-current"]), "", "no branch");
+    let branches_before = g(&repo, &["branch", "--list"]);
+
+    // the model scribbles in the copy: edits, new and ignored files
+    fs::write(copy.join("a.txt"), "changed\n").unwrap();
+    fs::write(copy.join("new.txt"), "x").unwrap();
+    // main moves on in the human's repo
+    commit_in(&repo, "b.txt", "two\n", "second");
+
+    refresh_readonly_copy(&copy, "main").unwrap();
+    assert_eq!(g(&copy, &["status", "--porcelain", "--ignored"]), "");
+    assert_eq!(fs::read_to_string(copy.join("a.txt")).unwrap(), "one\n");
+    assert_eq!(fs::read_to_string(copy.join("b.txt")).unwrap(), "two\n", "copy follows the fresh base");
+    assert!(!copy.join("new.txt").exists());
+    // the human's folder: same branches, nothing from the copy in it
+    assert_eq!(g(&repo, &["branch", "--list"]), branches_before);
+    assert!(!repo.join("new.txt").exists());
+    assert_eq!(g(&repo, &["status", "--porcelain", "--untracked-files=no"]), "");
+}
+
+#[test]
+fn refresh_refuses_a_folder_that_is_not_an_app_copy() {
+    let (d, repo) = new_repo();
+    fs::write(repo.join("precious.txt"), "mine").unwrap();
+    fs::write(repo.join("a.txt"), "my edit\n").unwrap();
+    assert!(refresh_readonly_copy(&repo, "main").is_err());
+    // a task worktree sits on a branch: not a read-only copy either
+    let wt = wt_for(&d, &repo, "t9", "ns/aaaa1111-x");
+    fs::write(wt.join("w.txt"), "work").unwrap();
+    assert!(refresh_readonly_copy(&wt, "main").is_err());
+    assert_eq!(fs::read_to_string(repo.join("precious.txt")).unwrap(), "mine");
+    assert_eq!(fs::read_to_string(repo.join("a.txt")).unwrap(), "my edit\n");
+    assert!(wt.join("w.txt").exists());
+}
+
+#[test]
+fn restore_paths_returns_files_to_the_state_of_from() {
+    let (d, repo) = new_repo();
+    let wt = wt_for(&d, &repo, "t2", "ns/bbbb2222-x");
+    let from = g(&wt, &["rev-parse", "HEAD"]);
+    // an edit, a new file and a deletion that the part should not have made
+    fs::write(wt.join("a.txt"), "edited\n").unwrap();
+    fs::write(wt.join("extra.txt"), "new").unwrap();
+    fs::create_dir(wt.join("dir")).unwrap();
+    fs::write(wt.join("dir/inner.txt"), "new").unwrap();
+    fs::write(wt.join("keep.txt"), "mine").unwrap();
+    g(&wt, &["add", "-A"]);
+    g(&wt, &["commit", "-q", "-m", "part"]);
+
+    restore_paths(&wt, &from, &["a.txt".into(), "extra.txt".into(), "dir/inner.txt".into()]).unwrap();
+    assert_eq!(fs::read_to_string(wt.join("a.txt")).unwrap(), "one\n");
+    assert!(!wt.join("extra.txt").exists() && !wt.join("dir/inner.txt").exists());
+    assert_eq!(fs::read_to_string(wt.join("keep.txt")).unwrap(), "mine", "other files stay");
+    // after committing, the only difference left from `from` is the file that was not restored
+    commit_all(&wt, "fix").unwrap();
+    assert_eq!(changed_paths(&wt, &from, "HEAD"), vec!["keep.txt".to_string()]);
+    assert!(restore_paths(&wt, &from, &["../outside".into()]).is_err());
+    assert!(restore_paths(&wt, &from, &["/etc/passwd".into()]).is_err());
+}
+
+#[test]
+fn ff_branch_moves_forward_only() {
+    let (d, repo) = new_repo();
+    let wt = task_with_change(&d, &repo, "t3", "ns/cccc3333-x", "c.txt", "c\n");
+    let tip = g(&wt, &["rev-parse", "HEAD"]);
+    // a part branch that is ahead of the task branch
+    g(&repo, &["branch", "ns/cccc3333-part", &tip]);
+    let part = wt_for(&d, &repo, "t3p", "ns/cccc3333-part");
+    commit_in(&part, "p.txt", "p\n", "part work");
+    let part_tip = g(&part, &["rev-parse", "HEAD"]);
+
+    ff_branch(&repo, "ns/cccc3333-x", "ns/cccc3333-part").unwrap();
+    assert_eq!(g(&repo, &["rev-parse", "ns/cccc3333-x"]), part_tip);
+    assert_eq!(fs::read_to_string(wt.join("p.txt")).unwrap(), "p\n", "the checked-out task copy follows");
+
+    // backwards, and sideways, are refused and change nothing
+    assert!(ff_branch(&repo, "ns/cccc3333-x", &tip).is_err());
+    commit_in(&repo, "side.txt", "s", "side"); // main moves away from the task branch
+    assert!(ff_branch(&repo, "ns/cccc3333-x", "main").is_err());
+    assert_eq!(g(&repo, &["rev-parse", "ns/cccc3333-x"]), part_tip);
+    // the human's branches never move
+    assert!(ff_branch(&repo, "main", "ns/cccc3333-x").is_err());
+}
+
+#[test]
+fn diff_file_cuts_at_max_lines_and_flags_binary_files() {
+    let (d, repo) = new_repo();
+    let wt = wt_for(&d, &repo, "t4", "ns/dddd4444-x");
+    let body: String = (0..50).map(|i| format!("line {i}\n")).collect();
+    fs::write(wt.join("big.txt"), &body).unwrap();
+    fs::write(wt.join("pic.bin"), [0u8, 159, 146, 150, 0, 1, 2]).unwrap();
+    commit_all(&wt, "add").unwrap();
+
+    let full = diff_file(&wt, "main", "big.txt", 1000);
+    assert!(!full.truncated && !full.binary);
+    assert!(full.text.contains("+line 49"));
+    let cut = diff_file(&wt, "main", "big.txt", 10);
+    assert!(cut.truncated);
+    assert_eq!(cut.text.lines().count(), 10);
+
+    let bin = diff_file(&wt, "main", "pic.bin", 100);
+    assert!(bin.binary && bin.text.is_empty());
+    assert_eq!(bin.size, 7);
+    // a path that is not inside the copy gives nothing
+    assert_eq!(diff_file(&wt, "main", "../a.txt", 100).text, "");
+}
+
+#[test]
+fn clone_shallow_takes_a_local_folder_and_refuses_dangerous_sources() {
+    let (d, repo) = new_repo();
+    commit_in(&repo, "b.txt", "two\n", "second");
+    commit_in(&repo, "c.txt", "three\n", "third");
+    let dest = d.path().join("clone");
+    clone_shallow(repo.to_str().unwrap(), &dest).unwrap();
+    assert_eq!(fs::read_to_string(dest.join("c.txt")).unwrap(), "three\n");
+    assert_eq!(count(&dest, "HEAD"), 1, "shallow: one commit of three");
+
+    let marker = d.path().join("PWNED");
+    let evil = [
+        format!("ext::sh -c 'touch {}'", marker.display()),
+        "--upload-pack=touch PWNED".to_string(),
+        "http://example.com/r.git".to_string(),
+        "file:///etc".to_string(),
+        "ftp://example.com/r".to_string(),
+        "relative/path".to_string(),
+        "/no/such/folder".to_string(),
+        "".to_string(),
+    ];
+    for (i, url) in evil.iter().enumerate() {
+        let dest = d.path().join(format!("evil{i}"));
+        assert!(clone_shallow(url, &dest).is_err(), "{url}");
+        assert!(!dest.exists(), "{url}");
+    }
+    assert!(!marker.exists());
+}
+
+#[test]
+fn refresh_leaves_the_humans_own_detached_worktree_alone() {
+    let (d, repo) = new_repo();
+    // a worktree the human made themselves on a detached HEAD: no mark from create_readonly_copy
+    let mine = d.path().join("mine");
+    g(&repo, &["worktree", "add", "--detach", mine.to_str().unwrap(), "main"]);
+    fs::write(mine.join("a.txt"), "my uncommitted edit\n").unwrap();
+    fs::write(mine.join("notes.txt"), "mine").unwrap();
+    assert!(refresh_readonly_copy(&mine, "main").is_err());
+    assert_eq!(fs::read_to_string(mine.join("a.txt")).unwrap(), "my uncommitted edit\n");
+    assert!(mine.join("notes.txt").exists());
+}
+
+#[cfg(unix)]
+#[test]
+fn restore_paths_refuses_a_folder_swapped_for_a_link_to_the_outside() {
+    let (d, repo) = new_repo();
+    let wt = wt_for(&d, &repo, "t7", "ns/eeee5555-x");
+    fs::create_dir(wt.join("dir")).unwrap();
+    fs::write(wt.join("dir/f.txt"), "in").unwrap();
+    commit_all(&wt, "dir").unwrap();
+    let from = g(&wt, &["rev-parse", "HEAD"]);
+    fs::write(wt.join("dir/new.txt"), "n").unwrap();
+    // the part replaced the folder by a link to somewhere else
+    let outside = d.path().join("outside");
+    fs::create_dir(&outside).unwrap();
+    fs::write(outside.join("new.txt"), "precious").unwrap();
+    fs::remove_dir_all(wt.join("dir")).unwrap();
+    std::os::unix::fs::symlink(&outside, wt.join("dir")).unwrap();
+    let r = restore_paths(&wt, &from, &["dir/new.txt".into(), "a.txt".into()]);
+    assert!(r.is_err());
+    assert_eq!(fs::read_to_string(outside.join("new.txt")).unwrap(), "precious");
+}
+
+#[test]
+fn diff_file_also_stops_at_a_byte_limit() {
+    let (d, repo) = new_repo();
+    let wt = wt_for(&d, &repo, "t8", "ns/ffff6666-x");
+    fs::write(wt.join("min.js"), "x".repeat(2_000_000)).unwrap(); // one huge line
+    commit_all(&wt, "min").unwrap();
+    let df = diff_file(&wt, "main", "min.js", 10_000);
+    assert!(df.truncated);
+    assert!(df.text.len() <= 256 * 1024, "{}", df.text.len());
+}

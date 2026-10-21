@@ -1,0 +1,3 @@
+{"type":"init","session_id":"gem-sess-4","model":"gemini-nope"}
+{"type":"error","severity":"error","message":"[API Error: Requested entity was not found.]"}
+{"type":"result","status":"error","error":{"type":"Error","message":"[API Error: Requested entity was not found.]"}}

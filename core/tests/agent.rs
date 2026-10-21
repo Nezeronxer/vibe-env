@@ -3,7 +3,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
 fn run_in(cwd: &std::path::Path) -> Run {
-    Run { cwd: cwd.to_path_buf(), prompt: "p".into(), system: "s".into(), resume: None, role: Role::Worker }
+    Run::new(cwd.to_path_buf(), "p".into(), "s".into(), Role::Worker)
 }
 
 #[test]
@@ -116,4 +116,91 @@ fn leftover_background_process_does_not_hold_run_blocking() {
     std::thread::sleep(Duration::from_millis(200));
     let alive = std::process::Command::new("kill").args(["-0", &pid]).output().unwrap().status.success();
     assert!(!alive, "background process {pid} survived");
+}
+
+// ---- v2 fake: scripts per role and variant, usage / cost / refusals, model in calls() ----
+
+use chrono::Local;
+use nightshift_core::model::{LimitWindow, ModelFamily, RoleKind};
+
+fn run_as(cwd: &std::path::Path, role: Role, model: Option<&str>, read_only: bool) -> Run {
+    let mut r = Run::new(cwd.to_path_buf(), "p".into(), "s".into(), role);
+    r.model = model.map(String::from);
+    r.read_only = read_only;
+    r
+}
+
+fn go(fake: &FakeAdapter, r: &Run) -> Vec<AgentEvent> {
+    run_blocking(fake, r, &mut |_| {}, &AtomicBool::new(false)).unwrap()
+}
+
+fn say_of(evs: &[AgentEvent]) -> String {
+    evs.iter().find_map(|e| if let AgentEvent::Done { text, .. } = e { Some(text.clone()) } else { None }).unwrap()
+}
+
+#[test]
+fn scripts_are_picked_by_role_and_swarm_variant_not_by_order() {
+    let d = tempfile::tempdir().unwrap();
+    let fake = FakeAdapter::new(vec![vec![FakeStep::Done("plain".into())]])
+        .with_role(RoleKind::Reviewer, vec![vec![FakeStep::Done("review 1".into())], vec![FakeStep::Done("review 2".into())]])
+        .with_variant(RoleKind::Worker, "model-a", vec![vec![FakeStep::Done("variant a".into())]])
+        .with_variant(RoleKind::Worker, "model-b", vec![vec![FakeStep::Done("variant b".into())]])
+        .with_variant(RoleKind::Worker, "slot-c", vec![vec![FakeStep::Done("variant c".into())]]);
+    // swarm runs in any order: each variant gets its own script
+    let order = ["model-b", "model-a"];
+    for m in order {
+        let evs = go(&fake, &run_as(d.path(), Role::Worker, Some(m), false));
+        assert_eq!(say_of(&evs), format!("variant {}", &m[m.len() - 1..]));
+    }
+    // a variant can also be told by a folder of the copy
+    std::fs::create_dir_all(d.path().join("slot-c")).unwrap();
+    let evs = go(&fake, &run_as(&d.path().join("slot-c"), Role::Worker, None, false));
+    assert_eq!(say_of(&evs), "variant c");
+    // a variant whose queue is used up answers "ok"
+    assert_eq!(say_of(&go(&fake, &run_as(d.path(), Role::Worker, Some("model-b"), false))), "ok");
+    // roles keep their own queues
+    assert_eq!(say_of(&go(&fake, &run_as(d.path(), Role::Reviewer, None, true))), "review 1");
+    assert_eq!(say_of(&go(&fake, &run_as(d.path(), Role::Reviewer, None, true))), "review 2");
+    // a run of no special role uses the plain list
+    assert_eq!(say_of(&go(&fake, &run_as(d.path(), Role::Planner, None, true))), "plain");
+}
+
+#[test]
+fn calls_show_the_model_and_the_read_only_flag_of_each_run() {
+    let d = tempfile::tempdir().unwrap();
+    let fake = FakeAdapter::new(vec![]);
+    go(&fake, &run_as(d.path(), Role::Worker, Some("opus"), false));
+    go(&fake, &run_as(d.path(), Role::Chat, None, true));
+    let calls = fake.calls();
+    assert_eq!((calls[0].model.as_deref(), calls[0].read_only, calls[0].role), (Some("opus"), false, RoleKind::Worker));
+    assert_eq!((calls[1].model.as_deref(), calls[1].read_only, calls[1].role), (None, true, RoleKind::Chat));
+}
+
+#[test]
+fn usage_cost_refusals_and_sign_in_are_scripted_events() {
+    let d = tempfile::tempdir().unwrap();
+    let w = LimitWindow {
+        name: "five_hour".into(), model: None, used_pct: Some(40.0), remaining: None, resets_at: None,
+        exhausted: false, source: "fake".into(), seen_at: Local::now(),
+    };
+    let fake = FakeAdapter::new(vec![
+        vec![FakeStep::Usage(vec![w.clone()]), FakeStep::Cost(0.5), FakeStep::Done("ok".into())],
+        vec![FakeStep::RejectModel("no such model".into())],
+        vec![FakeStep::Auth("not logged in".into())],
+    ]);
+    let r = run_as(d.path(), Role::Worker, None, false);
+    let evs = go(&fake, &r);
+    assert_eq!(evs[0], AgentEvent::Usage(vec![w]));
+    assert_eq!(evs[1], AgentEvent::Cost(0.5));
+    assert_eq!(go(&fake, &r), vec![AgentEvent::ModelRejected("no such model".into())]);
+    assert_eq!(go(&fake, &r), vec![AgentEvent::AuthRequired("not logged in".into())]);
+}
+
+#[test]
+fn fake_models_default_to_an_error_like_envs_without_a_list_command() {
+    let fam = ModelFamily { id: "x".into(), label: "X".into(), vendor: "v".into(), blurb: None, versions: vec![], default: false, exact: Default::default() };
+    assert!(FakeAdapter::new(vec![]).models().is_err());
+    assert_eq!(FakeAdapter::new(vec![]).with_models(vec![fam.clone()]).models().unwrap(), vec![fam]);
+    assert!(!FakeAdapter::new(vec![]).read_only_native());
+    assert!(FakeAdapter::new(vec![]).with_read_only_native(true).read_only_native());
 }

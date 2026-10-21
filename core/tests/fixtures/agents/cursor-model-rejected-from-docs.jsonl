@@ -1,0 +1,2 @@
+{"type":"system","subtype":"init","session_id":"cur-sess-3","model":"nope"}
+{"type":"result","subtype":"error","is_error":true,"result":"Cannot use this model: nope. Available models: auto, gpt-5","session_id":"cur-sess-3"}

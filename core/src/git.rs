@@ -1,6 +1,7 @@
 //! All git / gh operations. System binaries via `Command`, no libgit2.
 //! Safety rules: never `push --force`, never `reset --hard`, only `ns/*` branches are deleted,
 //! the human's working copy is only touched by `merge --ff-only` on a clean base branch.
+use std::io::Read as _;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 
@@ -607,4 +608,238 @@ pub fn detect_commands(repo: &Path) -> (Option<String>, Option<String>) {
         }
     }
     (None, None)
+}
+
+// ---- v2: read-only copies, per-file diff, restore, fast-forward, shallow clone ----
+
+/// One file of the task's change, for the diff view.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct FileDiff {
+    pub path: String,
+    /// Unified diff text, at most `max_lines` lines; empty for a binary file or when there is no change.
+    pub text: String,
+    /// The diff was cut at `max_lines`.
+    pub truncated: bool,
+    /// Git treats the file as binary: no text, only the size.
+    pub binary: bool,
+    /// Size of the file in the working copy in bytes (0 when it is gone).
+    pub size: u64,
+}
+
+/// A path inside a copy: relative, no `..`, no NUL. Anything else never reaches git.
+fn safe_rel(p: &str) -> Result<(), GitError> {
+    let bad = p.is_empty()
+        || p.contains('\0')
+        || Path::new(p).is_absolute()
+        || Path::new(p).components().any(|c| matches!(c, std::path::Component::ParentDir));
+    if bad {
+        return Err(GitError::Other(format!("bad path: {p}")));
+    }
+    Ok(())
+}
+
+/// The real location of `full`'s folder (symlinks resolved, nearest existing ancestor for new paths) is
+/// inside `root`; a folder swapped for a link to the outside is refused.
+fn inside(root: &Path, full: &Path, shown: &str) -> Result<(), GitError> {
+    let mut dir = full.parent();
+    while let Some(d) = dir {
+        if let Ok(real) = d.canonicalize() {
+            return if real.starts_with(root) { Ok(()) } else { Err(GitError::Other(format!("path leaves the copy: {shown}"))) };
+        }
+        dir = d.parent();
+    }
+    Err(GitError::Other(format!("path leaves the copy: {shown}")))
+}
+
+fn literal(p: &str) -> String {
+    format!(":(literal){p}")
+}
+
+const READONLY_MARK: &str = "ns-readonly-copy";
+
+fn git_dir_of(wt: &Path) -> Option<PathBuf> {
+    let gd = PathBuf::from(try_out(wt, &["rev-parse", "--git-dir"])?);
+    Some(if gd.is_absolute() { gd } else { wt.join(gd) })
+}
+
+/// A copy made by `create_readonly_copy`: it carries the mark in its private git dir, is a linked
+/// worktree, and sits on a detached HEAD. A worktree the human made (even a detached one) has no mark.
+fn is_app_copy(wt: &Path) -> bool {
+    let (Some(gd), Some(common)) = (git_dir_of(wt), try_out(wt, &["rev-parse", "--path-format=absolute", "--git-common-dir"])) else {
+        return false;
+    };
+    let linked = try_out(wt, &["rev-parse", "--absolute-git-dir"]).is_some_and(|a| a != common);
+    linked && gd.join(READONLY_MARK).is_file() && try_out(wt, &["symbolic-ref", "-q", "HEAD"]).is_none()
+}
+
+/// Copy of `base` for roles that only read (chat, planner): a worktree at `dir` without a branch,
+/// so nothing of it can ever reach a branch or the human's folder. `dir` must not exist yet.
+pub fn create_readonly_copy(repo: &Path, dir: &Path, base: &str) -> Result<PathBuf, GitError> {
+    if let Some(parent) = dir.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| GitError::Other(e.to_string()))?;
+    }
+    ok(repo, &["worktree", "add", "--detach", &dir.to_string_lossy(), base])?;
+    let gd = git_dir_of(dir).ok_or_else(|| GitError::Other(format!("not a worktree: {}", dir.display())))?;
+    std::fs::write(gd.join(READONLY_MARK), "created by Nightshift\n").map_err(|e| GitError::Other(e.to_string()))?;
+    Ok(dir.to_path_buf())
+}
+
+/// Brings a copy made by `create_readonly_copy` to the current tip of `base` and throws away
+/// everything the last run left in it (edits, untracked and ignored files). Refuses anything that
+/// was not made by `create_readonly_copy` (no mark in its git dir): `reset --hard` and `clean` must never touch the human's folder.
+pub fn refresh_readonly_copy(wt: &Path, base: &str) -> Result<(), GitError> {
+    if !is_app_copy(wt) {
+        return Err(GitError::Other(format!("not a read-only copy of the app: {}", wt.display())));
+    }
+    let sha = ok(wt, &["rev-parse", "--verify", &format!("refs/heads/{base}^{{commit}}")])?;
+    ok(wt, &["checkout", "-q", "--detach", "-f", &sha])?;
+    ok(wt, &["reset", "-q", "--hard", &sha])?;
+    ok(wt, &["clean", "-q", "-f", "-d", "-x"])?;
+    Ok(())
+}
+
+/// Byte limit of `diff_file` next to its line limit: a one-line minified file must not fill memory.
+const DIFF_FILE_MAX_BYTES: usize = 256 * 1024;
+
+/// The change of one file against where the task forked from `base`, cut to `max_lines` lines and
+/// 256 KiB, whichever comes first (`truncated` then). git's output is read as a stream and git is
+/// stopped at the cut, so a huge diff is never held whole.
+pub fn diff_file(wt: &Path, base: &str, path: &str, max_lines: usize) -> FileDiff {
+    use std::io::BufRead;
+    let mut d = FileDiff { path: path.to_string(), ..FileDiff::default() };
+    if safe_rel(path).is_err() {
+        return d;
+    }
+    d.size = std::fs::metadata(wt.join(path)).map(|m| m.len()).unwrap_or(0);
+    let mb = merge_base(wt, base);
+    let spec = literal(path);
+    let stat = run(wt, &["diff", "--numstat", &mb, "--", &spec]).map(|o| o.stdout).unwrap_or_default();
+    if stat.starts_with("-\t-\t") {
+        d.binary = true;
+        return d;
+    }
+    let Ok(mut child) = git_cmd(wt)
+        .args(["diff", &mb, "--", &spec])
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+    else {
+        return d;
+    };
+    let mut reader = std::io::BufReader::new(child.stdout.take().expect("piped"));
+    let (mut text, mut lines, mut buf) = (String::new(), 0usize, Vec::new());
+    loop {
+        buf.clear();
+        // a single line is read at most up to the byte limit too
+        let n = (&mut reader).take((DIFF_FILE_MAX_BYTES + 1) as u64).read_until(b'\n', &mut buf).unwrap_or(0);
+        if n == 0 {
+            break;
+        }
+        if lines >= max_lines || text.len() + buf.len() > DIFF_FILE_MAX_BYTES {
+            d.truncated = true;
+            break;
+        }
+        text.push_str(&String::from_utf8_lossy(&buf));
+        lines += 1;
+    }
+    if d.truncated {
+        let _ = child.kill();
+    }
+    let _ = child.wait();
+    d.text = text.trim_end_matches('\n').to_string();
+    d
+}
+
+/// Paths that differ between two commits (renames count as delete + add), sorted by git.
+pub fn changed_paths(wt: &Path, from: &str, to: &str) -> Vec<String> {
+    let out = run(wt, &["diff", "-z", "--name-only", "--no-renames", from, to]).map(|o| o.stdout).unwrap_or_default();
+    out.split('\0').filter(|p| !p.is_empty()).map(str::to_string).collect()
+}
+
+/// Puts `paths` back to how they are in commit `from`, in the index and on disk; a path that does
+/// not exist in `from` is deleted. For a part of a crew that touched files it does not own.
+pub fn restore_paths(wt: &Path, from: &str, paths: &[String]) -> Result<(), GitError> {
+    // every path is checked first, so a bad one changes nothing
+    let root = wt.canonicalize().map_err(|e| GitError::Other(format!("{}: {e}", wt.display())))?;
+    for p in paths {
+        safe_rel(p)?;
+        inside(&root, &wt.join(p), p)?;
+    }
+    for p in paths {
+        let spec = literal(p);
+        let existed = run(wt, &["cat-file", "-e", &format!("{from}:{p}")])?.ok;
+        if existed {
+            ok(wt, &["restore", "--source", from, "--staged", "--worktree", "--", &spec])?;
+        } else {
+            let _ = run(wt, &["rm", "-q", "-r", "-f", "--cached", "--ignore-unmatch", "--", &spec])?;
+            let full = wt.join(p);
+            if full.is_dir() {
+                let _ = std::fs::remove_dir_all(&full);
+            } else if full.symlink_metadata().is_ok() {
+                std::fs::remove_file(&full).map_err(|e| GitError::Other(format!("{p}: {e}")))?;
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Moves the app's branch `ns/*` forward to `to` (a commit or ref). Only forward: if `to` is not
+/// a descendant of the branch, nothing happens. A dirty checkout of the branch blocks it.
+pub fn ff_branch(repo: &Path, branch: &str, to: &str) -> Result<(), GitError> {
+    if !branch.starts_with(NS_PREFIX) {
+        return Err(GitError::Other(format!("only {NS_PREFIX}* branches move: {branch}")));
+    }
+    let old = ok(repo, &["rev-parse", "--verify", &format!("refs/heads/{branch}")])?;
+    let new = ok(repo, &["rev-parse", "--verify", &format!("{to}^{{commit}}")])?;
+    if old == new {
+        return Ok(());
+    }
+    if !run(repo, &["merge-base", "--is-ancestor", &old, &new])?.ok {
+        return Err(GitError::Other(format!("not a fast-forward: {branch} -> {to}")));
+    }
+    advance(repo, branch, &old, &new)
+}
+
+/// Only these remotes are cloned: `https://`, `ssh://`, `git@host:path`, or an existing local folder.
+/// `ext::` (runs a command), `--upload-pack`-style option text, `http://`, `file://` and the rest are refused.
+fn clone_source(url: &str) -> Result<String, GitError> {
+    let u = url.trim();
+    let bad = |why: &str| GitError::Other(format!("clone refused ({why}): {u}"));
+    if u.is_empty() || u.starts_with('-') || u.contains(['\0', '\n', '\r']) || u.contains("::") || u.contains("--upload-pack") {
+        return Err(bad("unsafe text"));
+    }
+    if u.starts_with("https://") || u.starts_with("ssh://") || u.starts_with("git@") {
+        return Ok(u.to_string());
+    }
+    if u.contains("://") {
+        return Err(bad("scheme not allowed"));
+    }
+    let local = Path::new(u);
+    if local.is_absolute() && local.is_dir() {
+        // file:// so that --depth is honoured (a plain path makes a full local clone)
+        let canon = local.canonicalize().map_err(|e| GitError::Other(e.to_string()))?;
+        return Ok(format!("file://{}", canon.display()));
+    }
+    Err(bad("not a remote and not an existing local folder"))
+}
+
+/// Shallow (`--depth 1`) clone of `url` into `dest`, which the caller makes a fresh temp folder.
+pub fn clone_shallow(url: &str, dest: &Path) -> Result<(), GitError> {
+    let src = clone_source(url)?;
+    let parent = dest.parent().unwrap_or(Path::new("."));
+    let o = Command::new("git")
+        .current_dir(parent)
+        .env("GIT_TERMINAL_PROMPT", "0")
+        .env("LC_ALL", "C")
+        .env("GIT_ALLOW_PROTOCOL", "https:ssh:file") // belt and braces next to the check above
+        .args(["clone", "--depth", "1", "--no-tags", "-q", "--", &src])
+        .arg(dest)
+        .output()
+        .map_err(|e| GitError::Other(format!("git clone: {e}")))?;
+    if o.status.success() {
+        Ok(())
+    } else {
+        Err(GitError::Other(format!("git clone: {}", String::from_utf8_lossy(&o.stderr).trim())))
+    }
 }

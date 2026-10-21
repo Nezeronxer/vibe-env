@@ -34,8 +34,10 @@ fn done(session: &str, t: &str) -> AgentEvent {
 fn claude_real_run_text_tool_and_done_with_session() {
     // fixture captured from `claude -p "run echo hi, then say ok" --output-format stream-json --verbose`
     let evs = replay(&Claude::new(), "claude.jsonl", true);
+    let plain: Vec<AgentEvent> =
+        evs.into_iter().filter(|e| !matches!(e, AgentEvent::Usage(_) | AgentEvent::Cost(_))).collect();
     assert_eq!(
-        evs,
+        plain,
         vec![tool("Bash", "echo hi"), text("ok"), done("fe525380-9073-47bf-9375-54c8ca3c6d08", "ok")]
     );
 }
@@ -67,11 +69,9 @@ fn qwen_stream_text_tool_done_and_real_auth_error() {
     let evs = replay(&Qwen::new(), "qwen-error.jsonl", false);
     assert_eq!(
         evs,
-        vec![AgentEvent::Done {
-            session: Some("c70e4c45-86b0-4f12-bdd9-426303ebf043".into()),
-            text: "No auth type is selected. Please configure an auth type (e.g. via settings or `--auth-type`) before running in non-interactive mode.".into(),
-            is_error: true
-        }]
+        vec![AgentEvent::AuthRequired(
+            "No auth type is selected. Please configure an auth type (e.g. via settings or `--auth-type`) before running in non-interactive mode.".into()
+        )]
     );
 }
 
@@ -107,8 +107,8 @@ fn cursor_events_tool_text_done() {
 #[test]
 fn cursor_crash_without_result_is_a_failed_done() {
     let a = Cursor::new();
-    let evs = a.finish(false, "{\"type\":\"system\"}\nerror: not logged in\n");
-    assert_eq!(evs, vec![AgentEvent::Done { session: None, text: "error: not logged in".into(), is_error: true }]);
+    let evs = a.finish(false, "{\"type\":\"system\"}\nerror: boom\n");
+    assert_eq!(evs, vec![AgentEvent::Done { session: None, text: "error: boom".into(), is_error: true }]);
 }
 
 fn claude_error_result(msg: &str) -> Vec<AgentEvent> {
@@ -168,7 +168,7 @@ fn limit_without_time_and_ordinary_errors() {
 }
 
 fn run(role: Role) -> Run {
-    Run { cwd: "/tmp".into(), prompt: "do it".into(), system: "no push".into(), resume: None, role }
+    Run::new("/tmp".into(), "do it".into(), "no push".into(), role)
 }
 
 fn args(a: &dyn Adapter, r: &Run) -> Vec<String> {
@@ -221,14 +221,16 @@ fn prompt_with_a_leading_dash_reaches_every_builtin_cli_as_text() {
 }
 
 #[test]
-fn opencode_uses_session_dir_and_reviewer_agent_plan() {
+fn opencode_uses_session_and_dir_and_has_no_read_only_flag() {
     let mut r = run(Role::Worker);
     r.resume = Some("ses_1".into());
     let v = args(&OpenCode::new(), &r);
     assert_eq!(arg_after(&v, "--session"), "ses_1");
     assert_eq!(arg_after(&v, "--dir"), "/tmp");
     assert_eq!(arg_after(&v, "--format"), "json");
-    assert_eq!(arg_after(&args(&OpenCode::new(), &run(Role::Reviewer)), "--agent"), "plan");
+    // no verified read-only flag: the engine runs such roles in a throwaway copy
+    let ro = args(&OpenCode::new(), &run(Role::Reviewer));
+    assert!(!ro.contains(&"--agent".to_string()) && !OpenCode::new().read_only_native());
 }
 
 #[test]
@@ -418,4 +420,510 @@ fn claude_network_note_explains_why_the_network_is_closed() {
     let broken = Claude::with_bin(&mk("broken", "echo nonsense")).network_note().unwrap();
     assert!(broken.contains("could not be read"), "{broken}");
     assert_eq!(Claude::with_bin(&mk("new", "echo '2.1.186 (Claude Code)'")).network_note(), None);
+}
+
+// ---- v2: usage and cost, model flag, read-only flag, sign-in and model refusals, model lists ----
+
+use chrono::TimeZone;
+use nightshift_core::model::{LimitWindow, ModelFamily};
+
+fn events_of(a: &dyn Adapter, name: &str) -> Vec<AgentEvent> {
+    fixture(name).lines().flat_map(|l| a.parse(l)).collect()
+}
+
+fn windows(evs: &[AgentEvent]) -> Vec<Vec<LimitWindow>> {
+    evs.iter().filter_map(|e| if let AgentEvent::Usage(w) = e { Some(w.clone()) } else { None }).collect()
+}
+
+#[test]
+fn claude_rate_limit_event_gives_the_five_hour_and_weekly_windows() {
+    let evs = events_of(&Claude::new(), "claude.jsonl");
+    let all = windows(&evs);
+    assert_eq!(all.len(), 2, "the live run printed two rate_limit_event lines");
+    // numbers read by hand from the saved live run: 5 h 13 %, week 11 %, resets 1792576800 / 1792918800
+    let first = &all[0];
+    assert_eq!(first.len(), 2);
+    assert_eq!((first[0].name.as_str(), first[0].used_pct), ("five_hour", Some(13.0)));
+    assert_eq!((first[1].name.as_str(), first[1].used_pct), ("seven_day", Some(11.0)));
+    assert_eq!(first[0].resets_at, Some(Local.timestamp_opt(1792576800, 0).unwrap()));
+    assert_eq!(first[1].resets_at, Some(Local.timestamp_opt(1792918800, 0).unwrap()));
+    assert!(first.iter().all(|w| !w.exhausted && w.source == "rate_limit_event" && w.model.is_none()));
+    assert_eq!(all[1][0].used_pct, Some(14.0), "the later event carries the later number");
+    // an allowed status is not a limit
+    assert!(!evs.iter().any(|e| matches!(e, AgentEvent::Limit { .. })));
+}
+
+#[test]
+fn claude_blocked_status_is_a_limit_with_the_reset_time() {
+    let evs = events_of(&Claude::new(), "claude-rate-limit-rejected.jsonl");
+    assert!(evs.contains(&AgentEvent::Limit { resets_at: Some(Local.timestamp_opt(1792576800, 0).unwrap()) }), "{evs:?}");
+    let w = &windows(&evs)[0];
+    assert!(w[0].exhausted && w[0].used_pct == Some(100.0), "{w:?}");
+    assert!(!w[1].exhausted);
+}
+
+#[test]
+fn claude_reports_the_cost_of_the_run_before_done_and_only_claude_does() {
+    let evs = events_of(&Claude::new(), "claude.jsonl");
+    let i = evs.iter().position(|e| matches!(e, AgentEvent::Cost(_))).expect("cost");
+    assert_eq!(evs[i], AgentEvent::Cost(0.2655434)); // total_cost_usd of the saved run
+    assert!(matches!(evs[i + 1], AgentEvent::Done { .. }));
+    let costly: Vec<String> = adapters(&Settings::default()).iter().filter(|a| a.reports_cost()).map(|a| a.id().to_string()).collect();
+    assert_eq!(costly, ["claude"]);
+}
+
+#[test]
+fn claude_budget_schema_and_model_reach_the_command() {
+    let mut r = run(Role::Worker);
+    r.model = Some("opus".into());
+    r.max_budget_usd = Some(1.5);
+    r.json_schema = Some("{\"type\":\"object\"}".into());
+    let v = args(&Claude::new(), &r);
+    assert_eq!(arg_after(&v, "--model"), "opus");
+    assert_eq!(arg_after(&v, "--max-budget-usd"), "1.5");
+    assert_eq!(arg_after(&v, "--json-schema"), "{\"type\":\"object\"}");
+    let plain = args(&Claude::new(), &run(Role::Worker));
+    for f in ["--model", "--max-budget-usd", "--json-schema"] {
+        assert!(!plain.contains(&f.to_string()), "{f} without a value");
+    }
+}
+
+#[test]
+fn model_flag_is_the_envs_own_and_absent_without_a_model() {
+    let flags: [(Box<dyn Adapter>, &str); 6] = [
+        (Box::new(Claude::new()), "--model"),
+        (Box::new(Codex::new()), "-m"),
+        (Box::new(Gemini::new()), "-m"),
+        (Box::new(OpenCode::new()), "-m"),
+        (Box::new(Cursor::new()), "--model"),
+        (Box::new(Qwen::new()), "-m"),
+    ];
+    for (a, flag) in flags {
+        let mut r = run(Role::Worker);
+        assert!(!args(a.as_ref(), &r).contains(&flag.to_string()), "{}: flag without a model", a.id());
+        r.model = Some("provider/some-model".into());
+        assert_eq!(arg_after(&args(a.as_ref(), &r), flag), "provider/some-model", "{}", a.id());
+    }
+}
+
+#[test]
+fn read_only_flag_is_set_where_the_env_has_one() {
+    // (adapter, flag, value after it, has a native read-only mode)
+    let cases: [(Box<dyn Adapter>, &str, &str, bool); 4] = [
+        (Box::new(Claude::new()), "--permission-mode", "plan", true),
+        (Box::new(Codex::new()), "--sandbox", "read-only", true),
+        (Box::new(Gemini::new()), "--approval-mode", "plan", true),
+        (Box::new(Cursor::new()), "--mode", "ask", true),
+    ];
+    for (a, flag, value, native) in cases {
+        let mut r = run(Role::Worker);
+        r.read_only = true;
+        let v = args(a.as_ref(), &r);
+        let found = v.iter().any(|x| x == &format!("{flag}={value}")) || (v.iter().position(|x| x == flag).is_some_and(|i| v[i + 1] == value));
+        assert!(found, "{}: {v:?}", a.id());
+        assert_eq!(a.read_only_native(), native, "{}", a.id());
+        // a writing run does not get it
+        let w = args(a.as_ref(), &run(Role::Worker));
+        assert!(!w.iter().any(|x| x == &format!("{flag}={value}")) && !w.windows(2).any(|p| p[0] == flag && p[1] == value), "{}: {w:?}", a.id());
+    }
+    // opencode, Qwen and the own command have no flag: the engine uses a throwaway copy
+    let mut r = run(Role::Worker);
+    r.read_only = true;
+    let q = args(&Qwen::new(), &r);
+    assert!(!q.contains(&"--yolo".to_string()), "a read-only Qwen run is not auto-approved: {q:?}");
+    for a in [&OpenCode::new() as &dyn Adapter, &Qwen::new(), &custom("true", None)] {
+        assert!(!a.read_only_native(), "{}", a.id());
+    }
+}
+
+#[test]
+fn json_schema_goes_only_to_claude_and_codex() {
+    let mut r = run(Role::Worker);
+    r.json_schema = Some("{\"type\":\"object\"}".into());
+    assert_eq!(arg_after(&args(&Claude::new(), &r), "--json-schema"), "{\"type\":\"object\"}");
+    let priv_dir = tempfile::tempdir().unwrap();
+    let codex = Codex::new().with_schema_dir(priv_dir.path());
+    let schema_path = arg_after(&args(&codex, &r), "--output-schema");
+    assert_eq!(std::fs::read_to_string(&schema_path).unwrap(), "{\"type\":\"object\"}", "Codex takes a file");
+    assert!(std::path::Path::new(&schema_path).starts_with(priv_dir.path()), "in the app's private folder");
+    assert_ne!(schema_path, arg_after(&args(&codex, &r), "--output-schema"), "a file of its own per run");
+    for a in [&Gemini::new() as &dyn Adapter, &OpenCode::new(), &Cursor::new(), &Qwen::new()] {
+        let v = args(a, &r);
+        assert!(!v.iter().any(|x| x.contains("schema")), "{}: {v:?}", a.id());
+    }
+}
+
+#[test]
+fn extra_args_are_separate_arguments_and_extra_env_reaches_the_process() {
+    let mut r = run(Role::Worker);
+    r.extra_args = vec!["--flag".into(), "a value; touch PWNED".into()];
+    r.extra_env = vec![("NS_TEST_SECRET".into(), "s3".into())];
+    for a in adapters(&Settings::default()) {
+        let c = a.command(&r);
+        let v: Vec<String> = c.get_args().map(|s| s.to_string_lossy().into_owned()).collect();
+        let i = v.iter().position(|x| x == "a value; touch PWNED");
+        if a.id() == "claude" || a.id() == "codex" || a.id() == "gemini" || a.id() == "opencode" || a.id() == "cursor" || a.id() == "qwen" {
+            let i = i.unwrap_or_else(|| panic!("{}: {v:?}", a.id()));
+            assert_eq!(v[i - 1], "--flag", "{}: two arguments, not one string", a.id());
+        }
+        let env: Vec<_> = c.get_envs().filter(|(k, _)| *k == "NS_TEST_SECRET").collect();
+        assert_eq!(env.len(), 1, "{}", a.id());
+        assert_eq!(env[0].1.unwrap(), "s3");
+    }
+    // the own command gets the environment too
+    let d = tempfile::tempdir().unwrap();
+    let mut r = run(Role::Worker);
+    r.cwd = d.path().to_path_buf();
+    r.extra_env = vec![("NS_TEST_SECRET".into(), "s3".into())];
+    let evs = run_custom(&custom("echo \"$NS_TEST_SECRET\"", None), &r);
+    assert_eq!(evs.last().unwrap(), &AgentEvent::Done { session: None, text: "s3".into(), is_error: false });
+}
+
+#[test]
+fn cli_path_from_the_env_settings_replaces_the_binary() {
+    let mut s = Settings::default();
+    let mut e = nightshift_core::model::EnvSettings::default();
+    e.cli_path = Some("/opt/special/codex".into());
+    s.envs.insert("codex".into(), e);
+    let list = adapters(&s);
+    let codex = list.iter().find(|a| a.id() == "codex").unwrap();
+    assert_eq!(codex.command(&run(Role::Worker)).get_program(), "/opt/special/codex");
+    let claude = list.iter().find(|a| a.id() == "claude").unwrap();
+    assert_ne!(claude.command(&run(Role::Worker)).get_program(), "/opt/special/codex");
+}
+
+fn auth(msg: &str) -> Vec<AgentEvent> {
+    vec![AgentEvent::AuthRequired(msg.into())]
+}
+
+#[test]
+fn qwen_real_output_without_login_is_auth_required_even_with_a_bad_model() {
+    let q = "No auth type is selected. Please configure an auth type (e.g. via settings or `--auth-type`) before running in non-interactive mode.";
+    assert_eq!(replay(&Qwen::new(), "qwen-error.jsonl", false), auth(q));
+    // `qwen -m nonexistent-model-x` (real): the login check comes first, the model is never looked at
+    assert_eq!(replay(&Qwen::new(), "qwen-bad-model-no-auth.jsonl", false), auth(q));
+}
+
+#[test]
+fn login_rule_matches_the_messages_we_know_from_docs_not_cli_output() {
+    // texts assembled from docs / memory of the CLIs, // unverified: this checks OUR rule, not what the CLIs print
+    assert_eq!(replay(&Codex::new(), "codex-auth-from-docs.jsonl", false), auth("Not logged in. Please run `codex login`."));
+    assert_eq!(
+        replay(&Gemini::new(), "gemini-auth-from-docs.jsonl", false),
+        auth("Please set an Auth method in your .gemini/settings.json or specify GEMINI_API_KEY.")
+    );
+    assert_eq!(
+        replay(&Cursor::new(), "cursor-auth-from-docs.jsonl", false),
+        auth("Authentication required. Please run 'agent login' first, or set CURSOR_API_KEY.")
+    );
+    let claude = r#"{"type":"result","subtype":"success","is_error":true,"session_id":"s","result":"Not logged in \u00b7 Please run /login"}"#;
+    assert!(matches!(Claude::new().parse(claude).as_slice(), [AgentEvent::AuthRequired(_)]));
+}
+
+#[test]
+fn real_cli_output_for_a_refused_model_is_model_rejected() {
+    // opencode: real output of `opencode run -m bogus/model --print-logs` (the JSON stream alone says only
+    // "Unexpected server error")
+    let evs = OpenCode::new().finish(false, &fixture("opencode-model-rejected.log"));
+    let [AgentEvent::ModelRejected(m)] = evs.as_slice() else { panic!("{evs:?}") };
+    assert!(m.contains("ProviderModelNotFoundError: Model not found: bogus/model."), "{m}");
+    // Claude: real `claude -p --model nonexistent-model-x --output-format stream-json` (no request reaches the model)
+    let evs = replay(&Claude::new(), "claude-model-rejected.jsonl", false);
+    let m = evs.iter().find_map(|e| if let AgentEvent::ModelRejected(m) = e { Some(m.clone()) } else { None }).expect("ModelRejected");
+    assert!(m.contains("issue with the selected model (nonexistent-model-x)"), "{m}");
+    assert!(!evs.iter().any(|e| matches!(e, AgentEvent::Done { .. })), "a refusal replaces Done");
+}
+
+#[test]
+fn model_refusal_rule_matches_the_messages_we_know_from_docs_not_cli_output() {
+    // // unverified texts from docs / memory: this checks OUR rule, not what these CLIs print
+    assert_eq!(
+        replay(&Codex::new(), "codex-model-rejected-from-docs.jsonl", false),
+        vec![AgentEvent::ModelRejected("The 'gpt-nope' model is not supported when using Codex with a ChatGPT account.".into())]
+    );
+    assert!(matches!(replay(&Gemini::new(), "gemini-model-rejected-from-docs.jsonl", false).as_slice(), [AgentEvent::ModelRejected(_)]));
+    assert!(matches!(replay(&Cursor::new(), "cursor-model-rejected-from-docs.jsonl", false).as_slice(), [AgentEvent::ModelRejected(_)]));
+    assert!(matches!(replay(&Qwen::new(), "qwen-model-rejected-from-docs.jsonl", false).as_slice(), [AgentEvent::ModelRejected(_)]));
+}
+
+#[test]
+fn ordinary_failures_and_limits_are_not_mistaken_for_login_or_model_errors() {
+    // the real opencode server error without the log line stays a plain failure
+    let evs = replay(&OpenCode::new(), "opencode-error.jsonl", false);
+    assert!(matches!(evs.as_slice(), [AgentEvent::Done { is_error: true, .. }]), "{evs:?}");
+    // a limit text keeps being a limit, with no reset time when the text has none
+    assert!(matches!(replay(&Gemini::new(), "gemini-error-from-docs.jsonl", false).as_slice(), [AgentEvent::Limit { resets_at: None }]));
+}
+
+fn script_printing(dir: &std::path::Path, expect_args: &str, fixture_name: &str) -> String {
+    use std::os::unix::fs::PermissionsExt;
+    let p = dir.join(format!("fake-{}", expect_args.replace(' ', "-")));
+    let body = format!(
+        "#!/bin/sh\n[ \"$*\" = \"{expect_args}\" ] || {{ echo \"unexpected args: $*\" >&2; exit 2; }}\ncat '{}/tests/fixtures/agents/{fixture_name}'\n",
+        env!("CARGO_MANIFEST_DIR")
+    );
+    std::fs::write(&p, body).unwrap();
+    std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o755)).unwrap();
+    p.to_string_lossy().into_owned()
+}
+
+fn ids(f: &[ModelFamily]) -> Vec<&str> {
+    f.iter().map(|f| f.id.as_str()).collect()
+}
+
+#[test]
+fn opencode_models_come_from_the_saved_list() {
+    let d = tempfile::tempdir().unwrap();
+    let a = OpenCode::with_bin(&script_printing(d.path(), "models", "opencode-models.txt"));
+    let fams = a.models().unwrap();
+    // ten lines of the real `opencode models`, in order, each its own family
+    assert_eq!(fams.len(), 10);
+    assert_eq!(fams[0].id, "opencode/beam-free");
+    assert_eq!(fams[9].id, "opencode/nemotron-3.5-super-vl-free");
+    assert!(fams.iter().all(|f| f.vendor == "opencode" && f.versions.is_empty()));
+}
+
+#[test]
+fn codex_and_cursor_list_parsing_rule_on_samples_from_docs_not_cli_output() {
+    let d = tempfile::tempdir().unwrap();
+    // from docs, // unverified output shapes
+    let codex = Codex::with_bin(&script_printing(d.path(), "debug models", "codex-models-from-docs.json")).models().unwrap();
+    assert_eq!(ids(&codex), ["gpt-5.1-codex", "gpt", "gpt-5.1-codex-mini"]);
+    let gpt = &codex[1];
+    assert_eq!(gpt.versions, ["5.1", "5"], "newest first");
+    assert_eq!(gpt.label, "GPT-5.1");
+    assert_eq!(gpt.exact["5"], "gpt-5", "the id is the one the CLI printed");
+    let cursor = Cursor::with_bin(&script_printing(d.path(), "--list-models", "cursor-models-from-docs.txt")).models().unwrap();
+    assert_eq!(ids(&cursor), ["auto", "sonnet", "gpt"]);
+    assert_eq!(cursor[1].versions, ["4.5", "4"]);
+    assert!(cursor[0].default && !cursor[1].default, "(current) marks the default");
+}
+
+#[test]
+fn envs_without_a_list_command_have_only_the_built_in_hint_list() {
+    for a in [&Claude::new() as &dyn Adapter, &Gemini::new(), &Qwen::new()] {
+        assert!(a.models().is_err(), "{}", a.id());
+        let b = a.builtin_models();
+        assert!(!b.is_empty(), "{}", a.id());
+        // dated and marked as not checked against the CLI; no pre-selected default
+        assert!(b.iter().all(|f| !f.default && f.blurb.as_deref().unwrap().contains("2026-10-21; не сверено с CLI")), "{}", a.id());
+        // every version has the identifier the vendor docs give for it
+        assert!(b.iter().all(|f| f.versions.iter().all(|v| f.exact.contains_key(v))), "{}", a.id());
+    }
+    let claude = Claude::new().builtin_models();
+    let opus = claude.iter().find(|f| f.id == "opus").unwrap();
+    assert_eq!(opus.versions[0], "5.5");
+    assert_eq!(opus.exact["5.5"], "claude-opus-5-5", "also seen live in the init event of the saved run");
+    assert_eq!(opus.exact["4.6"], "claude-opus-4-6");
+    assert_eq!(Gemini::new().builtin_models().iter().find(|f| f.id == "pro").unwrap().exact["2.5"], "gemini-2.5-pro");
+    assert_eq!(Qwen::new().builtin_models().iter().find(|f| f.id == "qwen-plus").unwrap().exact["3.7"], "qwen3.7-plus");
+    assert_eq!(ids(&Claude::new().builtin_models())[..3], ["fable", "opus", "sonnet"]);
+    // a missing CLI is an Err too, not a panic
+    assert!(Codex::with_bin("ns-no-such-bin").models().is_err());
+}
+
+#[test]
+fn interactive_resume_is_an_argument_list_and_checks_the_session_id() {
+    let cwd = std::path::Path::new("/tmp");
+    let argv = |c: Option<std::process::Command>| -> Option<Vec<String>> {
+        c.map(|c| c.get_args().map(|s| s.to_string_lossy().into_owned()).collect())
+    };
+    let want = [
+        (Box::new(Claude::new()) as Box<dyn Adapter>, vec!["--resume", "abc-123"]),
+        (Box::new(Gemini::new()), vec!["--resume", "abc-123"]),
+        (Box::new(Qwen::new()), vec!["--resume", "abc-123"]),
+        (Box::new(Cursor::new()), vec!["--resume", "abc-123"]),
+        (Box::new(OpenCode::new()), vec!["-s", "abc-123"]),
+    ];
+    for (a, v) in want {
+        let c = a.interactive_resume("abc-123", cwd);
+        assert_eq!(c.as_ref().map(|c| c.get_current_dir().map(|d| d.to_path_buf())), Some(Some(cwd.to_path_buf())), "{}", a.id());
+        assert_eq!(argv(c), Some(v.into_iter().map(String::from).collect()), "{}", a.id());
+        // nothing that could be read as an option or a shell command gets through
+        for bad in ["", "-x", "--resume", "a b", "a;touch PWNED", "$(id)", "a\nb", &"x".repeat(200)] {
+            assert!(a.interactive_resume(bad, cwd).is_none(), "{} accepted {bad:?}", a.id());
+        }
+    }
+    assert!(Codex::new().interactive_resume("abc-123", cwd).is_none());
+    assert!(custom("echo {prompt}", Some("echo {session}")).interactive_resume("abc-123", cwd).is_none());
+}
+
+#[test]
+fn sandbox_info_and_install_hints() {
+    let info = Claude::with_bin("sh").sandbox_info();
+    assert!(info.sandboxed && info.push_blocked && !info.writes_outside_copy);
+    for a in adapters(&Settings::default()).iter().filter(|a| a.id() != "claude") {
+        let i = a.sandbox_info();
+        assert!(!i.sandboxed && !i.push_blocked && i.network_open && i.writes_outside_copy, "{}", a.id());
+    }
+    // the two commands the mockup shows, marked as not verified
+    assert_eq!(Cursor::new().install_hint().unwrap(), "curl https://cursor.com/install -fsS | bash (не сверено)");
+    assert_eq!(Qwen::new().install_hint().unwrap(), "npm install -g @qwen-code/qwen-code (не сверено)");
+    assert!(custom("true", None).install_hint().is_none());
+}
+
+// ---- core::models: catalog sources, resolve, retry chain ----
+
+use nightshift_core::model::{Catalog, CatalogSource, EnvSettings, ModelChoice, ModelNote};
+use nightshift_core::models::{catalog, next_on_reject, refresh, resolve, stronger_than};
+use nightshift_core::store::Store;
+
+fn fam(id: &str, versions: &[&str]) -> ModelFamily {
+    ModelFamily {
+        id: id.into(), label: id.to_uppercase(), vendor: "v".into(), blurb: None,
+        versions: versions.iter().map(|s| s.to_string()).collect(), default: false,
+        // test data: the identifier of version v is spelled out here, the code under test never builds one
+        exact: versions.iter().map(|v| (v.to_string(), format!("{id}-{v}"))).collect(),
+    }
+}
+
+fn cat(env: &str, families: Vec<ModelFamily>) -> Catalog {
+    let mut c = Catalog { env: env.into(), families, source: CatalogSource::BuiltIn, at: Local::now() };
+    // the same pseudo entries every real catalog has: build it through the public path
+    let d = tempfile::tempdir().unwrap();
+    let store = Store::open(d.path()).unwrap();
+    store.set_catalog(c.clone()).unwrap();
+    let a = FakeAdapter::new(vec![]);
+    c = catalog(env, &a, &store);
+    c
+}
+
+fn pick(f: &str, v: Option<&str>) -> ModelChoice {
+    ModelChoice { family: f.into(), version: v.map(String::from) }
+}
+
+#[test]
+fn catalog_uses_the_snapshot_when_the_cli_fails_and_the_hint_list_without_one() {
+    let d = tempfile::tempdir().unwrap();
+    let store = Store::open(d.path()).unwrap();
+    // no snapshot, CLI fails: the built-in hint list (Claude), marked as such
+    let c = catalog("claude", &Claude::with_bin("ns-no-such-bin"), &store);
+    assert_eq!(c.source, CatalogSource::BuiltIn);
+    assert_eq!(c.families[0].id, "default", "CLI default comes first");
+    assert!(c.families[0].default && c.families.iter().filter(|f| f.default).count() == 1);
+    assert_eq!(ids(&c.families)[1..4], ["fable", "opus", "sonnet"]);
+    assert_eq!(refresh("claude", &Claude::with_bin("ns-no-such-bin"), &store).source, CatalogSource::BuiltIn);
+
+    // a good list is saved as the snapshot...
+    let ok = FakeAdapter::new(vec![]).with_models(vec![fam("a", &["2", "1"]), fam("b", &[])]);
+    let fresh = refresh("fake", &ok, &store);
+    assert_eq!((fresh.source.clone(), ids(&fresh.families)), (CatalogSource::CliList, vec!["default", "a", "b"]));
+    // ...and when the CLI fails later, the snapshot is what comes back, also after reopening the store
+    let broken = FakeAdapter::new(vec![]);
+    drop(store);
+    let store = Store::open(d.path()).unwrap();
+    let again = refresh("fake", &broken, &store);
+    assert_eq!((again.source, ids(&again.families)), (CatalogSource::Snapshot, vec!["default", "a", "b"]));
+    assert_eq!(catalog("fake", &broken, &store).families, again.families);
+    // an env with neither a list nor hints has only the pseudo entries
+    let none = catalog("codex", &Codex::with_bin("ns-no-such-bin"), &store);
+    assert_eq!((none.source, ids(&none.families)), (CatalogSource::Manual, vec!["default"]));
+}
+
+#[test]
+fn own_models_are_added_to_every_catalog() {
+    let d = tempfile::tempdir().unwrap();
+    let mut store = Store::open(d.path()).unwrap();
+    let mut s = store.settings();
+    s.envs.insert("claude".into(), EnvSettings { custom_models: vec!["my-org/tuned-1".into()], ..EnvSettings::default() });
+    store.set_settings(s).unwrap();
+    let c = catalog("claude", &Claude::new(), &store);
+    assert_eq!(c.families.last().unwrap().id, "my-org/tuned-1");
+    assert_eq!(c.families.last().unwrap().vendor, "custom");
+    // an own model goes to the CLI as typed
+    assert_eq!(resolve(&c, &pick("my-org/tuned-1", None)).cli_arg.as_deref(), Some("my-org/tuned-1"));
+}
+
+#[test]
+fn latest_is_the_alias_at_claude_and_the_first_version_elsewhere() {
+    let claude = cat("claude", vec![fam("opus", &["5.5", "4.8"])]);
+    let r = resolve(&claude, &pick("opus", None));
+    assert_eq!((r.cli_arg.as_deref(), r.note), (Some("opus"), None));
+    let codex = cat("codex", vec![fam("gpt", &["5.1", "5"])]);
+    let r = resolve(&codex, &pick("gpt", None));
+    assert_eq!((r.cli_arg.as_deref(), r.label.as_str(), r.note), (Some("gpt-5.1"), "GPT 5.1", None));
+    // no versions known: the family id is the name
+    let r = resolve(&cat("qwen", vec![fam("qwen3-coder-plus", &[])]), &pick("qwen3-coder-plus", None));
+    assert_eq!(r.cli_arg.as_deref(), Some("qwen3-coder-plus"));
+    // CLI default: no flag
+    assert_eq!(resolve(&claude, &pick("default", None)).cli_arg, None);
+}
+
+#[test]
+fn a_pinned_older_version_says_a_newer_one_exists() {
+    let c = cat("codex", vec![fam("gpt", &["5.1", "5"])]);
+    let r = resolve(&c, &pick("gpt", Some("5")));
+    assert_eq!((r.cli_arg.as_deref(), r.note), (Some("gpt-5"), Some(ModelNote::Newer("5.1".into()))));
+    let r = resolve(&c, &pick("gpt", Some("5.1")));
+    assert_eq!(r.note, None, "the newest has nothing newer");
+}
+
+#[test]
+fn a_removed_version_moves_to_the_next_newer_one_else_the_newest() {
+    let c = cat("codex", vec![fam("gpt", &["5.2", "5.1", "4"])]);
+    // 5 is gone: the next newer of the family is 5.1 (not the newest, 5.2)
+    let r = resolve(&c, &pick("gpt", Some("5")));
+    assert_eq!(r.cli_arg.as_deref(), Some("gpt-5.1"));
+    assert_eq!(r.note, Some(ModelNote::Replaced { from: "5".into(), to: "5.1".into() }));
+    // 9 is gone and nothing is newer: the newest of the family
+    let r = resolve(&c, &pick("gpt", Some("9")));
+    assert_eq!(r.note, Some(ModelNote::Replaced { from: "9".into(), to: "5.2".into() }));
+    // versions compare as numbers: 5.10 is newer than 5.9
+    let c = cat("codex", vec![fam("gpt", &["5.10", "5.9"])]);
+    assert_eq!(resolve(&c, &pick("gpt", Some("5.8"))).note, Some(ModelNote::Replaced { from: "5.8".into(), to: "5.9".into() }));
+    // a family the catalog does not know is not started under a made-up name
+    let r = resolve(&c, &pick("mystery", Some("1")));
+    assert_eq!((r.cli_arg, r.note), (None, Some(ModelNote::Rejected { tried: "mystery 1".into() })));
+    // a listed family without versions cannot name a pinned one: its own id, noted
+    let flat = cat("qwen", vec![fam("qwen3-coder-plus", &[])]);
+    let r = resolve(&flat, &pick("qwen3-coder-plus", Some("9")));
+    assert_eq!((r.cli_arg.as_deref(), r.note), (Some("qwen3-coder-plus"), Some(ModelNote::Replaced { from: "9".into(), to: "latest".into() })));
+}
+
+#[test]
+fn a_refused_model_is_retried_as_latest_of_the_family_then_without_a_flag() {
+    let c = cat("codex", vec![fam("gpt", &["5.1", "5"]), fam("qwen", &[])]);
+    let step1 = next_on_reject(&c, &pick("gpt", Some("5"))).unwrap();
+    assert_eq!(step1, pick("gpt", None));
+    let step2 = next_on_reject(&c, &step1).unwrap();
+    assert_eq!(step2, pick("default", None));
+    assert_eq!(resolve(&c, &step2).cli_arg, None);
+    assert_eq!(next_on_reject(&c, &step2), None, "nothing left after the CLI default");
+    // pinned to the newest already: "latest" would be the same model, straight to no flag
+    assert_eq!(next_on_reject(&c, &pick("gpt", Some("5.1"))), Some(pick("default", None)));
+    assert_eq!(next_on_reject(&c, &pick("qwen", None)), Some(pick("default", None)));
+}
+
+#[test]
+fn stronger_is_the_first_listed_model_that_is_not_the_current_one() {
+    let c = cat("claude", vec![fam("fable", &[]), fam("opus", &[]), fam("sonnet", &[])]);
+    assert_eq!(stronger_than(&c, &pick("sonnet", None)), Some(pick("fable", None)));
+    assert_eq!(stronger_than(&c, &pick("fable", None)), Some(pick("opus", None)));
+    assert_eq!(stronger_than(&c, &pick("default", None)), Some(pick("fable", None)), "the CLI default is not a model of the list");
+    assert_eq!(stronger_than(&cat("codex", vec![]), &pick("x", None)), None);
+}
+
+#[test]
+fn codex_run_fails_loudly_when_the_schema_file_cannot_be_written() {
+    let d = tempfile::tempdir().unwrap();
+    let blocker = d.path().join("not-a-dir");
+    std::fs::write(&blocker, "x").unwrap(); // a file where the folder must be
+    let mut r = run(Role::Worker);
+    r.cwd = d.path().to_path_buf();
+    r.json_schema = Some("{}".into());
+    let codex = Codex::with_bin("codex").with_schema_dir(&blocker.join("schemas"));
+    let evs = run_blocking(&codex, &r, &mut |_| {}, &AtomicBool::new(false)).unwrap();
+    let [AgentEvent::Done { is_error: true, text, .. }] = evs.as_slice() else { panic!("{evs:?}") };
+    assert!(text.contains("cannot write the answer schema file"), "{text}");
+}
+
+#[test]
+fn broad_words_in_the_tail_of_the_output_are_not_a_login_or_model_error() {
+    // a failed run whose own error is plain, but whose log tail mentions unauthorized / invalid model (test output)
+    let all = "{\"type\":\"error\",\"message\":\"turn failed\"}\ntest auth::unauthorized_is_rejected ... ok\nassert invalid model name rejected\n";
+    let evs = Codex::new().finish(false, all);
+    assert!(matches!(evs.as_slice(), [AgentEvent::Done { is_error: true, .. }]), "{evs:?}");
+    // the same words in the CLI's own error message do count
+    let own = "{\"type\":\"error\",\"message\":\"401 Unauthorized\"}\n";
+    assert!(matches!(Codex::new().finish(false, own).as_slice(), [AgentEvent::AuthRequired(_)]));
 }

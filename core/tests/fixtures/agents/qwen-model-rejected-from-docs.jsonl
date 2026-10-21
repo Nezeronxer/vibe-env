@@ -1,0 +1,1 @@
+{"type":"result","subtype":"error_during_execution","session_id":"q-1","is_error":true,"error":{"message":"Model qwen-nope not found. Please check the model name."}}

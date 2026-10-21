@@ -3,7 +3,9 @@
 //! --permission-mode (plan | bypassPermissions), --settings <json>, --append-system-prompt, --resume.
 //! Settings keys (permissions.deny, sandbox.*) confirmed in code.claude.com/docs (settings, sandboxing).
 use super::common::*;
-use crate::agent::{Adapter, AgentEvent, Role, Run};
+use crate::agent::{Adapter, AgentEvent, Run, SandboxInfo};
+use crate::model::{LimitWindow, ModelFamily};
+use chrono::{Local, TimeZone};
 use regex::Regex;
 use serde_json::json;
 use std::collections::HashMap;
@@ -104,8 +106,19 @@ impl Adapter for Claude {
     fn command(&self, run: &Run) -> Command {
         let mut c = Command::new(find_bin(&self.bin).unwrap_or_else(|| self.bin.clone().into()));
         c.current_dir(&run.cwd).args(["-p", "--output-format", "stream-json", "--verbose"]);
-        let mode = if run.role == Role::Reviewer { "plan" } else { "bypassPermissions" };
+        let mode = if run.is_read_only() { "plan" } else { "bypassPermissions" };
         c.args(["--permission-mode", mode, "--settings", &settings_json(supports_wildcard_domain(&self.bin))]);
+        if let Some(m) = &run.model {
+            c.args(["--model", m]);
+        }
+        if let Some(s) = &run.json_schema {
+            c.args(["--json-schema", s]);
+        }
+        if let Some(b) = run.max_budget_usd {
+            c.args(["--max-budget-usd", &b.to_string()]);
+        }
+        c.envs(run.extra_env.iter().map(|(k, v)| (k, v)));
+        c.args(&run.extra_args);
         if !run.system.trim().is_empty() {
             c.args(["--append-system-prompt", &run.system]);
         }
@@ -116,11 +129,102 @@ impl Adapter for Claude {
         c
     }
     fn parse(&self, line: &str) -> Vec<AgentEvent> {
-        parse_line(line)
+        let Some(j) = json_line(line) else { return vec![] };
+        match j["type"].as_str() {
+            Some("rate_limit_event") => rate_limit_events(&j["rate_limit_info"], Local::now()),
+            Some("result") => {
+                // cost comes before Done, so the engine has it when the run ends
+                let cost = j["total_cost_usd"].as_f64().map(AgentEvent::Cost);
+                cost.into_iter().chain(parse_line(line)).collect()
+            }
+            _ => parse_line(line),
+        }
     }
     fn finish(&self, exit_ok: bool, all_text: &str) -> Vec<AgentEvent> {
         finish_without_result(exit_ok, all_text)
     }
+    fn reports_cost(&self) -> bool {
+        true
+    }
+    fn read_only_native(&self) -> bool {
+        true
+    }
+    fn install_hint(&self) -> Option<String> {
+        Some("npm i -g @anthropic-ai/claude-code (не сверено)".into())
+    }
+    fn sandbox_info(&self) -> SandboxInfo {
+        let note = self.network_note();
+        SandboxInfo { sandboxed: true, push_blocked: self.guarded(), network_open: note.is_none(), writes_outside_copy: false, note }
+    }
+    fn interactive_resume(&self, session: &str, cwd: &std::path::Path) -> Option<Command> {
+        let mut c = Command::new(find_bin(&self.bin).unwrap_or_else(|| self.bin.clone().into()));
+        c.current_dir(cwd).args(["--resume", valid_session(session)?]);
+        Some(c)
+    }
+    /// No list command in the CLI (`claude --help`); aliases are "the latest model" of a family.
+    /// Versions and identifiers: Claude Platform docs (models overview, "Model IDs and versioning",
+    /// model-deprecations), read 2026-10-21, not checked against the CLI. Identifier rule from the docs:
+    /// `claude-{name}-{major}[-{minor}]`; `claude-opus-5-5` was also seen live in the init event of the
+    /// saved run. Order (fable, opus, sonnet, haiku) = the docs' comparison table, strongest first.
+    fn builtin_models(&self) -> Vec<ModelFamily> {
+        let note = |b: &str| format!("{b} (Anthropic docs, 2026-10-21; не сверено с CLI)");
+        vec![
+            builtin_family("fable", "Fable", "anthropic", &note("Demanding reasoning, long agentic work."), &[("5.1", "claude-fable-5-1")]),
+            builtin_family(
+                "opus",
+                "Opus",
+                "anthropic",
+                &note("Long-running agentic coding and knowledge work."),
+                &[("5.5", "claude-opus-5-5"), ("5", "claude-opus-5"), ("4.8", "claude-opus-4-8"), ("4.7", "claude-opus-4-7"), ("4.6", "claude-opus-4-6")],
+            ),
+            builtin_family(
+                "sonnet",
+                "Sonnet",
+                "anthropic",
+                &note("Speed and intelligence."),
+                &[("5.5", "claude-sonnet-5-5"), ("5", "claude-sonnet-5"), ("4.6", "claude-sonnet-4-6")],
+            ),
+            builtin_family("haiku", "Haiku", "anthropic", &note("High-volume, latency-sensitive tasks."), &[("5.5", "claude-haiku-5-5"), ("4.5", "claude-haiku-4-5")]),
+        ]
+    }
+}
+
+/// `rate_limit_event` -> Usage (the 5 h and weekly windows); a status other than allowed -> Limit too.
+/// `utilization` is a share 0..1, `resetsAt` Unix seconds (research-clis, "Проверено живым запуском").
+fn rate_limit_events(info: &serde_json::Value, now: chrono::DateTime<Local>) -> Vec<AgentEvent> {
+    let at = |v: &serde_json::Value| v.as_i64().and_then(|t| Local.timestamp_opt(t, 0).single());
+    let status = info["status"].as_str().unwrap_or("allowed");
+    // unverified: "allowed_warning" is a warning, not a stop (only the plain "allowed" is documented in the brief)
+    let blocked = !status.starts_with("allowed");
+    let hit = info["rateLimitType"].as_str();
+    let mut windows = vec![];
+    for name in ["five_hour", "seven_day"] {
+        let w = &info["unifiedWindows"][name];
+        let Some(used) = w["utilization"].as_f64() else { continue };
+        windows.push(LimitWindow {
+            name: name.into(),
+            model: None,
+            used_pct: Some((used * 100.0) as f32),
+            remaining: None,
+            resets_at: at(&w["resetsAt"]),
+            exhausted: used >= 1.0 || (blocked && hit == Some(name)),
+            source: "rate_limit_event".into(),
+            seen_at: now,
+        });
+    }
+    let mut out = vec![];
+    if !windows.is_empty() {
+        out.push(AgentEvent::Usage(windows));
+    }
+    if blocked {
+        out.push(AgentEvent::Limit { resets_at: at(&info["resetsAt"]) });
+    }
+    out
+}
+
+/// The id only if it is safe to put into a terminal command.
+pub(super) fn valid_session(s: &str) -> Option<&str> {
+    valid_session_id(s).then_some(s)
 }
 
 /// Claude-style stream-json (also spoken by Qwen Code): assistant / result events.
@@ -150,8 +254,12 @@ pub fn parse_line(line: &str) -> Vec<AgentEvent> {
                 .trim()
                 .to_string();
             if is_error {
-                if let Some(resets_at) = detect_limit(&text) {
-                    return vec![AgentEvent::Limit { resets_at }];
+                // unverified: the shape of the rate_limit error category (headless docs name only the word)
+                let category = [&j["error"], &j["error_category"], &j["category"]].iter().any(|v| *v == "rate_limit");
+                match classify_failure(&text, "") {
+                    AgentEvent::Done { .. } if category => return vec![AgentEvent::Limit { resets_at: None }],
+                    AgentEvent::Done { .. } => {}
+                    other => return vec![other],
                 }
             }
             vec![AgentEvent::Done { session: j["session_id"].as_str().map(String::from), text, is_error }]

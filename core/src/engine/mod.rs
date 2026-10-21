@@ -198,6 +198,7 @@ impl Engine {
             created_at: self.now(),
             started_at: None,
             finished_at: None,
+            ..Task::default()
         };
         self.save(&task)?;
         Ok(id)
@@ -569,7 +570,7 @@ impl Engine {
     }
 
     fn log(&self, id: &str, kind: LogKind, text: &str) {
-        let ev = LogEvent { at: self.now(), kind, text: text.to_string() };
+        let ev = LogEvent::new(self.now(), kind, text);
         let _ = lk(&self.store).append_log(id, &ev);
         self.emit(EngineEvent::Log(id.to_string(), ev));
     }

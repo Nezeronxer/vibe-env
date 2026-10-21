@@ -172,6 +172,9 @@ impl Engine {
                 self.log(&id, if *is_error { LogKind::Error } else { kind.clone() }, text)
             }
             AgentEvent::Limit { .. } => self.log(&id, LogKind::Stage, "usage limit reached"),
+            // v2 events: the engine does not act on them yet (task 09)
+            AgentEvent::Usage(_) | AgentEvent::Cost(_) => {}
+            AgentEvent::ModelRejected(m) | AgentEvent::AuthRequired(m) => self.log(&id, LogKind::Error, m),
         };
         let res = agent::run_blocking(a, run, &mut on, cancel);
         if cancel.load(Ordering::SeqCst) {
@@ -194,7 +197,8 @@ impl Engine {
             text = format!("{}\n\n{text}", t.prompt); // no session to resume: restate the task
         }
         self.stage(t, &format!("working ({})", t.agent));
-        let run = Run { cwd: wt.clone(), prompt: text, system: worker_system(), resume: t.session.clone(), role: Role::Worker };
+        let mut run = Run::new(wt.clone(), text, worker_system(), Role::Worker);
+        run.resume = t.session.clone();
         let Some(events) = self.run_agent(t, &*a, &run, cancel) else { return Ok(Flow::Stop) };
 
         let done = events.iter().rev().find_map(|e| match e {
@@ -346,7 +350,8 @@ impl Engine {
         let mut verdict = None;
         for round in 0..2 {
             let text = if round == 0 { base.clone() } else { review_retry_prompt(&base) };
-            let run = Run { cwd: wt.clone(), prompt: text, system: reviewer_system(), resume: None, role: Role::Reviewer };
+            let mut run = Run::new(wt.clone(), text, reviewer_system(), Role::Reviewer);
+            run.read_only = true;
             let Some(events) = self.run_agent(t, &*a, &run, cancel) else { return Ok(Flow::Stop) };
             if let Some(resets) = limit_of(&events) {
                 return self.on_limit(t, p, resets, Status::Reviewing);

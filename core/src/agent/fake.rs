@@ -2,6 +2,8 @@
 //! The script runs as a real `sh` process (writes files into the run's cwd and prints one JSON
 //! line per event), so `run_blocking`, cancel and the git worktree behave as with a real CLI.
 use super::{Adapter, AgentEvent, Run};
+use crate::model::{LimitWindow, ModelFamily, RoleKind};
+use std::collections::HashMap;
 use std::process::Command;
 use std::sync::Mutex;
 
@@ -17,18 +19,93 @@ pub enum FakeStep {
     Fail,
     /// Extra over interfaces.md: pause for N ms (lets tests exercise cancel).
     Sleep(u64),
+    /// Limit windows the env reports during the run.
+    Usage(Vec<LimitWindow>),
+    /// Cost of the run in USD.
+    Cost(f64),
+    /// The CLI refuses the model; the text is what it said.
+    RejectModel(String),
+    /// The CLI is not logged in.
+    Auth(String),
+}
+
+/// Which runs a role script answers: a role, and optionally one swarm variant.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+struct Key {
+    role: RoleKind,
+    variant: Option<String>,
 }
 
 pub struct FakeAdapter {
     id: String,
     scripts: Vec<Vec<FakeStep>>,
+    /// Per (role, variant) queues, consumed in order by the runs that match.
+    by_role: HashMap<Key, Vec<Vec<FakeStep>>>,
+    models: Option<Vec<ModelFamily>>,
+    read_only_native: bool,
     calls: Mutex<Vec<Run>>,
+    /// How many runs each queue has served, and how many went to `scripts`.
+    served: Mutex<(HashMap<Key, usize>, usize)>,
 }
 
 impl FakeAdapter {
     /// One script per invocation; when exhausted, further invocations just say "ok".
     pub fn new(scripts: Vec<Vec<FakeStep>>) -> FakeAdapter {
-        FakeAdapter { id: "fake".into(), scripts, calls: Mutex::new(vec![]) }
+        FakeAdapter {
+            id: "fake".into(),
+            scripts,
+            by_role: HashMap::new(),
+            models: None,
+            read_only_native: false,
+            calls: Mutex::new(vec![]),
+            served: Mutex::new((HashMap::new(), 0)),
+        }
+    }
+    /// Scripts for runs of `role`, in order. They win over the plain list given to `new`.
+    pub fn with_role(mut self, role: RoleKind, scripts: Vec<Vec<FakeStep>>) -> FakeAdapter {
+        self.by_role.insert(Key { role, variant: None }, scripts);
+        self
+    }
+    /// Scripts for one swarm variant of `role`; a run belongs to the variant when its `model` equals
+    /// `variant` or a component of its cwd does. Wins over `with_role`. Order of runs across variants
+    /// does not matter, each variant has its own queue.
+    pub fn with_variant(mut self, role: RoleKind, variant: &str, scripts: Vec<Vec<FakeStep>>) -> FakeAdapter {
+        self.by_role.insert(Key { role, variant: Some(variant.to_string()) }, scripts);
+        self
+    }
+    /// What `models()` returns (default: Err, like Claude, Gemini and Qwen).
+    pub fn with_models(mut self, models: Vec<ModelFamily>) -> FakeAdapter {
+        self.models = Some(models);
+        self
+    }
+    pub fn with_read_only_native(mut self, yes: bool) -> FakeAdapter {
+        self.read_only_native = yes;
+        self
+    }
+    fn script_for(&self, run: &Run) -> Vec<FakeStep> {
+        let in_cwd = |v: &str| run.cwd.components().any(|c| c.as_os_str() == v);
+        let variant = self
+            .by_role
+            .keys()
+            .find(|k| k.role == run.role && k.variant.as_ref().is_some_and(|v| run.model.as_deref() == Some(v) || in_cwd(v)))
+            .cloned();
+        let key = variant.or_else(|| {
+            let k = Key { role: run.role, variant: None };
+            self.by_role.contains_key(&k).then_some(k)
+        });
+        let mut served = self.served.lock().unwrap();
+        let step = match key {
+            Some(k) => {
+                let n = served.0.entry(k.clone()).or_insert(0);
+                *n += 1;
+                self.by_role[&k].get(*n - 1).cloned()
+            }
+            None => {
+                served.1 += 1;
+                self.scripts.get(served.1 - 1).cloned()
+            }
+        };
+        step.unwrap_or_else(|| vec![FakeStep::Done("ok".into())])
     }
     pub fn with_id(mut self, id: &str) -> FakeAdapter {
         self.id = id.to_string();
@@ -60,7 +137,7 @@ impl Adapter for FakeAdapter {
             c.push(run.clone());
             c.len() - 1
         };
-        let steps = self.scripts.get(n).cloned().unwrap_or_else(|| vec![FakeStep::Done("ok".into())]);
+        let steps = self.script_for(run);
         let session = run.resume.clone().unwrap_or_else(|| format!("fake-session-{n}"));
         let mut sh = String::new();
         for s in steps {
@@ -80,6 +157,10 @@ impl Adapter for FakeAdapter {
                 }
                 FakeStep::Limit => sh.push_str(&ev(serde_json::json!({"t":"limit"}))),
                 FakeStep::Fail => sh.push_str("exit 1\n"),
+                FakeStep::Usage(w) => sh.push_str(&ev(serde_json::json!({"t":"usage","windows":w}))),
+                FakeStep::Cost(c) => sh.push_str(&ev(serde_json::json!({"t":"cost","usd":c}))),
+                FakeStep::RejectModel(m) => sh.push_str(&ev(serde_json::json!({"t":"reject_model","text":m}))),
+                FakeStep::Auth(m) => sh.push_str(&ev(serde_json::json!({"t":"auth","text":m}))),
                 FakeStep::Sleep(ms) => sh.push_str(&format!("sleep {}\n", ms as f64 / 1000.0)),
             }
         }
@@ -99,8 +180,21 @@ impl Adapter for FakeAdapter {
                 is_error: false,
             }],
             Some("limit") => vec![AgentEvent::Limit { resets_at: None }],
+            Some("usage") => serde_json::from_value(v["windows"].clone()).map(AgentEvent::Usage).into_iter().collect(),
+            Some("cost") => v["usd"].as_f64().map(AgentEvent::Cost).into_iter().collect(),
+            Some("reject_model") => vec![AgentEvent::ModelRejected(s("text"))],
+            Some("auth") => vec![AgentEvent::AuthRequired(s("text"))],
             _ => vec![],
         }
+    }
+    fn models(&self) -> Result<Vec<ModelFamily>, String> {
+        self.models.clone().ok_or_else(|| "no model list command".to_string())
+    }
+    fn read_only_native(&self) -> bool {
+        self.read_only_native
+    }
+    fn reports_cost(&self) -> bool {
+        true
     }
     fn finish(&self, exit_ok: bool, _all_text: &str) -> Vec<AgentEvent> {
         if exit_ok {
