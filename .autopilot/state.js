@@ -9,7 +9,7 @@ window.STATE =
   "briefFile": "2026-10-21-brief.md",
   "memoryFile": "CLAUDE.md",
   "startedAt": "2026-10-21T08:41:14+03:00",
-  "updatedAt": "2026-10-21T10:14:53+03:00",
+  "updatedAt": "2026-10-21T12:04:29+03:00",
   "finishedAt": null,
   "stages": [
     {
@@ -48,13 +48,13 @@ window.STATE =
       "id": "build",
       "status": "active",
       "startedAt": "2026-10-21T09:02:22+03:00",
-      "note": "1 из 7 тасков готовы"
+      "note": "ядро готово (01-03); интерфейс v2 ждёт «ок» по макету"
     },
     {
       "id": "review",
       "status": "active",
       "startedAt": "2026-10-21T10:07:22+03:00",
-      "note": "проверено 1 из 7"
+      "note": "01, 02, 03, 06 проверены"
     },
     {
       "id": "final",
@@ -62,13 +62,13 @@ window.STATE =
     }
   ],
   "requirements": {
-    "total": 23,
+    "total": 24,
     "done": 1,
     "inTicket": 23,
     "inSpec": 0,
     "placeholder": 0,
     "deferred": 0,
-    "dropped": 0
+    "dropped": 1
   },
   "tickets": [
     {
@@ -131,10 +131,20 @@ window.STATE =
         "core/tests/fixtures/agents/",
         "core/src/agent/"
       ],
-      "status": "in-progress",
+      "status": "done",
       "retries": 0,
-      "repairs": 0,
-      "startedAt": "2026-10-21T10:14:53+03:00"
+      "repairs": 2,
+      "startedAt": "2026-10-21T10:14:53+03:00",
+      "concerns": [
+        "Codex/Gemini/Cursor - флаги только по документации",
+        "коммит ждёт окончания правки agent/mod.rs таском 03"
+      ],
+      "finishedAt": "2026-10-21T12:04:29+03:00",
+      "commit": "3ce27ee",
+      "tests": {
+        "passed": 27,
+        "failed": 0
+      }
     },
     {
       "id": "03",
@@ -175,37 +185,20 @@ window.STATE =
       "zone": [
         "core/src/engine/"
       ],
-      "status": "in-progress",
+      "status": "done",
       "retries": 0,
-      "repairs": 0,
-      "startedAt": "2026-10-21T10:14:53+03:00"
-    },
-    {
-      "id": "04",
-      "title": "Telegram-бот: оповещения, ответы, задачи с телефона",
-      "requirements": [
-        "R07",
-        "R15i",
-        "R15i.1",
-        "R15i.2",
-        "R15i.3",
-        "R15i.4",
-        "R15i.5",
-        "A02",
-        "A03",
-        "G01.1"
+      "repairs": 2,
+      "startedAt": "2026-10-21T10:14:53+03:00",
+      "tests": {
+        "passed": 36,
+        "failed": 0
+      },
+      "concerns": [
+        "в доработку движка v2: тест на не-UTF-8 вывод, тест retry после вливания, ns-hidden: ошибка чтения кроме NotFound → Err",
+        "state между ходами в .pending/<id>.json, не в Task"
       ],
-      "blockedBy": [
-        "01"
-      ],
-      "wave": 2,
-      "zone": [
-        "core/src/telegram/"
-      ],
-      "status": "in-progress",
-      "retries": 0,
-      "repairs": 0,
-      "startedAt": "2026-10-21T10:14:53+03:00"
+      "finishedAt": "2026-10-21T12:04:29+03:00",
+      "commit": "45cc523"
     },
     {
       "id": "05",
@@ -225,7 +218,6 @@ window.STATE =
       "blockedBy": [
         "02",
         "03",
-        "04",
         "06"
       ],
       "wave": 3,
@@ -278,9 +270,15 @@ window.STATE =
       "zone": [
         "ui/"
       ],
-      "status": "pending",
+      "status": "done",
       "retries": 0,
-      "repairs": 0
+      "repairs": 1,
+      "startedAt": "2026-10-21T10:17:09+03:00",
+      "finishedAt": "2026-10-21T10:40:37+03:00",
+      "commit": "6f709b8",
+      "concerns": [
+        "пользователь попросил кардинально переделать интерфейс - это база для переделки"
+      ]
     },
     {
       "id": "07",
@@ -309,12 +307,11 @@ window.STATE =
   ],
   "singlePass": null,
   "tests": {
-    "passed": 40,
+    "passed": 104,
     "failed": 0
   },
   "debt": {
     "placeholders": [
-      "Токен Telegram-бота - вписываешь сам в настройках",
       "Подпись macOS - нужен Apple Developer"
     ],
     "assumptions": [
@@ -326,8 +323,6 @@ window.STATE =
   },
   "additions": [
     "A01 продолжение после лимита - ради R05",
-    "A02 задачи с телефона /new - ради R04",
-    "A03 утренняя сводка - ради R07",
     "A04 время и попытки в карточке - ради R03",
     "A05 запасной движок при лимите - ради R05"
   ],

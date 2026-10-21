@@ -1,14 +1,14 @@
 # 05 - Приложение: окно, трей, горячая клавиша, уведомления
 
 **Требования:** R08, R08.1, R09, R10, R11, R11.1, R11.5, R15i, R18i, R14i.2
-**Blocked by:** 02, 03, 04, 06
-**Зона:** `app/`
+**Blocked by:** 02, 03, 06
+**Зона:** `app/` (+ точечно `ui/app.js` для get_diffstat и task-removed)
 **Волна:** 3
 **Status:** ready
 
 ## Что должно заработать
 
-Крейт `app` на Tauri 2: создаёт `Store` в `app_data_dir()`, собирает `Fanout` из системных уведомлений (tauri-plugin-notification; звук у Question/Failed/Outward) и Telegram (если включён и есть токен), запускает `Engine`, пересылает `EngineEvent` в окно событиями `task-changed` / `task-log` / `project-changed`. Все Tauri-команды из `interfaces.md` - тонкие обёртки над Engine/Store/git/telegram.
+Крейт `app` на Tauri 2: создаёт `Store` в `app_data_dir()`, собирает `Notifier` из системных уведомлений (tauri-plugin-notification; звук у Question/Failed/Outward). Telegram снят пользователем - не подключать, запускает `Engine`, пересылает `EngineEvent` в окно событиями `task-changed` / `task-log` / `project-changed`. Все Tauri-команды из `interfaces.md` - тонкие обёртки над Engine/Store/git/telegram.
 
 Трей/строка меню: значок + на маке текст-счётчик `2 ▶ 1 ?` (только ненулевые части; пусто - без текста), на Linux - то же в подсказке. Меню: Открыть, Новая задача, Пауза всего / Снять паузу, Выход. Закрытие окна прячет окно, задачи идут (на маке - без значка в Dock, пока окно скрыто, если это делается штатно). Глобальная горячая клавиша (tauri-plugin-global-shortcut, из настроек) - показать окно и сфокусировать поле задачи (событие `focus-input`). Клик по системному уведомлению открывает окно на этой задаче, где платформа это поддерживает (иначе - просто окно).
 
@@ -33,3 +33,16 @@
 - [ ] Системное уведомление приходит на Question (проверка вручную на маке, скриншот в отчёт)
 - [ ] Каждая команда из списка `interfaces.md` зарегистрирована (тест/grep по `generate_handler!`)
 - [ ] Второй запуск не создаёт второй экземпляр
+
+## Дополнено после таска 06
+
+- [ ] `tauri.conf.json`: `"withGlobalTauri": true`, `frontendDist` → `../ui`; плагин dialog для «Выбрать папку»; события `tauri://drag-drop` доступны окну
+- [ ] `open_path(path)` открывает и URL (https://…) в браузере - UI так открывает ссылки на репозиторий и PR; только `http(s)://` и существующие локальные пути, ничего другого
+- [ ] `add_project(path)` для папки без git возвращает ошибку с текстом `not a git repo` (UI на это предлагает `init_repo`)
+- [ ] Команда `get_diffstat(taskId) -> [{path, insertions, deletions}]` для списка «Изменения» (git::diffstat по worktree, а для влитой - по коммиту); UI таска 06 дописать вызов не нужно - это делает этот таск в `ui/app.js`, место помечено
+- [ ] Событие `task-removed(id)` после `remove_task`
+- [ ] Счётчик «ждёт тебя» - в заголовке окна и в трее
+- [ ] CSP в `tauri.conf.json`: минимум `default-src 'self'` без `unsafe-inline` для скриптов (ui/ без inline-скриптов); `csp: null` недопустим
+- [ ] capabilities: окну разрешены только нужные плагины (notification, dialog, global-shortcut, event), без shell:allow-execute и fs-wide
+- [ ] При изменении `custom_agents` в настройках адаптеры Engine пересобираются (иначе новая своя команда даёт `agent_not_found`, история 32a)
+- [ ] Предупреждение в выборе движка, если `Adapter::guarded()` = false: «без песочницы и технического запрета push - только правило в промпте»
