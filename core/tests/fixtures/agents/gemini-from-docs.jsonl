@@ -1,0 +1,7 @@
+{"type":"init","timestamp":"2026-10-21T10:00:00.000Z","session_id":"gem-sess-1","model":"gemini-2.5-pro"}
+{"type":"message","timestamp":"2026-10-21T10:00:00.100Z","role":"user","content":"say ok"}
+{"type":"tool_use","timestamp":"2026-10-21T10:00:01.000Z","tool_name":"run_shell_command","tool_id":"t1","parameters":{"command":"ls"}}
+{"type":"tool_result","timestamp":"2026-10-21T10:00:01.500Z","tool_id":"t1","status":"success","output":"a b"}
+{"type":"message","timestamp":"2026-10-21T10:00:02.000Z","role":"assistant","content":"o","delta":true}
+{"type":"message","timestamp":"2026-10-21T10:00:02.100Z","role":"assistant","content":"k","delta":true}
+{"type":"result","timestamp":"2026-10-21T10:00:02.200Z","status":"success","stats":{"total_tokens":10}}

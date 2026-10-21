@@ -4,4 +4,3 @@ pub mod git;
 pub mod model;
 pub mod notify;
 pub mod store;
-pub mod telegram;

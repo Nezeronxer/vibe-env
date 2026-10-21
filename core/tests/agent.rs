@@ -103,3 +103,17 @@ fn cancel_also_kills_grandchildren() {
     }
     assert!(!alive(), "grandchild {pid} survived cancel");
 }
+
+#[test]
+fn leftover_background_process_does_not_hold_run_blocking() {
+    let d = tempfile::tempdir().unwrap();
+    // exits at once, leaving `sleep 30` with the inherited stdout/stderr
+    let a = Sh("sleep 30 & echo $! > bg.pid; echo hi".into());
+    let t = Instant::now();
+    run_blocking(&a, &run_in(d.path()), &mut |_| {}, &AtomicBool::new(false)).unwrap();
+    assert!(t.elapsed() < Duration::from_secs(5), "took {:?}", t.elapsed());
+    let pid = std::fs::read_to_string(d.path().join("bg.pid")).unwrap().trim().to_string();
+    std::thread::sleep(Duration::from_millis(200));
+    let alive = std::process::Command::new("kill").args(["-0", &pid]).output().unwrap().status.success();
+    assert!(!alive, "background process {pid} survived");
+}

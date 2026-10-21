@@ -1,0 +1,5 @@
+{"type":"system","subtype":"init","uuid":"u0","session_id":"qwen-sess-1","cwd":"/work","tools":["run_shell_command"],"model":"qwen3-coder-plus"}
+{"type":"assistant","uuid":"u1","session_id":"qwen-sess-1","message":{"id":"m1","type":"message","role":"assistant","model":"qwen3-coder-plus","content":[{"type":"tool_use","id":"t1","name":"run_shell_command","input":{"command":"ls"}}]}}
+{"type":"user","uuid":"u2","session_id":"qwen-sess-1","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"t1","content":"a b"}]}}
+{"type":"assistant","uuid":"u3","session_id":"qwen-sess-1","message":{"id":"m2","type":"message","role":"assistant","content":[{"type":"text","text":"ok"}]}}
+{"type":"result","subtype":"success","uuid":"u4","session_id":"qwen-sess-1","is_error":false,"duration_ms":900,"num_turns":2,"result":"ok","usage":{"input_tokens":10,"output_tokens":2}}
