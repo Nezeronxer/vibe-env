@@ -9,7 +9,7 @@ window.STATE =
   "briefFile": "2026-10-21-brief.md",
   "memoryFile": "CLAUDE.md",
   "startedAt": "2026-10-21T08:41:14+03:00",
-  "updatedAt": "2026-10-21T21:00:58+03:00",
+  "updatedAt": "2026-10-21T21:01:10+03:00",
   "finishedAt": null,
   "stages": [
     {
@@ -323,9 +323,10 @@ window.STATE =
         "docs/",
         "scripts/install.sh"
       ],
-      "status": "pending",
+      "status": "in-progress",
       "retries": 0,
-      "repairs": 0
+      "repairs": 0,
+      "startedAt": "2026-10-21T21:01:10+03:00"
     },
     {
       "id": "08",
