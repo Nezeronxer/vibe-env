@@ -9,7 +9,7 @@ window.STATE =
   "briefFile": "2026-10-21-brief.md",
   "memoryFile": "CLAUDE.md",
   "startedAt": "2026-10-21T08:41:14+03:00",
-  "updatedAt": "2026-10-21T15:27:27+03:00",
+  "updatedAt": "2026-10-21T15:39:32+03:00",
   "finishedAt": null,
   "stages": [
     {
@@ -49,13 +49,13 @@ window.STATE =
       "id": "build",
       "status": "active",
       "startedAt": "2026-10-21T09:02:22+03:00",
-      "note": "готовы 01-03, 05, 06, 08, 14; волна 5: движок v2, наборы, интерфейс часть 2"
+      "note": "готовы 01-03, 05, 06, 08, 12, 14, 15; идёт движок v2"
     },
     {
       "id": "review",
       "status": "active",
       "startedAt": "2026-10-21T10:07:22+03:00",
-      "note": "проверены 01-03, 05, 06, 08, 14"
+      "note": "проверены все готовые"
     },
     {
       "id": "final",
@@ -787,7 +787,7 @@ window.STATE =
     {
       "id": "15",
       "retries": 0,
-      "repairs": 1,
+      "repairs": 2,
       "title": "Интерфейс v2, часть 2: рой, фабрика, настройки, наборы и импорт, «Пока тебя не было»",
       "requirements": [
         "R10.1",
@@ -848,12 +848,18 @@ window.STATE =
         "ui/"
       ],
       "wave": 5,
-      "status": "repair",
+      "status": "done",
       "startedAt": "2026-10-21T14:19:01+03:00",
       "tests": {
-        "passed": 156,
+        "passed": 148,
         "failed": 0
-      }
+      },
+      "finishedAt": "2026-10-21T15:39:32+03:00",
+      "commit": "dd28ba9",
+      "concerns": [
+        "работает на dev-mock до таска 13",
+        "нет полей ядра: модели вариантов роя, «понятно» о песочнице, признак Wayland"
+      ]
     }
   ],
   "singlePass": null,
