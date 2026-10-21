@@ -31,6 +31,7 @@
     <symbol id="e-custom" viewBox="0 0 16 16"><rect x="2" y="2" width="12" height="12" rx="1" fill="none" stroke="currentColor" stroke-width="1.5" stroke-dasharray="2.4 1.8"/><path d="M8 5.2v5.6M5.2 8h5.6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></symbol>
     <!-- интерфейс -->
     <symbol id="i-chat" viewBox="0 0 16 16"><path d="M2 3h12v8H7l-3 2.6V11H2z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></symbol>
+    <symbol id="i-lock" viewBox="0 0 16 16"><rect x="3" y="7" width="10" height="7.5" rx="1"/><path d="M5.2 7V5a2.8 2.8 0 0 1 5.6 0v2" fill="none" stroke="currentColor" stroke-width="1.6"/></symbol>
     <symbol id="i-moon" viewBox="0 0 16 16"><path d="M13.2 10.4A6 6 0 0 1 5.6 2.8a6 6 0 1 0 7.6 7.6z"/></symbol>
     <symbol id="i-bolt" viewBox="0 0 16 16"><path d="M9.4 1 3 9.2h4.2L6.4 15 13 6.6H8.8z"/></symbol>
     <symbol id="i-swarm" viewBox="0 0 16 16"><circle cx="4" cy="4.2" r="2.2"/><circle cx="12" cy="4.2" r="2.2"/><circle cx="8" cy="11.8" r="2.2"/><path d="M4 4.2 8 11.8 12 4.2" fill="none" stroke="currentColor" stroke-width="1.2"/></symbol>
@@ -59,7 +60,7 @@
   <nav class="mockbar-nav" id="mocknav" aria-label="Экраны макета">
     <a href="#main" data-s="main">Главный</a>
     <a href="#main~m" data-s="model">Выбор модели</a>
-    <a href="#lanes" data-s="lanes">Задача раскрыта</a>
+    <a href="#task" data-s="task">Задача раскрыта</a>
     <a href="#swarm" data-s="swarm">Рой</a>
     <a href="#factory" data-s="factory">Фабрика</a>
     <a href="#settings" data-s="settings">Настройки</a>
@@ -147,7 +148,7 @@
     <section class="swarm-main">
       <header class="page-h">
         <div>
-          <span class="st st-run"><svg class="ic"><use href="#i-swarm"/></svg>Рой · Соревнование ×3</span>
+          <span class="st st-run"><svg class="ic"><use href="#i-swarm"/></svg>Рой Claude Code · Соревнование ×3</span>
           <h1>Лимит запросов для приёма вебхуков</h1>
         </div>
         <button class="btn">Остановить рой</button>
@@ -155,10 +156,11 @@
 
       <div class="verdict">
         <svg class="rl r-rev"><use href="#i-rev"/></svg>
-        <p><b>Ревьюер советует вариант A.</b> Счётчик переживает рестарт и считает атомарно. Нет ответа 10 минут - беру A сам.</p>
+        <p><b>Ревьюер (Opus 5.5, отдельный запуск) советует вариант A.</b> Счётчик переживает рестарт и считает атомарно. Нет ответа 10 минут - беру A сам.</p>
         <button class="btn primary" id="pickA">Взять A</button>
       </div>
 
+      <section class="sw-race"><h2>Гонка <span class="hint">каждый вариант - отдельный запуск Claude Code в своём worktree</span></h2><div id="swarmLanes"></div></section>
       <div class="tabs flat" id="swTabs"><button class="on" data-w="v">Варианты</button><button data-w="c">Обсуждение<small>7</small></button></div>
       <div class="variants" id="variants"></div>
       <section class="swarm-chat" id="swarmChatWrap" hidden>
@@ -175,24 +177,21 @@
   <!-- ФАБРИКА: все среды -->
   <main class="screen screen-factory" id="screen-factory" hidden>
     <header class="fact-h">
-      <div><h1>Фабрика</h1><span class="hint">Все среды сразу</span></div>
-      <div class="fact-stats">
-        <div><span>Работают</span><b>4 из 7</b></div>
-        <div><span>Сегодня</span><b>$12.40 из $40</b></div>
-      </div>
+      <div><h1>Фабрика</h1><span class="hint" id="factSub"></span></div>
+      <div class="fact-stats" id="factStats"></div>
       <span class="grow"></span>
       <button class="btn danger"><svg class="ic"><use href="#i-pause"/></svg>Заморозить всё</button>
     </header>
     <div class="strip" id="strip"></div>
     <div class="fact-grid">
       <section class="fpanel" aria-labelledby="fc">
-        <h2 id="fc">Поручения</h2>
+        <h2 id="fc">Задачи среды</h2>
         <form class="oneline" onsubmit="return false">
           <label class="sr-only" for="ol">Поручение одной фразой</label>
           <input id="ol" type="text" placeholder="Одной фразой: «подготовь релиз 2.4»">
           <button class="btn primary" type="submit">Поручить</button>
         </form>
-        <div id="convoys"></div>
+        <div id="factLanes"></div>
       </section>
       <section class="fpanel" aria-labelledby="ff">
         <div class="fpanel-h">
@@ -222,6 +221,7 @@
           <h2><span class="num">1</span>Среда</h2>
           <p class="hint">Нашли на этом компьютере. Потом можно добавить другие.</p>
           <div class="envcards" id="onbEnvs"></div>
+          <p class="onb-found" id="onbFound"></p>
         </li>
         <li>
           <h2><span class="num">2</span>Модель <span class="hint" id="onbEnvName"></span></h2>

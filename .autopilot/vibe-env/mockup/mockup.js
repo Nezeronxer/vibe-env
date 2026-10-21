@@ -25,23 +25,25 @@
   var ORDER = ['claude', 'codex', 'gemini', 'opencode', 'cursor', 'qwen', 'custom'];
   var ENVS = {
     claude: { n: 'Claude Code', s: 'Claude', ver: '2.1.4', sandbox: true, net: 'по списку', files: 'запрещены', def: 1,
-      models: [['Opus', 'Сильнее всех и дороже. Сложное и рискованное.'], ['Sonnet', 'Баланс скорости и качества. Подходит почти всегда.'], ['Haiku', 'Быстро и дёшево. Мелкие правки.']] },
+      models: [['Opus', 'Сильнее всех и дороже. Сложное и рискованное.', ['5.5', '4.8', '4.5']], ['Sonnet', 'Баланс скорости и качества. Подходит почти всегда.', ['5.5', '4.6', '4.5']], ['Haiku', 'Быстро и дёшево. Мелкие правки.', ['5.5', '4.5']]] },
     codex: { n: 'Codex', s: 'Codex', ver: '0.48', sandbox: true, net: 'выключена', files: 'запрещены', def: 0,
-      models: [['gpt-5-codex', 'Заточена под код. Хороший выбор по умолчанию.'], ['gpt-5', 'Глубже рассуждает, медленнее.'], ['gpt-5-mini', 'Быстро и дёшево.']] },
+      models: [['GPT-Codex', 'Заточена под код. Хороший выбор по умолчанию.', ['5.1', '5']], ['GPT', 'Глубже рассуждает, медленнее.', ['5.1', '5']], ['GPT mini', 'Быстро и дёшево.', ['5.1', '5']]] },
     gemini: { n: 'Gemini', s: 'Gemini', ver: '0.9', sandbox: false, net: 'открыта', files: 'читает', def: 0,
-      models: [['2.5 Pro', 'Сильнее, очень длинный контекст.'], ['2.5 Flash', 'Быстро и дёшево.']] },
+      models: [['Gemini Pro', 'Сильнее, очень длинный контекст.', ['3', '2.5']], ['Gemini Flash', 'Быстро и дёшево.', ['3', '2.5']]] },
     opencode: { n: 'opencode', s: 'opencode', ver: '0.15', sandbox: false, net: 'открыта', files: 'читает', def: 0,
-      models: [['Sonnet', 'Через твой ключ Anthropic.'], ['GPT-5', 'Через твой ключ OpenAI.'], ['Локальная', 'Ollama на этом компьютере, бесплатно.']] },
+      models: [['Sonnet', 'Через твой ключ Anthropic.', ['5.5', '4.6']], ['GPT', 'Через твой ключ OpenAI.', ['5.1', '5']], ['Локальная', 'Ollama на этом компьютере, бесплатно.']] },
     cursor: { n: 'Cursor', s: 'Cursor', missing: true, install: 'curl https://cursor.com/install -fsS | bash', def: 0,
-      models: [['Auto', 'Cursor сам выбирает модель.'], ['Sonnet', 'Баланс скорости и качества.'], ['GPT-5', 'Глубже рассуждает.']] },
+      models: [['Auto', 'Cursor сам выбирает модель.'], ['Sonnet', 'Баланс скорости и качества.', ['5.5', '4.6']], ['GPT', 'Глубже рассуждает.', ['5.1', '5']]] },
     qwen: { n: 'Qwen Code', s: 'Qwen', missing: true, install: 'npm install -g @qwen-code/qwen-code', def: 0,
-      models: [['Qwen3 Coder', 'Открытая модель под код.'], ['Qwen3 Coder Flash', 'Быстрее и дешевле.']] },
+      models: [['Qwen Coder', 'Открытая модель под код.', ['3', '2.5']], ['Qwen Coder Flash', 'Быстрее и дешевле.', ['3']]] },
     custom: { n: 'Своя команда', s: 'Своя', custom: true, def: 0, models: [['Из команды', 'Модель задаёт сама команда.']] }
   };
-  ORDER.forEach(function (k) { ENVS[k].model = ENVS[k].def; });
+  ORDER.forEach(function (k) { ENVS[k].model = ENVS[k].def; ENVS[k].pins = {}; });
+  ENVS.codex.pins[0] = '5'; // пример закреплённой старой версии
   var MV = { claude: ['anthropic', 'anthropic', 'anthropic'], codex: ['openai', 'openai', 'openai'], gemini: ['gemini', 'gemini'], opencode: ['anthropic', 'openai', 'custom'],
     cursor: ['cursor', 'anthropic', 'openai'], qwen: ['qwen', 'qwen'], custom: ['custom'] };
-  function modelName(k) { return ENVS[k].models[ENVS[k].model][0]; }
+  function mlabel(k, i) { var e = ENVS[k], m = e.models[i]; return m[2] ? m[0] + ' ' + (e.pins[i] || m[2][0]) : m[0]; }
+  function modelName(k) { return mlabel(k, ENVS[k].model); }
 
   /* ---------- чаты внутри сред ---------- */
   var STEPS7 = ['План', 'Критик', 'Тесты', 'Код', 'Ворота', 'Ревью', 'Влив'];
@@ -56,18 +58,18 @@
     { t: 'me', time: '14:01', html: 'Сделай курсорную пагинацию. Старый мобильный клиент не сломай.' },
     { t: 'card' },
     { t: 'sys', text: 'Это задача. Переписал в промпт и запустил шаги качества.', prompt: true },
-    { t: 'msg', r: 'plan', time: '14:02', html: '<p>План без смены схемы:</p><ul><li>курсор = (created_at, id), непрозрачный</li><li>?limit по умолчанию 50, максимум 200</li><li>старый ?page= пока остаётся</li></ul>' },
-    { t: 'msg', r: 'crit', time: '14:04', html: '<p>created_at не уникален, без id записи пропадут на границе страниц. И нужен ответ на битый курсор: 400 invalid_cursor.</p>' },
-    { t: 'msg', r: 'test', time: '14:08', html: '<p>9 тестов, все красные, как и должно быть до кода.</p>' },
+    { t: 'msg', r: 'plan', e: 'Opus 5.5 · отдельный запуск', time: '14:02', html: '<p>План без смены схемы:</p><ul><li>курсор = (created_at, id), непрозрачный</li><li>?limit по умолчанию 50, максимум 200</li><li>старый ?page= пока остаётся</li></ul>' },
+    { t: 'msg', r: 'crit', e: 'Sonnet 5.5 · отдельный запуск', time: '14:04', html: '<p>created_at не уникален, без id записи пропадут на границе страниц. И нужен ответ на битый курсор: 400 invalid_cursor.</p>' },
+    { t: 'msg', r: 'test', e: 'Sonnet 5.5 · отдельный запуск', time: '14:08', html: '<p>9 тестов, все красные, как и должно быть до кода.</p>' },
     { t: 'tool', c: 'write', a: 'tests/test_invoices_pagination.py', res: '+118' },
     { t: 'tool', c: 'run', a: 'pytest tests/test_invoices_pagination.py', res: '9 failed', bad: true },
-    { t: 'msg', r: 'exec', time: '14:11', html: '<p>Курсор и валидация готовы, подключаю к запросу.</p>' },
+    { t: 'msg', r: 'exec', e: 'Opus 5.5 · отдельный запуск', time: '14:11', html: '<p>Курсор и валидация готовы, подключаю к запросу.</p>' },
     { t: 'tool', c: 'edit', a: 'src/invoices/routes.py', res: '+64 −12' },
     { t: 'tool', c: 'edit', a: 'src/invoices/cursor.py', res: 'новый, +41' },
     { t: 'tool', c: 'run', a: 'pytest tests/test_invoices_pagination.py', res: '7 passed, 2 failed', bad: true },
-    { t: 'msg', r: 'gate', time: '14:13', html: '<p>Тесты 7 из 9, линтер и типы чистые. Вливать пока нельзя.</p>' },
+    { t: 'msg', r: 'gate', e: 'pytest · ruff · mypy', time: '14:13', html: '<p>Тесты 7 из 9, линтер и типы чистые. Вливать пока нельзя.</p>' },
     { t: 'me', time: '14:14', html: 'Курсор пусть будет непрозрачным, id наружу не свети.' },
-    { t: 'msg', r: 'exec', time: '14:15', html: '<p><span class="live"></span>Подписываю курсор, чиню два теста. Задал вопрос про старый клиент - он в карточке задачи.</p>' }
+    { t: 'msg', r: 'exec', e: 'Opus 5.5 · отдельный запуск', time: '14:15', html: '<p><span class="live"></span>Подписываю курсор, чиню два теста. Задал вопрос про старый клиент - он в карточке задачи.</p>' }
   ];
   var CHATS = {
     claude: [
@@ -85,7 +87,7 @@
     codex: [
       { id: 'acc', proj: 'billing-api', title: 'customer_id → account_id', st: 'run', pre: 'Нет вывода 15 мин, толкнул', done: 3, live: true, meta: '31 мин' },
       { id: 'pf', proj: 'docs-tool', title: 'Поиск на Pagefind', st: 'fail', pre: 'Три попытки, тесты красные', done: 4, live: true, meta: '48 мин',
-        need: { kind: 'Не вышло', icon: 'fail', bad: true, who: 'Исполнитель', text: 'Три попытки, тесты индексации красные: страницы с кириллицей в путях не попадают в индекс.', acts: [['Отдать Claude Code', 'human'], ['Дать подсказку', ''], ['Отложить', '']] } }
+        need: { kind: 'Не вышло', icon: 'fail', bad: true, who: 'Исполнитель', text: 'Три попытки, тесты индексации красные: страницы с кириллицей в путях не попадают в индекс.', acts: [['Взять модель сильнее: GPT 5.1', 'human'], ['Дать подсказку', ''], ['Отложить', '']] } }
     ],
     gemini: [
       { id: 'img', proj: 'web-site', title: 'Сжатие картинок', st: 'run', pre: 'Исполнитель: 14 из 40 файлов', done: 3, live: true, meta: '9 мин' },
@@ -104,7 +106,7 @@
     return null;
   }
 
-  var state = { env: 'claude', chat: 'inv', open: null, tab: 'lanes', laneMode: 'solo', file: 0 };
+  var state = { env: 'claude', chat: 'inv', open: null, file: -1 };
   var empty = false; // «Новый чат»
 
   /* ---------- край окна ---------- */
@@ -118,7 +120,7 @@
       b.onclick = function () {
         var k = b.dataset.env, first = CHATS[k].filter(function (c) { return !c.href; })[0];
         state.env = k; state.chat = first ? first.id : null; state.open = null; empty = false;
-        if (location.hash === '#main') route(); else location.hash = '#main';
+        var tgt = location.hash.indexOf('#factory') === 0 ? '#factory' : '#main'; if (location.hash === tgt) route(); else location.hash = tgt;
       };
     });
   }
@@ -178,7 +180,7 @@
   function defaultFeed(c) {
     if (c.st === 'chat') return [{ t: 'me', time: '', html: c.q }, { t: 'ai', time: '', html: c.a }];
     var f = [{ t: 'me', time: '', html: 'Сделай: ' + c.title.charAt(0).toLowerCase() + c.title.slice(1) }, { t: 'card' }];
-    if (c.id === 'acc') f.push({ t: 'msg', r: 'watch', time: '14:21', html: '<p>Исполнитель 15 минут без вывода. Подтолкнул, жду. Если не оживёт за 5 минут - предложу сменить агента.</p>' });
+    if (c.id === 'acc') f.push({ t: 'msg', r: 'watch', e: 'GPT mini 5.1 · отдельный запуск', time: '14:21', html: '<p>Исполнитель 15 минут без вывода. Подтолкнул, жду. Если не оживёт за 5 минут - предложу сменить агента.</p>' });
     return f;
   }
 
@@ -201,48 +203,9 @@
   }
 
   /* ---------- подробности задачи (раскрытие карточки) ---------- */
-  var TABS = [['lanes', 'Дорожки'], ['changes', 'Изменения'], ['checks', 'Проверки'], ['details', 'Детали']];
+  /* ---------- подробности задачи: одна панель, три коротких блока ---------- */
   function detailsHtml() {
-    var body = state.tab === 'lanes' ? lanesHtml() : state.tab === 'changes' ? filesHtml() : state.tab === 'checks' ? checksHtml() : factsHtml();
-    return '<div class="tc-det"><div class="tabs" role="tablist">' + TABS.map(function (t) { return '<button role="tab" data-tab="' + t[0] + '" class="' + (t[0] === state.tab ? 'on' : '') + '">' + t[1] + '</button>'; }).join('') + '</div><div class="pane">' + body + '</div></div>';
-  }
-  var AXIS_MAX = 24;
-  var LANES = {
-    solo: [
-      ['plan', 'Opus', [[0, 2.6, 'план', ''], [5.2, 6, '', '']]],
-      ['crit', 'Sonnet', [[2.6, 5.2, '2 дыры', '']]],
-      ['test', 'Sonnet', [[6, 9.4, '9 тестов', '']]],
-      ['exec', 'Opus', [[9.4, 11.2, 'код', ''], [11.2, 14, 'ждёт', 'wait'], [14, 18.5, 'доделать', 'proj']]],
-      ['gate', 'pytest · ruff · mypy', [[10.6, 11.4, '✕', 'fail'], [12.6, 13.4, '✕', 'fail'], [18.5, 19.8, '', 'proj']]],
-      ['rev', 'Codex', [[19.8, 22, 'ревью', 'proj']]],
-      ['integ', 'Sonnet', [[22, 24, 'влив', 'proj']]]
-    ],
-    swarm: [
-      ['plan', 'Opus', [[0, 2.2, 'план', '']]],
-      ['crit', 'Sonnet', [[2.2, 4.4, 'критика', '']]],
-      ['test', 'Sonnet', [[4.4, 7.4, '14 тестов', '']]],
-      ['exec', 'A · Claude Code', [[7.4, 16.4, 'Redis', '']]],
-      ['exec', 'B · Codex', [[7.4, 14.6, 'в памяти', '']]],
-      ['exec', 'C · Gemini', [[7.4, 18.6, 'middleware', 'fail']]],
-      ['rev', 'Codex', [[19.8, 22, 'выбор', 'proj']]],
-      ['integ', 'Sonnet', [[22, 24, 'влив', 'proj']]]
-    ]
-  };
-  function lanesHtml() {
-    var now = state.laneMode === 'solo' ? 14 : 18.8;
-    var axis = '<div class="lane-axis"><div></div><div class="axis">';
-    for (var m = 0; m <= AXIS_MAX; m += 4) axis += '<span style="left:' + (m / AXIS_MAX * 100) + '%">' + m + ' мин</span>';
-    axis += '</div></div>';
-    var rows = LANES[state.laneMode].map(function (l) {
-      return '<div class="lane r-' + l[0] + '"><div class="lane-n">' + rl(l[0]) + '<div><b>' + ROLES[l[0]] + '</b><small>' + l[1] + '</small></div></div><div class="track">' + l[2].map(function (s) {
-        var cls = s[3] === 'proj' ? ' proj' : s[3] === 'wait' ? ' waitx' : s[3] === 'fail' ? ' failx' : '';
-        return '<div class="seg-b' + cls + '" style="left:' + (s[0] / AXIS_MAX * 100) + '%;width:' + ((s[1] - s[0]) / AXIS_MAX * 100) + '%">' + s[2] + '</div>';
-      }).join('') + '</div></div>';
-    }).join('');
-    return '<div class="lanes-head"><div><b>Кто что делал</b><span class="hint">Пунктир - что ещё впереди</span></div><div class="seg"><button data-lm="solo" class="' + (state.laneMode === 'solo' ? 'on' : '') + '">Один исполнитель</button><button data-lm="swarm" class="' + (state.laneMode === 'swarm' ? 'on' : '') + '">Рой ×3</button></div></div>' +
-      '<div class="lanes">' + axis + rows + '<div class="lane-now-wrap"><div class="now" style="left:' + (now / AXIS_MAX * 100) + '%"></div></div></div>' +
-      '<div class="pipe-wrap"><div class="pipe-h"><b>Очередь слияния</b><span class="hint">По одному: ребейз, тесты, влив в main</span></div><div class="pipe"><div class="pipe-tube">' +
-      '<span class="pitem ghost">Пагинация · после ревью</span><span class="pitem">Changelog 2.4</span><span class="pitem first">' + ic('run') + 'Округление в итогах</span></div><div class="pipe-main">' + ic('branch') + 'main</div></div></div>';
+    return '<div class="tc-det">' + filesHtml() + checksHtml() + factsHtml() + '</div>';
   }
   var FILES = [['src/invoices/routes.py', '+64 −12', 'exec'], ['src/invoices/cursor.py', '+41', 'exec'], ['tests/test_invoices_pagination.py', '+118', 'test'], ['docs/api.md', '+9 −2', 'exec']];
   var DIFFS = [
@@ -253,27 +216,44 @@
   ];
   function filesHtml() {
     var sel = state.file;
-    return '<div class="changes"><ul class="files">' + FILES.map(function (f, i) {
-      return '<li class="' + (i === sel ? 'on' : '') + '" data-file="' + i + '">' + rl(f[2]) + '<span>' + f[0] + '</span><small>' + f[1] + '</small></li>';
-    }).join('') + '</ul><div class="diff"><div class="dh">' + FILES[sel][0] + ' · ' + ROLES[FILES[sel][2]] + '</div>' + DIFFS[sel].map(function (l, i) {
-      return '<div class="l ' + l[0] + '"><i>' + (i + 1) + '</i><span>' + (l[0] === 'a' ? '+ ' : l[0] === 'd' ? '− ' : '  ') + esc(l[1]) + '</span></div>';
-    }).join('') + '</div></div>';
+    return '<section class="db"><h3>Изменения <small>4 файла · <span class="plus">+184</span> <span class="minus">−31</span></small></h3><ul class="flist">' + FILES.map(function (f, i) {
+      var row = '<li class="' + (i === sel ? 'on' : '') + '" data-file="' + i + '">' + ic('chev-r', 'tw') + '<span>' + f[0] + '</span><small>' + f[1] + '</small></li>';
+      if (i !== sel) return row;
+      return row + '<li class="fdiff"><div class="diff">' + DIFFS[i].map(function (l, n) {
+        return '<div class="l ' + l[0] + '"><i>' + (n + 1) + '</i><span>' + (l[0] === 'a' ? '+ ' : l[0] === 'd' ? '− ' : '  ') + esc(l[1]) + '</span></div>';
+      }).join('') + '</div></li>';
+    }).join('') + '</ul></section>';
   }
   function checksHtml() {
-    var C = [['ok', 'Сборка', 'python -m compileall src'], ['ok', 'Линтер', 'ruff · без замечаний'], ['ok', 'Типы', 'mypy · без ошибок'], ['bad', 'Тесты', '7 из 9. Падают: test_invalid_cursor_returns_400, test_limit_over_max'], ['wait', 'Ревью другим движком', 'Codex начнёт после зелёных ворот']];
-    return '<ul class="checks">' + C.map(function (c) {
+    var C = [['ok', 'Сборка, линтер, типы', 'чисто'], ['bad', 'Тесты', '7 из 9: падают test_invalid_cursor_returns_400, test_limit_over_max'], ['wait', 'Ревью', 'после зелёных тестов']];
+    return '<section class="db"><h3>Проверки</h3><ul class="clist">' + C.map(function (c) {
       var col = c[0] === 'ok' ? 'var(--ok)' : c[0] === 'bad' ? 'var(--bad)' : 'var(--ink3)';
-      return '<li><svg class="ic" style="color:' + col + '"><use href="#i-' + (c[0] === 'ok' ? 'check' : c[0] === 'bad' ? 'fail' : 'dash') + '"/></svg><div><b>' + c[1] + '</b><small>' + c[2] + '</small></div><span class="hint">' + (c[0] === 'wait' ? 'впереди' : '14:13') + '</span></li>';
-    }).join('') + '</ul>';
+      return '<li><svg class="ic" style="color:' + col + '"><use href="#i-' + (c[0] === 'ok' ? 'check' : c[0] === 'bad' ? 'fail' : 'dash') + '"/></svg><b>' + c[1] + '</b><span>' + c[2] + '</span></li>';
+    }).join('') + '</ul></section>';
   }
   function factsHtml() {
-    var R = [['plan', 'Opus', 'done', 'готово'], ['crit', 'Sonnet', 'done', 'готово'], ['test', 'Sonnet', 'done', '9 тестов'], ['exec', 'Opus · попытка 1 из 3', 'wait', 'ждёт тебя'], ['gate', 'pytest, ruff, mypy', 'run', '7 из 9'], ['rev', 'Codex, другой движок', 'idle', 'после ворот'], ['integ', 'Sonnet', 'idle', 'в очереди']];
-    var I = { done: 'check', run: 'run', wait: 'ask', idle: 'dash' };
-    return '<div class="details"><dl class="facts">' +
-      '<div><dt>Ветка</dt><dd>' + ic('branch') + 'ns/invoices-pagination</dd></div><div><dt>Изменения</dt><dd><span class="plus">+184</span><span class="minus">−31</span> · 4 файла</dd></div><div><dt>Стоимость</dt><dd>$1.84 из $5</dd></div>' +
-      '</dl><section><h2>Состав задачи</h2><ul class="roster">' + R.map(function (r) {
-        return '<li class="r-' + r[0] + '">' + rl(r[0]) + '<span class="rn">' + ROLES[r[0]] + '</span><span class="re">' + r[1] + '</span><span class="rs ' + r[2] + '">' + ic(I[r[2]]) + r[3] + '</span></li>';
-      }).join('') + '</ul></section></div>';
+    var R = [['plan', 'Opus 5.5', 'done'], ['crit', 'Sonnet 5.5', 'done'], ['test', 'Sonnet 5.5', 'done'], ['exec', 'Opus 5.5', 'wait'], ['rev', 'Opus 5.5', 'idle'], ['integ', 'Sonnet 5.5', 'idle']];
+    return '<section class="db"><h3>Детали</h3><p class="fline">' + ic('branch') + 'ns/invoices-pagination<span>·</span>' + eic('anthropic', 'mlogo') + 'Opus 5.5, попытка 1 из 3<span>·</span>$1.84 из $5</p>' +
+      '<p class="rline">' + R.map(function (r) { return '<span class="r-' + r[0] + ' rs ' + r[2] + '">' + rl(r[0]) + '<b>' + ROLES[r[0]] + '</b> ' + r[1] + '</span>'; }).join('') + '</p>' +
+      '<small>Каждая роль - отдельный запуск Claude Code.</small></section>';
+  }
+
+  /* ---------- дорожки: только в рое и на фабрике ---------- */
+  // rows: { n, s, ic, g: [[от, до, роль, подпись, вид]] }; вид: '', proj (впереди), wait, fail
+  function timeline(rows, now, max) {
+    var axis = '<div class="lane-axis"><div></div><div class="axis">';
+    for (var m = 0; m <= max; m += max / 6) axis += '<span style="left:' + (m / max * 100) + '%">' + m + ' мин</span>';
+    axis += '</div></div>';
+    return '<div class="lanes">' + axis + rows.map(function (r) {
+      return '<div class="lane' + (r.ic ? ' r-' + r.ic : '') + '"><div class="lane-n">' + (r.ic ? rl(r.ic) : '') + '<div><b>' + r.n + '</b><small>' + r.s + '</small></div></div><div class="track">' + r.g.map(function (s) {
+        var cls = s[4] === 'proj' ? ' proj' : s[4] === 'wait' ? ' waitx' : s[4] === 'fail' ? ' failx' : '';
+        return '<div class="seg-b r-' + s[2] + cls + '" style="left:' + (s[0] / max * 100) + '%;width:' + ((s[1] - s[0]) / max * 100) + '%" title="' + ROLES[s[2]] + '">' + s[3] + '</div>';
+      }).join('') + '</div></div>';
+    }).join('') + '<div class="lane-now-wrap"><div class="now" style="left:' + (now / max * 100) + '%"></div></div></div>';
+  }
+  function legend(keys) { return '<p class="legend">' + keys.map(function (k) { return '<span class="r-' + k + '">' + rl(k) + ROLES[k] + '</span>'; }).join('') + '<span class="proj-l">впереди</span></p>'; }
+  function pipeHtml(items) {
+    return '<div class="pipe-wrap"><div class="pipe-h"><b>Очередь слияния</b><span class="hint">По одному: ребейз, тесты, влив в main</span></div><div class="pipe"><div class="pipe-tube">' + items + '</div><div class="pipe-main">' + ic('branch') + 'main</div></div></div>';
   }
 
   /* ---------- главный экран ---------- */
@@ -309,9 +289,7 @@
     if (t.hasAttribute('data-prompt')) { var b = $('#promptBox'); b.hidden = !b.hidden; t.textContent = b.hidden ? 'показать промпт' : 'скрыть промпт'; return; }
     if (!c) return;
     if (t.classList.contains('tc-more')) { state.open = state.open === c.id ? null : c.id; renderMain(); if (state.open) $('.tcard.open').scrollIntoView({ block: 'start' }); return; }
-    if (t.dataset.tab) { state.tab = t.dataset.tab; renderMain(); return; }
-    if (t.dataset.lm) { state.laneMode = t.dataset.lm; renderMain(); return; }
-    if (t.dataset.file) { state.file = +t.dataset.file; renderMain(); return; }
+    if (t.dataset.file) { state.file = state.file === +t.dataset.file ? -1 : +t.dataset.file; renderMain(); return; }
     if (t.hasAttribute('data-own')) { var ta = $('#taskText'); ta.value = ''; ta.placeholder = 'Ответ на вопрос «' + c.title + '»…'; ta.focus(); return; }
     if (t.dataset.act) {
       c.answer = t.dataset.act; c.need = null; c.st = 'run'; c.pre = 'Ты ответил, агент продолжает';
@@ -342,18 +320,35 @@
   $('#newChat').onclick = function () { empty = true; state.open = null; renderMain(); renderSide(); $('#taskText').focus(); };
 
   /* выбор модели */
-  function modelsHtml(k, attr) {
+  function versHtml(k, i) {
+    var e = ENVS[k], v = e.models[i][2], p = e.pins[i];
+    if (!v) return '';
+    return '<div class="vers" role="radiogroup" aria-label="Версия"><button type="button" class="v' + (!p ? ' on' : '') + '" data-ver="">последняя (' + v[0] + ')</button>' +
+      v.map(function (x) { return '<button type="button" class="v' + (p === x ? ' on' : '') + '" data-ver="' + x + '">' + (p === x ? ic('lock', 'lk') : '') + x + '</button>'; }).join('') +
+      '<small>пример</small>' + (p && p !== v[0] ? '<small class="newer">есть новее: ' + v[0] + '</small>' : '') + '</div>';
+  }
+  function modelsHtml(k) {
     var e = ENVS[k];
     return e.models.map(function (m, i) {
-      return '<button type="button" class="mcard' + (i === e.model ? ' on' : '') + '" ' + attr + '="' + i + '" role="radio" aria-checked="' + (i === e.model) + '"><span class="radio"></span><b>' + eic(MV[k][i], 'mlogo') + m[0] + (i === e.def ? '<small>по умолчанию</small>' : '') + '</b><span class="d">' + m[1] + '</span></button>';
+      var on = i === e.model, pin = e.pins[i];
+      return '<div class="mcard' + (on ? ' on' : '') + '" data-i="' + i + '" role="radio" tabindex="0" aria-checked="' + on + '"><span class="radio"></span><b>' + eic(MV[k][i], 'mlogo') + mlabel(k, i) +
+        (pin ? ic('lock', 'lk') : '') + (i === e.def ? '<small>по умолчанию</small>' : '') + '</b><span class="d">' + m[1] + '</span>' + (on ? versHtml(k, i) : '') + '</div>';
     }).join('');
+  }
+  // один обработчик на выбор модели и версии: у поля, в настройках, на первом запуске
+  function bindModels(el, k, done) {
+    el.onclick = function (ev) {
+      var card = ev.target.closest('.mcard'); if (!card) return;
+      var i = +card.dataset.i, vb = ev.target.closest('[data-ver]');
+      if (vb) ENVS[k].pins[i] = vb.dataset.ver || null; else ENVS[k].model = i;
+      done(i);
+    };
+    el.onkeydown = function (ev) { if ((ev.key === 'Enter' || ev.key === ' ') && ev.target.classList.contains('mcard')) { ev.preventDefault(); ev.target.click(); } };
   }
   function renderPop() {
     $('#popEnv').textContent = ENVS[state.env].n;
-    $('#popModels').innerHTML = modelsHtml(state.env, 'data-mi');
-    $$('#popModels .mcard').forEach(function (b) {
-      b.onclick = function () { ENVS[state.env].model = +b.dataset.mi; togglePop($('#envPick'), $('#modelPop'), false); renderMain(); renderSide(); };
-    });
+    $('#popModels').innerHTML = modelsHtml(state.env);
+    bindModels($('#popModels'), state.env, function () { renderPop(); renderMain(); renderSide(); });
   }
   function togglePop(btn, pop, open) {
     if (open === undefined) open = pop.hidden;
@@ -371,7 +366,7 @@
     sw.addEventListener('click', function (e) { e.preventDefault(); sw.classList.toggle('on'); sw.setAttribute('aria-checked', sw.classList.contains('on')); });
     sw.parentNode.addEventListener('click', function (e) { if (e.target === sw.parentNode) sw.click(); });
   });
-  var STEPS = [['Спека', 'только для расплывчатых задач', true], ['План и критик плана', '', true], ['Тесты сначала', 'исполнителю их не трогать', true], ['Ворота', 'всегда', true, true], ['Ревьюер другим движком', '', true], ['e2e как пользователь', 'только для интерфейсов', false], ['Best-of-N для рискованного', 'деньги, данные, миграции', true]];
+  var STEPS = [['Спека', 'только для расплывчатых задач', true], ['План и критик плана', '', true], ['Тесты сначала', 'исполнителю их не трогать', true], ['Ворота', 'всегда', true, true], ['Ревьюер - отдельный агент', 'свежий контекст, модель этой среды', true], ['e2e как пользователь', 'только для интерфейсов', false], ['Best-of-N для рискованного', 'деньги, данные, миграции', true]];
   $('#qSteps').innerHTML = STEPS.map(function (s) {
     return '<li><label class="step"><input type="checkbox"' + (s[2] ? ' checked' : '') + (s[3] ? ' disabled' : '') + '><b>' + s[0] + '</b>' + (s[1] ? '<span>' + s[1] + '</span>' : '') + '</label></li>';
   }).join('');
@@ -382,9 +377,9 @@
 
   /* ---------- рой ---------- */
   var VARS = [
-    { l: 'A', v: 'anthropic', n: 'Claude Code · Opus', st: 'Лучший', ok: true, best: true, sum: 'Скользящее окно в Redis, проверка и запись атомарно. Переживает рестарт.', score: 8.6, tests: '14 из 14', c: [['Корректность', 9], ['Покрытие', 8], ['Простота', 8], ['Риск', 9]], more: '+96 −8 · 9 мин · $0.92' },
-    { l: 'B', v: 'openai', n: 'Codex · gpt-5-codex', st: 'Прошёл', ok: true, sum: 'Бакет в памяти процесса. Проще, но в каждом воркере свой счётчик.', score: 7.1, tests: '14 из 14', c: [['Корректность', 6], ['Покрытие', 8], ['Простота', 9], ['Риск', 5]], more: '+71 −5 · 7 мин · $0.61' },
-    { l: 'C', v: 'gemini', n: 'Gemini · 2.5 Pro', st: 'Не прошёл', ok: false, sum: 'Отдельный middleware. Два теста на границе окна падают.', score: 4.2, tests: '12 из 14', c: [['Корректность', 4], ['Покрытие', 5], ['Простота', 3], ['Риск', 5]], more: '+143 −12 · 11 мин · $0.48' }
+    { l: 'A', v: 'anthropic', n: 'Opus 5.5', st: 'Лучший', ok: true, best: true, sum: 'Скользящее окно в Redis, проверка и запись атомарно. Переживает рестарт.', score: 8.6, tests: '14 из 14', c: [['Корректность', 9], ['Покрытие', 8], ['Простота', 8], ['Риск', 9]], more: '+96 −8 · 9 мин · $0.92' },
+    { l: 'B', v: 'anthropic', n: 'Sonnet 5.5', st: 'Прошёл', ok: true, sum: 'Бакет в памяти процесса. Проще, но в каждом воркере свой счётчик.', score: 7.1, tests: '14 из 14', c: [['Корректность', 6], ['Покрытие', 8], ['Простота', 9], ['Риск', 5]], more: '+71 −5 · 7 мин · $0.61' },
+    { l: 'C', v: 'anthropic', n: 'Sonnet 5.5', st: 'Не прошёл', ok: false, sum: 'Отдельный middleware. Два теста на границе окна падают.', score: 4.2, tests: '12 из 14', c: [['Корректность', 4], ['Покрытие', 5], ['Простота', 3], ['Риск', 5]], more: '+143 −12 · 11 мин · $0.48' }
   ];
   $('#variants').innerHTML = VARS.map(function (v) {
     return '<article class="var' + (v.best ? ' best' : '') + '"><div class="var-h"><span class="var-l">' + v.l + '</span>' + eic(v.v) + '<b>' + v.n + '</b><span class="st ' + (v.ok ? 'st-ok' : 'st-bad') + '">' + ic(v.ok ? 'check' : 'fail') + v.st + '</span></div>' +
@@ -393,51 +388,75 @@
       '<div class="var-f">' + (v.ok ? '<button class="btn ' + (v.best ? 'primary' : '') + '">Взять ' + v.l + '</button>' : '') + '<button class="btn">Дифф</button></div></article>';
   }).join('');
   $('#swarmChat').innerHTML = feedHtml([
-    { t: 'msg', r: 'plan', e: 'Opus', time: '11:40', html: '<p>Одна спека на троих: 100 запросов в минуту на ключ вебхука, ответ 429 с Retry-After.</p>' },
-    { t: 'msg', r: 'exec', who: 'A', rn: 'Исполнитель A', e: 'Claude Code', time: '11:49', html: '<p>Взял Redis: он уже в стеке, счётчик общий для воркеров.</p>' },
+    { t: 'msg', r: 'plan', e: 'Opus 5.5 · отдельный запуск', time: '11:40', html: '<p>Одна спека на троих: 100 запросов в минуту на ключ вебхука, ответ 429 с Retry-After.</p>' },
+    { t: 'msg', r: 'exec', who: 'A', rn: 'Исполнитель A', e: 'Opus 5.5 · отдельный запуск', time: '11:49', html: '<p>Взял Redis: он уже в стеке, счётчик общий для воркеров.</p>' },
     { t: 'tool', c: 'run', a: 'pytest tests/test_webhook_limit.py', res: '14 passed' },
-    { t: 'msg', r: 'exec', who: 'B', rn: 'Исполнитель B', e: 'Codex', time: '11:47', html: '<p>Без внешних зависимостей. При нескольких воркерах лимит умножается.</p>' },
-    { t: 'msg', r: 'exec', who: 'C', rn: 'Исполнитель C', e: 'Gemini', time: '11:51', html: '<p>Два теста на границе окна падают. Чинить или сдавать как есть?</p>' },
-    { t: 'msg', r: 'rev', e: 'Codex', time: '11:55', html: '<p>A единственная устойчива при рестарте. C снимаю с гонки.</p>' },
+    { t: 'msg', r: 'exec', who: 'B', rn: 'Исполнитель B', e: 'Sonnet 5.5 · отдельный запуск', time: '11:47', html: '<p>Без внешних зависимостей. При нескольких воркерах лимит умножается.</p>' },
+    { t: 'msg', r: 'exec', who: 'C', rn: 'Исполнитель C', e: 'Sonnet 5.5 · отдельный запуск', time: '11:51', html: '<p>Два теста на границе окна падают. Чинить или сдавать как есть?</p>' },
+    { t: 'msg', r: 'rev', e: 'Opus 5.5 · отдельный запуск', time: '11:55', html: '<p>A единственная устойчива при рестарте. C снимаю с гонки.</p>' },
     { t: 'me', time: '11:56', html: 'Ок, A. Пусть добавит тест с двумя воркерами.' }
   ], 'claude');
   $$('#swTabs button').forEach(function (b) {
     b.onclick = function () { $$('#swTabs button').forEach(function (x) { x.classList.toggle('on', x === b); }); $('#variants').hidden = b.dataset.w !== 'v'; $('#swarmChatWrap').hidden = b.dataset.w !== 'c'; };
   });
+  $('#swarmLanes').innerHTML = timeline([
+    { n: 'Подготовка', s: 'общая для всех', g: [[0, 2.2, 'plan', 'план', ''], [2.2, 4.4, 'crit', 'критика', ''], [4.4, 7.4, 'test', '14 тестов', '']] },
+    { n: 'A · Opus 5.5', s: 'свой worktree', ic: 'exec', g: [[7.4, 16.4, 'exec', 'Redis', ''], [16.4, 17.4, 'gate', '✓', '']] },
+    { n: 'B · Sonnet 5.5', s: 'свой worktree', ic: 'exec', g: [[7.4, 14.6, 'exec', 'в памяти', ''], [14.6, 15.4, 'gate', '✓', '']] },
+    { n: 'C · Sonnet 5.5', s: 'свой worktree', ic: 'exec', g: [[7.4, 18.6, 'exec', 'middleware', ''], [18.6, 19.6, 'gate', '✕', 'fail']] },
+    { n: 'Выбор', s: 'Ревьюер Opus 5.5', ic: 'rev', g: [[19.8, 22, 'rev', 'сравнение', 'proj'], [22, 24, 'integ', 'влив', 'proj']] }
+  ], 18.8, 24);
   $('#pickA').onclick = function () { this.textContent = 'Берём A'; this.disabled = true; };
 
-  /* ---------- фабрика: все среды ---------- */
-  $('#strip').innerHTML = [['coord', 'Координатор', 'работает', 'var(--exec)'], ['exec', 'Исполнители', '3, один завис', 'var(--bad)'], ['rev', 'Ревьюер', 'отдыхает', 'var(--ink3)'], ['watch', 'Надзиратель', 'следит', 'var(--exec)'], ['queue', 'Очередь', '2 задачи', 'var(--ink2)']].map(function (r) {
-    return '<span class="r-' + r[0] + '">' + rl(r[0]) + '<b>' + r[1] + '</b><em style="color:' + r[3] + '">' + r[2] + '</em></span>';
-  }).join('');
-  var CONVOYS = [
-    { n: 'Подготовить релиз 2.4', left: 'осталось ~40 мин', p: ['d', 'd', 'd', 'd', 'r', 'r', 'w', ''], items: [['claude', 'Пагинация в /invoices', 'ask'], ['codex', 'customer_id → account_id', 'run'], ['claude', 'Округление в итогах', 'run'], ['claude', 'Changelog 2.4', 'dash']] },
-    { n: 'Редизайн страницы цен', left: 'ждёт разрешения', p: ['d', 'd', 'd', 'w'], items: [['gemini', 'Сжатие картинок', 'run'], ['claude', 'Push и PR: ns/pricing-hero', 'key']] },
-    { n: 'Починить поиск в доках', left: 'застряло', p: ['d', 'd', 'f', ''], items: [['codex', 'Pagefind и кириллица', 'fail']] }
-  ];
-  $('#convoys').innerHTML = CONVOYS.map(function (c) {
-    return '<article class="cv"><div class="cv-h"><b>' + c.n + '</b><small>' + c.left + '</small></div><div class="prog">' + c.p.map(function (x) { return '<i class="' + x + '"></i>'; }).join('') + '</div><ul>' +
-      c.items.map(function (i) { return '<li>' + eic(i[0]) + '<span>' + i[1] + '</span>' + ic(i[2]) + '</li>'; }).join('') + '</ul></article>';
-  }).join('');
-  var FEED = [
-    { time: '14:21', r: 'watch', env: 'codex', html: '<b>Завис 15 мин.</b> Исполнитель на «customer_id → account_id».', prob: 'bad', acts: true },
-    { time: '14:19', r: 'exec', env: 'claude', html: 'Вопрос про старый ?page=, ответ в чате задачи.', prob: 'warn' },
-    { time: '14:16', r: 'queue', env: 'claude', html: 'Влито в main: <b>Поле currency в payments</b>.' },
-    { time: '14:13', r: 'gate', env: 'claude', html: 'Пагинация: тесты 7 из 9.' },
-    { time: '14:02', r: 'coord', env: 'claude', html: '«Подготовить релиз 2.4» разбито на 8 задач.' },
-    { time: '13:58', r: 'rev', env: 'codex', html: 'Bump axios: ревью пройдено.' }
-  ];
+  /* ---------- фабрика: своя у каждой среды, агенты только этой среды ---------- */
+  var FACT = {
+    claude: { stats: ['4 из 5', '$8.10 из $20'], strip: [['coord', 'Координатор', 'Opus 5.5 · работает', 'var(--exec)'], ['exec', 'Исполнители ×3', 'Opus 5.5, Sonnet 5.5, Sonnet 5.5', 'var(--exec)'], ['rev', 'Ревьюер', 'Opus 5.5 · отдыхает', 'var(--ink3)'], ['watch', 'Надзиратель', 'Haiku 5.5 · следит', 'var(--exec)'], ['queue', 'Очередь', '2 задачи', 'var(--ink2)']],
+      lanes: [
+        { n: 'Пагинация в /invoices', s: 'ждёт тебя', g: [[26, 29, 'plan', '', ''], [29, 32, 'crit', '', ''], [32, 36, 'test', '', ''], [36, 38, 'exec', 'код', ''], [38, 40, 'exec', 'ждёт', 'wait'], [40, 48, 'exec', '', 'proj'], [48, 52, 'rev', '', 'proj']] },
+        { n: 'Округление в итогах', s: 'ворота 12 из 18', g: [[18, 22, 'plan', '', ''], [22, 26, 'test', '', ''], [26, 37, 'exec', 'код', ''], [37, 42, 'gate', 'тесты', ''], [42, 46, 'rev', '', 'proj']] },
+        { n: 'Changelog 2.4', s: 'в очереди', g: [[8, 12, 'exec', '', ''], [12, 15, 'rev', '', ''], [40, 44, 'integ', 'влив', 'proj']] },
+        { n: 'Герой на странице цен', s: 'ждёт разрешения', g: [[0, 5, 'plan', '', ''], [5, 20, 'exec', 'код', ''], [20, 24, 'gate', '', ''], [24, 30, 'rev', 'ревью', ''], [30, 40, 'integ', 'push?', 'wait']] }],
+      pipe: '<span class="pitem ghost">Пагинация · после ревью</span><span class="pitem">Changelog 2.4</span><span class="pitem first">' + ic('run') + 'Округление в итогах</span>',
+      feed: [
+        { time: '14:19', r: 'exec', html: 'Исполнитель (Opus 5.5) спросил про старый ?page=, ответ в чате задачи.', prob: 'warn' },
+        { time: '14:16', r: 'queue', html: 'Влито в main: <b>Поле currency в payments</b>.' },
+        { time: '14:13', r: 'gate', html: 'Пагинация: тесты 7 из 9.' },
+        { time: '14:08', r: 'test', html: 'Автор тестов (Sonnet 5.5): 9 тестов, все красные как надо.' },
+        { time: '14:02', r: 'coord', html: '«Подготовить релиз 2.4» разбито на 5 задач.' }] },
+    codex: { stats: ['2 из 3', '$3.20 из $20'], strip: [['coord', 'Координатор', 'GPT 5.1 · работает', 'var(--exec)'], ['exec', 'Исполнители ×2', 'GPT-Codex 5 · один завис', 'var(--bad)'], ['rev', 'Ревьюер', 'GPT 5.1 · отдыхает', 'var(--ink3)'], ['watch', 'Надзиратель', 'GPT mini 5.1 · следит', 'var(--exec)']],
+      lanes: [
+        { n: 'customer_id → account_id', s: 'завис 15 мин', g: [[2, 6, 'plan', '', ''], [6, 10, 'test', '', ''], [10, 25, 'exec', 'код', ''], [25, 40, 'exec', 'нет вывода', 'fail']] },
+        { n: 'Поиск на Pagefind', s: 'не вышло', g: [[0, 4, 'plan', '', ''], [4, 30, 'exec', '3 попытки', ''], [30, 34, 'gate', '✕', 'fail']] }],
+      pipe: '<span class="pitem ghost">пусто</span>',
+      feed: [
+        { time: '14:21', r: 'watch', html: '<b>Завис 15 мин.</b> Исполнитель (GPT-Codex 5) на «customer_id → account_id».', prob: 'bad', acts: true },
+        { time: '13:58', r: 'rev', html: 'Bump axios: ревью (GPT 5.1) пройдено.' }] },
+    gemini: { stats: ['1 из 3', '$1.10 из $20'], strip: [['coord', 'Координатор', 'Gemini Pro 3 · ждёт', 'var(--ink3)'], ['exec', 'Исполнитель', 'Gemini Flash 3 · работает', 'var(--exec)'], ['watch', 'Надзиратель', 'Gemini Flash 3 · следит', 'var(--exec)']],
+      lanes: [{ n: 'Сжатие картинок', s: '14 из 40 файлов', g: [[30, 33, 'plan', '', ''], [33, 40, 'exec', 'сжимаю', ''], [40, 50, 'exec', '', 'proj'], [50, 53, 'gate', '', 'proj']] }],
+      pipe: '<span class="pitem first">' + ic('check') + 'Переводы на испанский</span>',
+      feed: [{ time: '14:20', r: 'exec', html: 'Сжатие картинок: 14 из 40 файлов.' }] }
+  };
+  function renderFactory() {
+    var k = state.env, e = ENVS[k], f = FACT[k] || { stats: ['0', '$0'], strip: [], feed: [] };
+    $('#factSub').innerHTML = eic(k) + e.n + ' · все агенты этой среды, каждый своим запуском';
+    $('#factStats').innerHTML = '<div><span>Работают</span><b>' + f.stats[0] + '</b></div><div><span>Сегодня</span><b>' + f.stats[1] + '</b></div>';
+    $('#strip').innerHTML = f.strip.map(function (r) { return '<span class="r-' + r[0] + '">' + rl(r[0]) + '<b>' + r[1] + '</b><em style="color:' + r[3] + '">' + r[2] + '</em></span>'; }).join('') || '<span class="hint">Агентов нет: в этой среде пока нет задач.</span>';
+    $('#factLanes').innerHTML = f.lanes ? legend(['plan', 'crit', 'test', 'exec', 'gate', 'rev', 'integ']) + timeline(f.lanes, 40, 60) + pipeHtml(f.pipe) : '<p class="hint">Задач пока нет.</p>';
+    FEED = f.feed; renderFeed('all');
+    $('#feedFilter [data-f="prob"] small').textContent = f.feed.filter(function (x) { return x.prob; }).length;
+    $$('#feedFilter button').forEach(function (x) { x.classList.toggle('on', x.dataset.f === 'all'); });
+  }
+  var FEED = [];
   function renderFeed(f) {
     $('#feed').innerHTML = FEED.filter(function (e) { return f === 'all' || e.prob; }).map(function (e) {
-      return '<li class="' + (e.prob ? 'prob ' + (e.prob === 'warn' ? 'warn' : '') : '') + '"><time>' + e.time + '</time>' + rl(e.r) + '<div class="ev">' + e.html + '<small>' + eic(e.env) + ENVS[e.env].s + '</small>' +
-        (e.acts ? '<div class="acts"><button class="btn sm primary" data-nudge>Подтолкнуть</button><button class="btn sm">Отдать другой среде</button></div>' : '') + '</div></li>';
+      return '<li class="' + (e.prob ? 'prob ' + (e.prob === 'warn' ? 'warn' : '') : '') + '"><time>' + e.time + '</time>' + rl(e.r) + '<div class="ev">' + e.html + 
+        (e.acts ? '<div class="acts"><button class="btn sm primary" data-nudge>Подтолкнуть</button><button class="btn sm">Сменить модель</button></div>' : '') + '</div></li>';
     }).join('');
     $$('[data-nudge]').forEach(function (b) { b.onclick = function () { b.textContent = 'Толкнул, жду…'; b.disabled = true; }; });
   }
   $$('#feedFilter button').forEach(function (b) {
     b.onclick = function () { $$('#feedFilter button').forEach(function (x) { x.classList.remove('on'); }); b.classList.add('on'); renderFeed(b.dataset.f); };
   });
-  renderFeed('all');
 
   /* ---------- настройки: сначала текущая среда, потом общее ---------- */
   function sw(on) { return '<span class="sw' + (on ? ' on' : '') + '" role="switch" tabindex="0" aria-checked="' + !!on + '"><i></i></span>'; }
@@ -445,19 +464,77 @@
   function sel(opts, cur) { return '<select>' + opts.map(function (o) { return '<option' + (o === cur ? ' selected' : '') + '>' + o + '</option>'; }).join('') + '</select>'; }
   function row(t, d, c) { return '<div class="srow"><div><b>' + t + '</b>' + (d ? '<span class="d">' + d + '</span>' : '') + '</div><div class="ctl">' + c + '</div></div>'; }
   function grp(t, rows) { return '<div class="sgrp">' + (t ? '<h2>' + t + '</h2>' : '') + '<div class="srows">' + rows.join('') + '</div></div>'; }
-  var ENV_NAV = [['env-models', 'Модели'], ['env-perms', 'Права и песочница'], ['env-run', 'Запуск и вход']];
+  var ENV_NAV = [['env-models', 'Модели'], ['env-kits', 'Наборы'], ['env-perms', 'Права и песочница'], ['env-run', 'Запуск и вход']];
   var COMMON_NAV = [['quality', 'Качество'], ['swarm', 'Рой и фабрика'], ['limits', 'Лимиты и бюджет'], ['notify', 'Уведомления'], ['look', 'Внешний вид'], ['keys', 'Горячие клавиши']];
+  function roleSel(k, i, pin) {
+    var opts = [], cur = '';
+    ENVS[k].models.forEach(function (m, mi) {
+      if (!m[2]) { opts.push(m[0]); if (mi === i) cur = m[0]; return; }
+      opts.push(m[0] + ' · последняя'); m[2].forEach(function (v) { opts.push(m[0] + ' ' + v); });
+      if (mi === i) cur = pin ? m[0] + ' ' + pin : m[0] + ' · последняя';
+    });
+    return sel(opts, cur) + (pin ? '<span class="pin" title="Закреплено">' + ic('lock') + '</span>' : '<span class="pin"></span>');
+  }
+  /* ---------- наборы: скиллы, правила, хуки, MCP. Числа и имена - пример ---------- */
+  var KIT = {
+    claude: { dir: '~/.claude', rules: 'CLAUDE.md' }, codex: { dir: '~/.codex', rules: 'AGENTS.md' },
+    gemini: { dir: '~/.gemini', rules: 'GEMINI.md' }, opencode: { dir: '~/.config/opencode', rules: 'AGENTS.md' },
+    cursor: { dir: '~/.cursor', rules: 'AGENTS.md' }, qwen: { dir: '~/.qwen', rules: 'QWEN.md' }, custom: { dir: '-', rules: '-' }
+  };
+  function kitGroups(k) {
+    var K = KIT[k];
+    return [['Скиллы', 42, ['code-review', 'release-notes', 'db-migrate', 'ещё 39']], ['Правила', 2, [K.dir + '/' + K.rules, 'billing-api/' + K.rules]],
+      ['Хуки', 9, ['перед каждой командой: проверка опасных команд', 'после правки: форматирование', 'ещё 7']], ['MCP-серверы', 6, ['github', 'postgres', 'ещё 4']],
+      ['Субагенты', 3, ['explorer', 'reviewer', 'planner']], ['Настройки', 1, ['settings без ключей и токенов']]];
+  }
+  function kitsPage(k) {
+    var e = ENVS[k], K = KIT[k];
+    var groups = kitGroups(k).map(function (g) {
+      return '<details class="kg"><summary><input type="checkbox" checked aria-label="' + g[0] + '"><b>' + g[0] + '</b><small>' + g[1] + '</small></summary><ul>' + g[2].map(function (x) { return '<li>' + x + '</li>'; }).join('') + '</ul></details>';
+    }).join('');
+    return ['Наборы', 'Скиллы, правила, хуки и MCP ' + e.n + '. Числа и имена - пример.', [
+      '<div class="kitnow">' + eic(k) + '<p><b>' + e.n + ' уже использует твои ' + K.dir + ':</b> 42 скилла, правила, 9 хуков, 6 MCP - импортировать не нужно.</p></div>',
+      '<div class="sgrp"><h2>Экспорт набора</h2><div class="srows kit">' + groups +
+        '<div class="srow"><div><b>Куда</b><span class="d">Секреты не попадают, пути заменяются на ~.</span></div><div class="ctl"><div class="seg"><button class="on">Папка</button><button>zip</button><button>git-репозиторий</button></div><button class="btn primary">Экспортировать</button></div></div></div></div>',
+      '<div class="sgrp"><h2>Импорт набора</h2><div class="srows"><div class="srow"><div><b>Откуда</b><span class="d">Ссылка на репозиторий, папка или zip. Сначала покажем, что изменится.</span></div><div class="ctl"><input type="text" class="wide" placeholder="https://github.com/…/my-setup"><button class="btn">Папка…</button><button class="btn">zip…</button><a class="btn primary" href="#settings-env-import">Показать</a></div></div>' +
+        '<div class="srow foreign"><div><b>codex-setup.zip</b><span class="d">Это набор Codex. В ' + e.n + ' он не ставится: у каждой среды свои скиллы и правила.</span></div><div class="ctl"><a class="btn" href="#main~codex">Открыть в Codex</a></div></div></div></div>'
+    ]];
+  }
+  function importPage(k) {
+    var e = ENVS[k], K = KIT[k];
+    function item(sign, cls, name, note) { return '<li class="' + cls + '"><span class="sg">' + sign + '</span><b>' + name + '</b><small>' + note + '</small></li>'; }
+    var HOOKS = [
+      ['PreToolUse · Bash', 'python3 ~/.claude/hooks/block-rm.py "$TOOL_INPUT"'],
+      ['PostToolUse · Edit', 'npx prettier --write "$FILE_PATH"'],
+      ['Stop', 'curl -s -X POST "$NOTIFY_URL" -d "задача готова"']
+    ];
+    return ['Импорт: my-setup', 'Набор для ' + e.n + ' из github.com/someone/my-setup (пример). Ничего не ставится, пока не нажмёшь «Установить».', [
+      grp('Куда ставить', [row('Для всех проектов', K.dir, '<input type="radio" name="scope" checked>'), row('Только в проект', 'billing-api/.claude', '<input type="radio" name="scope">')]),
+      '<div class="sgrp"><h2>Что изменится</h2><ul class="srows chg">' +
+        item('+', 'add', 'Скиллы: api-docs, changelog', 'добавятся') + item('+', 'add', 'MCP: sentry', 'добавится') +
+        item('~', 'rep', K.rules, 'заменится, старый уйдёт в снимок · <a class="linkb" href="#">разница</a>') +
+        item('=', 'same', 'Скиллы: code-review, release-notes', 'уже есть, без изменений') + '</ul></div>',
+      grp('Недостающие переменные', [row('GITHUB_TOKEN', 'Нужен MCP github. Значение вводишь ты, в наборе его нет.', '<input type="password" class="wide" placeholder="значение">'), row('NOTIFY_URL', 'Нужен хуку Stop.', '<input type="text" class="wide" placeholder="значение">')]),
+      '<div class="sgrp"><h2>Хуки <span class="hint">выключены, пока ты не включишь каждый</span></h2><div class="srows">' + HOOKS.map(function (h) {
+        return '<label class="hook"><input type="checkbox"><div><b>' + h[0] + '</b><code>' + esc(h[1]) + '</code><small>' + ic('warn') + 'запускается сам - включай, только если доверяешь</small></div></label>';
+      }).join('') + '</div></div>',
+      '<div class="sgrp kitgo"><button class="btn primary">Установить</button><a class="btn" href="#settings-env-kits">Отмена</a><span class="hint">Перед установкой будет снимок - откат одной кнопкой.</span></div>'
+    ]];
+  }
   function envSettings(id) {
     var k = state.env, e = ENVS[k];
     if (id === 'env-models') return ['Модели', 'Модель по умолчанию для чата и задач в ' + e.n + '. Названия - пример: список приложение берёт из самой CLI.', [
-      '<div class="sgrp"><h2>По умолчанию</h2><div class="models" id="setModels">' + modelsHtml(k, 'data-smi') + '</div></div>',
+      '<div class="sgrp"><h2>По умолчанию</h2><div class="models" id="setModels">' + modelsHtml(k) + '</div></div>',
       grp('Для ролей', [
-        row('Планировщик и критик', 'Думают, кода не пишут.', sel(e.models.map(function (m) { return m[0]; }), e.models[0][0])),
-        row('Исполнитель', 'Пишет код.', sel(e.models.map(function (m) { return m[0]; }), modelName(k))),
-        row('Ревьюер', 'Лучше из другой среды: другие слепые зоны.', sel(['Codex · gpt-5-codex', 'Claude Code · Opus', 'Gemini · 2.5 Pro'], k === 'codex' ? 'Claude Code · Opus' : 'Codex · gpt-5-codex'))
+        row('Планировщик и критик', 'Думают, кода не пишут.', roleSel(k, 0, null)),
+        row('Исполнитель', 'Пишет код.', roleSel(k, e.model, null)),
+        row('Ревьюер', 'Отдельный запуск ' + e.n + ' со свежим контекстом.', roleSel(k, 0, e.models[0][2] ? e.models[0][2][0] : null)),
+        row('Запасная модель этой среды', 'Если упёрлись в лимит основной модели.', roleSel(k, e.models.length - 1, null))
       ])]];
+    if (id === 'env-kits') return kitsPage(k);
+    if (id === 'env-import') return importPage(k);
     if (id === 'env-perms') return ['Права и песочница', 'Что ' + e.n + ' может делать на твоём компьютере без тебя.', [
-      (e.sandbox === false ? '<div class="warnbox">' + ic('warn') + '<p><b>' + e.n + ' работает без песочницы.</b> Ограничен папкой worktree, но ходит в сеть и читает домашний каталог. Рискованное лучше отдать Claude Code или Codex.</p></div>' : ''),
+      (e.sandbox === false ? '<div class="warnbox">' + ic('warn') + '<p><b>' + e.n + ' работает без песочницы.</b> Ограничен папкой worktree, но ходит в сеть и читает домашний каталог. Рискованное лучше запускать с ограниченной сетью или в другой среде вручную.</p></div>' : ''),
       grp('Сейчас', [
         row('Песочница', '', e.sandbox ? '<span class="pill-s ok">' + ic('check') + 'включена</span>' : '<span class="pill-s no">' + ic('warn') + 'нет защиты</span>'),
         row('Сеть', '', '<span>' + (e.net || '-') + '</span>'),
@@ -483,8 +560,8 @@
       grp('Параллельность', [row('Агентов одновременно', 'Остальные ждут в очереди.', num(3, 'шт.')), row('Режим роя', '', sel(['Соревнование', 'Бригада', 'Совет'], 'Соревнование')), row('Агентов в рое', 'Больше трёх редко окупается.', num(3, 'шт.'))]),
       grp('Если не идёт', [row('Потолок попыток', 'Потом - «не вышло» и к тебе.', num(3, 'попытки')), row('Завис, если нет вывода', '', num(15, 'мин')), row('Выбирать лучший вариант сам', 'Если ты не ответил.', sw(true) + num(10, 'мин'))])]],
     limits: ['Лимиты и бюджет', 'Ни одна задача не превысит потолок.', [
-      grp('Бюджет', [row('На одну задачу', 'Дойдя до потолка, агент спрашивает.', '<span class="unit">$</span>' + num(5, '')), row('В день', 'По всем средам.', '<span class="unit">$</span>' + num(40, '')), row('Предупреждать на', '', num(80, '%'))]),
-      grp('Сегодня', [row('Потрачено $12.40', 'Claude Code $8.10 · Codex $3.20 · Gemini $1.10', '<div class="bar" style="width:200px"><i style="width:31%"></i></div>')])]],
+      grp('Бюджет', [row('На одну задачу', 'Дойдя до потолка, агент спрашивает.', '<span class="unit">$</span>' + num(5, '')), row('В день на среду', 'У каждой среды свой потолок.', '<span class="unit">$</span>' + num(40, '')), row('Предупреждать на', '', num(80, '%'))]),
+      grp('Сегодня', [row('Каждая среда считает свой бюджет', 'Потраченное по среде - на её фабрике.', '<div class="bar" style="width:200px"><i style="width:31%"></i></div>')])]],
     notify: ['Уведомления', 'Тишина по умолчанию. Звук - только когда нужен ты.', [
       grp('Когда звать', [row('Вопрос от агента', '', sw(true)), row('Не вышло', '', sw(true)), row('Разрешение на push и PR', '', sw(true)), row('Задача готова', 'Готовое подождёт.', sw(false))]),
       grp('Как', [row('Звук', '', sel(['Тихий щелчок', 'Колокольчик', 'Без звука'], 'Тихий щелчок')), row('Тихие часы', 'Копится без звука.', '<input type="text" value="23:00" style="width:64px"><span class="unit">до</span><input type="text" value="08:00" style="width:64px">')])]],
@@ -495,13 +572,13 @@
   function renderSettings(id) {
     curSet = id || curSet;
     var k = state.env, e = ENVS[k];
-    function link(n) { return '<a href="#settings-' + n[0] + '" class="' + (n[0] === curSet ? 'on' : '') + '">' + n[1] + '</a>'; }
+    function link(n) { return '<a href="#settings-' + n[0] + '" class="' + (n[0] === curSet || (curSet === 'env-import' && n[0] === 'env-kits') ? 'on' : '') + '">' + n[1] + '</a>'; }
     $('#snav').innerHTML = '<h2>' + eic(k) + e.n + '</h2>' + ENV_NAV.map(link).join('') + '<h2>Для всех сред</h2>' + COMMON_NAV.map(link).join('');
     var s = curSet.indexOf('env-') === 0 ? envSettings(curSet) : SET[curSet];
     var isEnv = curSet.indexOf('env-') === 0;
     $('#sbody').innerHTML = '<h1>' + (isEnv ? eic(k) : '') + s[0] + '</h1>' + (s[1] ? '<p class="lead">' + s[1] + '</p>' : '') + s[2].join('');
     $$('.sw', $('#sbody')).forEach(function (el) { el.onclick = function () { el.classList.toggle('on'); el.setAttribute('aria-checked', el.classList.contains('on')); }; });
-    $$('#setModels .mcard').forEach(function (b) { b.onclick = function () { e.model = e.def = +b.dataset.smi; renderSettings(); }; });
+    if ($('#setModels')) bindModels($('#setModels'), k, function (i) { e.def = i; renderSettings(); });
     $$('#themeSet button').forEach(function (b) { b.onclick = function () { setTheme(b.dataset.theme); }; });
     syncThemeUi();
   }
@@ -514,10 +591,11 @@
       var stx = e.custom ? 'любая CLI' : e.missing ? 'не найден' : 'найден, вошёл';
       return '<button type="button" class="envcard' + (k === onbEnv ? ' on' : '') + (e.missing ? ' off' : '') + '" data-k="' + k + '">' + eic(k) + '<b>' + e.n + '</b><small class="' + (e.missing || e.custom ? '' : 'ok') + '">' + stx + '</small></button>';
     }).join('');
+    $('#onbFound').innerHTML = KIT[onbEnv] && !ENVS[onbEnv].missing && !ENVS[onbEnv].custom ? ic('check') + 'Найдены твои скиллы и правила (' + KIT[onbEnv].dir + ') - подключены.' : '';
     $('#onbEnvName').textContent = ENVS[onbEnv].n + ' · названия - пример, список берём из CLI';
-    $('#onbModels').innerHTML = modelsHtml(onbEnv, 'data-om');
+    $('#onbModels').innerHTML = modelsHtml(onbEnv);
     $$('#onbEnvs .envcard').forEach(function (b) { b.onclick = function () { onbEnv = b.dataset.k; renderOnb(); }; });
-    $$('#onbModels .mcard').forEach(function (b) { b.onclick = function () { ENVS[onbEnv].model = +b.dataset.om; renderOnb(); }; });
+    bindModels($('#onbModels'), onbEnv, function () { renderOnb(); });
   }
 
   /* ---------- тема ---------- */
@@ -540,7 +618,7 @@
     });
     var screen = 'main', setId = null, navKey = 'main';
     if (h.indexOf('c-') === 0) { var fc = findChat(h.slice(2)); if (fc) { state.env = fc.env; state.chat = fc.chat.id; empty = false; state.open = null; } }
-    else if (h === 'lanes' || h === 'changes' || h === 'checks' || h === 'details') { state.env = 'claude'; state.chat = 'inv'; state.open = 'inv'; state.tab = h; navKey = 'lanes'; }
+    else if (h === 'task') { state.env = 'claude'; state.chat = 'inv'; state.open = 'inv'; navKey = 'task'; }
     else if (h === 'swarm' || h === 'factory' || h === 'empty') screen = navKey = h;
     else if (h.indexOf('settings') === 0) { screen = navKey = 'settings'; setId = h.slice(9) || null; }
     else if (h === 'main') state.open = null;
@@ -549,7 +627,6 @@
     document.body.classList.toggle('is-empty', screen === 'empty');
     document.body.classList.toggle('no-side', screen === 'factory' || screen === 'settings');
     renderRail(); renderSide();
-    $$('.rail .env-b').forEach(function (b) { if (screen !== 'main' && screen !== 'swarm') b.classList.remove('on'); });
     $('#railFactory').classList.toggle('on', screen === 'factory');
     $('#railSettings').classList.toggle('on', screen === 'settings');
     if (screen === 'main') {
@@ -560,6 +637,7 @@
       if (flags.indexOf('q') >= 0) togglePop($('#tune'), $('#tunePanel'), true);
     }
     if (screen === 'settings') renderSettings(setId);
+    if (screen === 'factory') renderFactory();
     if (screen === 'empty') renderOnb();
     $$('#mocknav a').forEach(function (a) { a.classList.toggle('on', a.dataset.s === navKey); });
   }
