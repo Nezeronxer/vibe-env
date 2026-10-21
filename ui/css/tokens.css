@@ -1,0 +1,37 @@
+/* Nightshift v2. Среда - верхний уровень. Янтарь зарезервирован за одним смыслом: "нужен человек". */
+:root {
+  color-scheme: dark;
+  --bg: #111112; --panel: #171718; --raised: #1f1f21; --raised2: #28282b; --line: #2b2b2e; --line2: #3a3a3e;
+  --ink: #ececea; --ink2: #b0b0ac; --ink3: #8a8a86;
+  --human: #f2b134; --human-bg: #2a2212; --human-line: #5c4818; --on-human: #1a1405;
+  --ok: #48b882; --bad: #ef6b60; --bad-bg: #2b1a19; --ok-bg: #14261e;
+  --btn: #ececea; --on-btn: #131313;
+  --plan: #5b9cf0; --crit: #ef6b60; --test: #3eb489; --exec: #38bdc8; --gate: #a2c44f; --rev: #e279ad; --integ: #8c9bb0;
+  --coord: #d8d8d4; --watch: #c9a56b; --queue: #8c9bb0;
+  --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, "DejaVu Sans Mono", monospace;
+  --sans: system-ui, -apple-system, "Segoe UI", "Noto Sans", "Helvetica Neue", sans-serif;
+  --r: 4px;
+}
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    color-scheme: light;
+    --bg: #e9eaeb; --panel: #f4f5f5; --raised: #ffffff; --raised2: #e4e5e6; --line: #d6d8da; --line2: #bfc2c5;
+    --ink: #16171a; --ink2: #4a4c50; --ink3: #64666b;
+    --human: #b46f00; --human-bg: #fbf0d8; --human-line: #e0b866; --on-human: #ffffff;
+    --ok: #17794d; --bad: #c2362b; --bad-bg: #fbe9e7; --ok-bg: #e3f3ea;
+    --btn: #16171a; --on-btn: #f4f5f5;
+    --plan: #2368c7; --crit: #c2362b; --test: #12805a; --exec: #0b7f8a; --gate: #5f7d12; --rev: #b8457f; --integ: #566478;
+    --coord: #2b2c30; --watch: #8a6420; --queue: #566478;
+  }
+}
+:root[data-theme="light"] {
+  color-scheme: light;
+  --bg: #e9eaeb; --panel: #f4f5f5; --raised: #ffffff; --raised2: #e4e5e6; --line: #d6d8da; --line2: #bfc2c5;
+  --ink: #16171a; --ink2: #4a4c50; --ink3: #64666b;
+  --human: #b46f00; --human-bg: #fbf0d8; --human-line: #e0b866; --on-human: #ffffff;
+  --ok: #17794d; --bad: #c2362b; --bad-bg: #fbe9e7; --ok-bg: #e3f3ea;
+  --btn: #16171a; --on-btn: #f4f5f5;
+  --plan: #2368c7; --crit: #c2362b; --test: #12805a; --exec: #0b7f8a; --gate: #5f7d12; --rev: #b8457f; --integ: #566478;
+  --coord: #2b2c30; --watch: #8a6420; --queue: #566478;
+}
+:root[data-theme="dark"] { color-scheme: dark; }

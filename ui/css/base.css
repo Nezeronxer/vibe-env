@@ -1,0 +1,29 @@
+
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 13px/1.45 var(--sans); -webkit-font-smoothing: antialiased; overflow: hidden; }
+h1, h2, h3, p, ul, ol, dl, dd { margin: 0; padding: 0; }
+ul, ol { list-style: none; }
+button, input, select, textarea { font: inherit; color: inherit; }
+button { cursor: pointer; }
+a { color: inherit; text-decoration: none; }
+[hidden] { display: none !important; }
+:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+small { font-size: 11.5px; color: var(--ink3); }
+.hint { color: var(--ink3); font-size: 12px; font-weight: 400; }
+.grow { flex: 1; }
+.w100 { width: 100%; }
+
+.ic { width: 14px; height: 14px; fill: currentColor; flex: none; }
+.chev { transition: transform .15s ease-out; }
+[aria-expanded="true"] .chev { transform: rotate(180deg); }
+
+/* роли: форма + цвет + подпись */
+.rl { width: 14px; height: 14px; fill: currentColor; color: var(--c); flex: none; }
+.r-plan { --c: var(--plan); } .r-crit { --c: var(--crit); } .r-test { --c: var(--test); } .r-exec { --c: var(--exec); }
+.r-gate { --c: var(--gate); } .r-rev { --c: var(--rev); } .r-integ { --c: var(--integ); }
+.r-coord { --c: var(--coord); } .r-watch { --c: var(--watch); } .r-queue { --c: var(--queue); }
+.rname { color: var(--c); font-weight: 600; }
+
+.sprite { position: absolute; width: 0; height: 0; }

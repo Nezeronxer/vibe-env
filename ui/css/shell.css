@@ -1,0 +1,82 @@
+/* каркас: край | задачи среды | экран */
+.app { display: grid; grid-template-columns: 72px 236px minmax(0, 1fr); height: 100vh; }
+body.no-side .app { grid-template-columns: 72px minmax(0, 1fr); }
+body.no-side .side { display: none; }
+body.is-empty .app { grid-template-columns: minmax(0, 1fr); }
+body.is-empty .rail, body.is-empty .side { display: none; }
+
+.rail { background: var(--bg); border-right: 1px solid var(--line); display: flex; flex-direction: column; align-items: center; padding: 12px 0 10px; gap: 6px; overflow: auto; }
+.rail-brand { padding: 2px 0 10px; color: var(--ink); }
+.rail-brand .ic { width: 20px; height: 20px; }
+.rail-envs, .rail-foot { display: grid; gap: 4px; }
+.rail-foot { margin-top: auto; padding-top: 10px; border-top: 1px solid var(--line); }
+.env-b { width: 60px; padding: 8px 0 6px; border-radius: 6px; border: 0; background: transparent; color: var(--ink3); display: grid; justify-items: center; gap: 4px; position: relative; font-size: 10.5px; line-height: 1.1; text-align: center; }
+.env-b .ic { width: 20px; height: 20px; }
+.env-b:hover { background: var(--raised); color: var(--ink); }
+.env-b.on { background: var(--raised2); color: var(--ink); font-weight: 600; }
+.env-b.on::before { content: ""; position: absolute; left: -6px; top: 10px; bottom: 10px; width: 3px; background: var(--ink); border-radius: 0 2px 2px 0; }
+.env-b.off .ic { opacity: .45; }
+
+.side { background: var(--panel); border-right: 1px solid var(--line); display: flex; flex-direction: column; padding: 14px 10px; gap: 10px; overflow: auto; }
+.side-h { display: flex; align-items: center; gap: 8px; padding: 2px 6px; font-size: 15px; }
+.side-h .ic { width: 18px; height: 18px; }
+.newtask { justify-content: flex-start; }
+.pgroup { margin-top: 6px; }
+.pgroup h3 { font-size: 12px; color: var(--ink3); font-weight: 600; padding: 4px 8px; }
+.tasks a { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: var(--r); color: var(--ink2); }
+.tasks a:hover { background: var(--raised); color: var(--ink); }
+.tasks a.on { background: var(--raised2); color: var(--ink); font-weight: 500; }
+.tasks a span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ti { width: 13px; height: 13px; flex: none; }
+.side-none { padding: 8px; color: var(--ink3); }
+
+.ti.run { color: var(--exec); } .ti.done { color: var(--ok); } .ti.fail { color: var(--bad); } .ti.queue, .ti.talk { color: var(--ink3); }
+.tasks a { align-items: flex-start; }
+.tasks a .ti { margin-top: 3px; }
+.tasks .tx { flex: 1; min-width: 0; display: grid; }
+.tasks .tx span, .tasks .tx small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.side-h small { margin-left: auto; }
+.side-h .icw img, .side-h .icw svg { width: 18px; height: 18px; }
+.side-foot { margin-top: auto; padding-top: 8px; }
+.archive > summary { list-style: none; cursor: pointer; color: var(--ink3); padding: 6px 8px; border-radius: var(--r); }
+.archive > summary::-webkit-details-marker { display: none; }
+.archive > summary:hover { color: var(--ink); background: var(--raised); }
+.env-b .wk { position: absolute; top: 6px; left: 10px; width: 7px; height: 7px; border-radius: 50%; background: var(--exec); }
+.env-b .sub { font-size: 9px; line-height: 1.1; opacity: .85; }
+.screen { min-width: 0; min-height: 0; overflow: hidden; display: flex; flex-direction: column; }
+.screen > * { flex: none; }
+.screen > .convo { flex: 1; }
+.screen-scroll { overflow: auto; }
+.frozen-bar { display: flex; gap: 10px; align-items: center; padding: 6px 16px; background: var(--raised2); border-bottom: 1px solid var(--line2); }
+.shell-main { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+.shell-main > .screen { flex: 1; }
+.side-toggle { display: none; }
+.toast { position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%); z-index: 50; background: var(--btn); color: var(--on-btn); padding: 8px 14px; border-radius: var(--r); max-width: 60ch; }
+.toast.bad { background: var(--bad); color: #fff; }
+.placeholder { margin: auto; max-width: 46ch; padding: 24px; color: var(--ink2); text-align: center; }
+.placeholder h2 { color: var(--ink); font-size: 18px; margin-bottom: 6px; }
+@media (max-width: 1099px) {
+  .app { grid-template-columns: 72px minmax(0, 1fr); position: relative; }
+  .app .side { display: none; position: absolute; left: 72px; top: 0; bottom: 0; width: 260px; z-index: 20; box-shadow: 0 8px 24px rgba(0,0,0,.35); }
+  .app.side-open .side { display: flex; }
+  body.no-side .app { grid-template-columns: 72px minmax(0, 1fr); }
+  body.is-empty .app { grid-template-columns: minmax(0, 1fr); }
+  .side-toggle { display: inline-flex; }
+}
+@media (max-width: 899px) {
+  .app, body.no-side .app { grid-template-columns: 44px minmax(0, 1fr); }
+  body.is-empty .app { grid-template-columns: minmax(0, 1fr); }
+  .app .side { left: 44px; }
+  .rail { padding: 10px 0; }
+  .env-b { width: 38px; padding: 6px 0; }
+  .env-b span { display: none; }
+  .env-b .bn { right: 0; top: 0; }
+  .env-b .wk { left: 4px; }
+  .rail-brand { display: none; }
+}
+dialog { background: var(--raised); color: var(--ink); border: 1px solid var(--line2); border-radius: 6px; padding: 18px 20px; max-width: 460px; }
+dialog::backdrop { background: rgba(0,0,0,.5); }
+dialog h2 { font-size: 15px; margin-bottom: 6px; }
+dialog p { color: var(--ink2); margin-bottom: 14px; }
+.dlg-acts { display: flex; gap: 8px; justify-content: flex-end; }
+body.dragging::after { content: ""; position: fixed; inset: 6px; border: 2px dashed var(--ink3); border-radius: 8px; pointer-events: none; z-index: 40; }
