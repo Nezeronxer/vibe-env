@@ -9,7 +9,7 @@ window.STATE =
   "briefFile": "2026-10-21-brief.md",
   "memoryFile": "CLAUDE.md",
   "startedAt": "2026-10-21T08:41:14+03:00",
-  "updatedAt": "2026-10-21T19:57:25+03:00",
+  "updatedAt": "2026-10-21T19:57:42+03:00",
   "finishedAt": null,
   "stages": [
     {
@@ -49,7 +49,7 @@ window.STATE =
       "id": "build",
       "status": "active",
       "startedAt": "2026-10-21T09:02:22+03:00",
-      "note": "готовы 01-03, 05, 06, 08-12, 14, 15; дальше 13"
+      "note": "готовы 01-03, 05, 06, 08-12, 14, 15; идёт 13"
     },
     {
       "id": "review",
@@ -720,8 +720,9 @@ window.STATE =
         "ui/"
       ],
       "wave": 7,
-      "status": "pending",
-      "concerns": []
+      "status": "in-progress",
+      "concerns": [],
+      "startedAt": "2026-10-21T19:57:42+03:00"
     },
     {
       "id": "14",
