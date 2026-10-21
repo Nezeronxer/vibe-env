@@ -232,10 +232,14 @@ fn dir_size(p: &Path) -> u64 {
 }
 
 /// Run git under a time limit, killing its whole process group when the limit or the size of
-/// `watch` is exceeded.
-fn git_limited(dir: &Path, args: &[&str], watch: &Path, err_file: &Path) -> Result<(), KitError> {
+/// `watch` is exceeded. Stdout goes to `out_file` when given.
+fn git_limited(dir: &Path, args: &[&str], watch: &Path, err_file: &Path, out_file: Option<&Path>) -> Result<(), KitError> {
     use std::os::unix::process::CommandExt;
     let err = std::fs::File::create(err_file).map_err(io)?;
+    let out = match out_file {
+        Some(p) => std::process::Stdio::from(std::fs::File::create(p).map_err(io)?),
+        None => std::process::Stdio::null(),
+    };
     let mut child = Command::new("git")
         .current_dir(dir)
         .env("GIT_TERMINAL_PROMPT", "0")
@@ -245,7 +249,7 @@ fn git_limited(dir: &Path, args: &[&str], watch: &Path, err_file: &Path) -> Resu
         .args(["-c", "core.sshCommand=ssh -o BatchMode=yes", "-c", "protocol.ext.allow=never", "-c", "core.hooksPath=/dev/null"])
         .args(args)
         .stdin(std::process::Stdio::null())
-        .stdout(std::process::Stdio::null())
+        .stdout(out)
         .stderr(err)
         .process_group(0)
         .spawn()
@@ -286,27 +290,30 @@ fn load_repo(url: &str, scratch: &Path) -> Result<LoadedKit, KitError> {
     let res = (|| {
         // no checkout yet: sizes, count and symlinks are checked from the tree first
         let d = dest.to_string_lossy().to_string();
-        git_limited(&tmp, &["clone", "--depth", "1", "--no-tags", "--single-branch", "--no-checkout", "--filter=blob:limit=10m", "-q", "--", &src, &d], &tmp, &err)?;
-        let out = Command::new("git").current_dir(&dest).args(["ls-tree", "-r", "-l", "-z", "HEAD"]).output().map_err(io)?;
-        if !out.status.success() {
-            return Err(KitError::CloneFailed("empty repository".into()));
-        }
+        git_limited(&tmp, &["clone", "--depth", "1", "--no-tags", "--single-branch", "--no-checkout", "--filter=blob:limit=10m", "-q", "--", &src, &d], &tmp, &err, None)?;
+        // same limits as the clone; with lazy fetch off a blob the filter left out shows as "BAD"
+        let listing = tmp.join("ls-tree");
+        git_limited(&dest, &["ls-tree", "-r", "-l", "-z", "HEAD"], &tmp, &err, Some(&listing))
+            .map_err(|e| if matches!(e, KitError::CloneFailed(_)) { KitError::CloneFailed("empty repository".into()) } else { e })?;
+        let listing = std::fs::read(&listing).map_err(io)?;
         let mut total = 0u64;
         let mut count = 0usize;
-        for rec in out.stdout.split(|b| *b == 0).filter(|r| !r.is_empty()) {
+        for rec in listing.split(|b| *b == 0).filter(|r| !r.is_empty()) {
             let rec = String::from_utf8_lossy(rec);
             let (meta, path) = rec.split_once('\t').unwrap_or((&rec, ""));
             let f: Vec<&str> = meta.split_whitespace().collect();
-            let (mode, size) = (f.first().copied().unwrap_or(""), f.get(3).and_then(|s| s.parse::<u64>().ok()).unwrap_or(0));
+            let mode = f.first().copied().unwrap_or("");
             if mode == "120000" {
                 return Err(KitError::Symlink(path.to_string()));
             }
             if mode == "160000" {
                 continue; // submodule: never fetched
             }
-            if size > MAX_FILE {
-                return Err(KitError::FileTooLarge { path: path.to_string(), size });
-            }
+            // no size = the blob is not here: `--filter=blob:limit=10m` left it out as too large
+            let size = match f.get(3).and_then(|s| s.parse::<u64>().ok()) {
+                Some(n) if n <= MAX_FILE => n,
+                n => return Err(KitError::FileTooLarge { path: path.to_string(), size: n.unwrap_or(MAX_FILE) }),
+            };
             total += size;
             count += 1;
             if total > MAX_TOTAL {
@@ -316,7 +323,7 @@ fn load_repo(url: &str, scratch: &Path) -> Result<LoadedKit, KitError> {
                 return Err(KitError::TooManyFiles(count));
             }
         }
-        git_limited(&dest, &["checkout", "-q", "HEAD", "--", "."], &tmp, &err)?;
+        git_limited(&dest, &["checkout", "-q", "HEAD", "--", "."], &tmp, &err, None)?;
         let commit = Command::new("git")
             .current_dir(&dest)
             .env("LC_ALL", "C")

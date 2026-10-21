@@ -795,6 +795,8 @@ fn a_repository_with_a_big_file_or_a_symlink_is_refused_before_checkout() {
         let repo = e.out.join(format!("r{i}"));
         fs::create_dir_all(&repo).unwrap();
         git(&repo, &["init", "-q", "-b", "main"]);
+        // the clone filter really applies: the big blob stays on the source side
+        git(&repo, &["config", "uploadpack.allowFilter", "true"]);
         put(&repo.join("kit.json"), "{}");
         if *bad == "big" {
             fs::write(repo.join("CLAUDE.md"), vec![b'a'; 10 * 1024 * 1024 + 1]).unwrap();
@@ -806,7 +808,8 @@ fn a_repository_with_a_big_file_or_a_symlink_is_refused_before_checkout() {
         let before = (tree(&e.home), tree(&e.data));
         let err = kits(&e).preview("claude", KitSource::Repo(repo.display().to_string()), &Scope::Global).unwrap_err();
         match *bad {
-            "big" => assert!(matches!(err, KitError::FileTooLarge { .. }), "{err:?}"),
+            // refused for the missing blob: its real size (10 MiB + 1) was never fetched
+            "big" => assert!(matches!(err, KitError::FileTooLarge { ref path, size } if path == "CLAUDE.md" && size != 10 * 1024 * 1024 + 1), "{err:?}"),
             _ => assert!(matches!(err, KitError::Symlink(_)), "{err:?}"),
         }
         assert_eq!(before, (tree(&e.home), tree(&e.data)));
@@ -844,4 +847,98 @@ fn rollback_of_shared_configs_returns_only_the_kits_keys_and_keeps_what_the_cli_
     let st = read_json(&sp);
     assert_eq!(st["theme"], "dark", "the CLI's own settings change is kept");
     assert!(st.get("model").is_none(), "the kit's key is gone");
+}
+
+#[test]
+fn a_repository_blob_left_out_by_the_clone_filter_is_refused_not_fetched_later() {
+    // `--filter=blob:limit=10m` leaves out blobs of 10 MiB and more (git docs: "at least n
+    // bytes"); a file of exactly 10 MiB passes the folder check but must not be lazily fetched.
+    let src = env();
+    put(&src.home.join(".claude/CLAUDE.md"), "# rules\n");
+    let e = env();
+    let repo = e.out.join("kit-repo");
+    kits(&src).export("claude", &sel(&[Group::Rules]), ExportDest::Git(repo.clone())).unwrap();
+    git(&repo, &["config", "uploadpack.allowFilter", "true"]);
+    fs::write(repo.join("extra.bin"), vec![b'a'; 10 * 1024 * 1024]).unwrap();
+    git(&repo, &["add", "-A"]);
+    git(&repo, &["-c", "user.name=T", "-c", "user.email=t@e", "commit", "-q", "-m", "big"]);
+    let before = (tree(&e.home), tree(&e.data));
+    let err = kits(&e).preview("claude", KitSource::Repo(repo.display().to_string()), &Scope::Global).unwrap_err();
+    assert!(matches!(&err, KitError::FileTooLarge { path, .. } if path == "extra.bin"), "{err:?}");
+    assert_eq!(before, (tree(&e.home), tree(&e.data)));
+}
+
+#[test]
+fn rollback_keeps_a_kit_key_the_human_changed_after_install_and_reports_it() {
+    let e = env();
+    let kit = kit_from(&e, &[Group::Settings]);
+    let sp = e.home.join(".claude/settings.json");
+    put(&sp, "{\"theme\": \"light\", \"model\": \"haiku\"}");
+    let k = kits(&e);
+    let plan = k.preview("claude", KitSource::Folder(kit), &Scope::Global).unwrap();
+    let id = k.install(&plan, &Choices::default()).unwrap();
+    assert_eq!(read_json(&sp)["model"], "opus");
+
+    // the human (or the CLI's /model) picks another model after the install
+    let mut st = read_json(&sp);
+    st["model"] = "sonnet".into();
+    fs::write(&sp, st.to_string()).unwrap();
+
+    let rep = k.rollback(&id).unwrap();
+    let st = read_json(&sp);
+    assert_eq!(st["model"], "sonnet", "the human's value stays");
+    assert_eq!(st["theme"], "light");
+    assert_eq!(rep.kept_changed, vec!["~/.claude/settings.json: model".to_string()]);
+}
+
+#[test]
+fn rollback_keeps_a_file_new_to_the_install_once_the_human_wrote_into_it() {
+    let src = env();
+    codex_home(&src);
+    let e = env();
+    let kit = e.out.join("codex-kit");
+    kits(&src).export("codex", &sel(&[Group::Settings, Group::Rules]), ExportDest::Folder(kit.clone())).unwrap();
+    let k = kits(&e);
+    let plan = k.preview("codex", KitSource::Folder(kit), &Scope::Global).unwrap();
+    let id = k.install(&plan, &Choices::default()).unwrap();
+    let cfg = e.home.join(".codex/config.toml");
+    let rules = e.home.join(".codex/AGENTS.md");
+    assert!(fs::read_to_string(&cfg).unwrap().contains("model = \"gpt-5\""));
+
+    // the human notes something in both files the install created
+    let t = fs::read_to_string(&cfg).unwrap();
+    fs::write(&cfg, format!("# my notes: try o3 next week\n{t}")).unwrap();
+    fs::write(&rules, "Be brief.\nAnd answer in Russian.\n").unwrap();
+
+    let rep = k.rollback(&id).unwrap();
+    let t = fs::read_to_string(&cfg).expect("config.toml stays: the human wrote into it");
+    assert!(t.contains("# my notes: try o3 next week"), "{t}");
+    assert!(!t.contains("gpt-5") && !t.contains("theme"), "the kit's keys are gone: {t}");
+    assert_eq!(fs::read_to_string(&rules).unwrap(), "Be brief.\nAnd answer in Russian.\n");
+    let mut kept = rep.kept_files.clone();
+    kept.sort();
+    assert_eq!(kept, vec!["~/.codex/AGENTS.md".to_string(), "~/.codex/config.toml".to_string()]);
+}
+
+#[test]
+fn a_config_the_running_cli_overwrote_right_after_the_write_is_reported_not_applied() {
+    let e = env();
+    let kit = kit_from(&e, &[Group::Settings]);
+    let sp = e.home.join(".claude/settings.json");
+    put(&sp, "{\"theme\": \"light\"}");
+    // a running Claude Code saves its in-memory settings over the file just written
+    let k = kits(&e).after_config_write(|p: &Path| {
+        if p.ends_with(".claude/settings.json") {
+            fs::write(p, "{\"theme\": \"light\"}").unwrap();
+        }
+    });
+    let plan = k.preview("claude", KitSource::Folder(kit), &Scope::Global).unwrap();
+    let err = k.install(&plan, &Choices::default()).unwrap_err();
+    let KitError::NotApplied { snapshot, cli, keys } = &err else { panic!("{err:?}") };
+    assert_eq!(cli, "Claude Code");
+    assert_eq!(keys, &vec!["~/.claude/settings.json: model".to_string()]);
+    assert!(err.to_string().contains("close Claude Code and retry"), "{err}");
+    let s = k.snapshots("claude").into_iter().find(|s| &s.id == snapshot).unwrap();
+    assert_eq!(s.state, SnapshotState::NotApplied, "not Done");
+    assert_eq!(read_json(&sp), serde_json::json!({ "theme": "light" }));
 }

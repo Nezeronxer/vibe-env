@@ -270,6 +270,17 @@ impl SnapshotInfo {
     }
 }
 
+/// What `rollback` left in place because it changed after the install.
+#[derive(Serialize, Clone, Debug, Default, PartialEq)]
+pub struct RollbackReport {
+    /// `<file>: <key>` (`~`-style) - kit keys of shared configs whose value the human or the
+    /// CLI changed since the install: their value stays.
+    pub kept_changed: Vec<String>,
+    /// Files the install created that the human wrote into since (`~`-style): they stay, only
+    /// the kit's keys are taken out of them.
+    pub kept_files: Vec<String>,
+}
+
 /// An install found unfinished at start and rolled back.
 #[derive(Serialize, Clone, Debug, PartialEq)]
 pub struct Recovered {
@@ -316,6 +327,10 @@ pub enum KitError {
     BadName(String),
     #[error("install interrupted")]
     Interrupted,
+    /// The CLI saved its config over the kit's keys right after the install wrote them (it
+    /// was running): snapshot `snapshot` is `NotApplied`; ui: "закрой <cli> и повтори".
+    #[error("{cli} wrote its config over the kit ({keys:?}): close {cli} and retry")]
+    NotApplied { snapshot: SnapshotId, cli: String, keys: Vec<String> },
     #[error("io: {0}")]
     Io(String),
 }
@@ -384,12 +399,15 @@ pub struct Kits {
     store: Box<dyn SecretStore>,
     cache: Mutex<BTreeMap<String, Arc<LoadedKit>>>,
     crash_after: Option<usize>,
+    after_conf_write: Option<AfterWrite>,
 }
+
+type AfterWrite = Box<dyn Fn(&Path) + Send + Sync>;
 
 impl Kits {
     /// `home` - the user's home folder (CLI folders live under it); `data_dir` - the app's data.
     pub fn new(home: impl Into<PathBuf>, data_dir: impl Into<PathBuf>) -> Kits {
-        Kits { home: home.into(), data: data_dir.into(), store: Box::new(SystemKeyring), cache: Mutex::new(BTreeMap::new()), crash_after: None }
+        Kits { home: home.into(), data: data_dir.into(), store: Box::new(SystemKeyring), cache: Mutex::new(BTreeMap::new()), crash_after: None, after_conf_write: None }
     }
 
     /// Replace the system keyring (tests, or a host without one).
@@ -403,6 +421,14 @@ impl Kits {
     #[doc(hidden)]
     pub fn crash_after_writes(mut self, n: usize) -> Kits {
         self.crash_after = Some(n);
+        self
+    }
+
+    /// Test seam: runs right after each shared config is written, before it is read back -
+    /// where a running CLI would save its in-memory copy over it.
+    #[doc(hidden)]
+    pub fn after_config_write(mut self, f: impl Fn(&Path) + Send + Sync + 'static) -> Kits {
+        self.after_conf_write = Some(Box::new(f));
         self
     }
 
@@ -914,17 +940,38 @@ impl Kits {
             let mode = m.entries.iter().find(|e| &e.path == p).and_then(|e| e.mode);
             // a shared config is re-read right before the write: the CLI may have changed it
             let res = if ops.is_empty() {
-                snap::write_atomic(p, b, mode)
+                snap::write_atomic(p, b, mode).map(|_| source::sha256_hex(b))
             } else {
                 let refs: Vec<&ConfOp> = ops.iter().collect();
-                units::apply_conf(std::fs::read(p).ok().as_deref(), &refs).and_then(|nb| snap::write_atomic(p, &nb, mode))
+                units::apply_conf(std::fs::read(p).ok().as_deref(), &refs).and_then(|nb| snap::write_atomic(p, &nb, mode).map(|_| source::sha256_hex(&nb)))
             };
+            let res = res.map(|h| {
+                if let Some(e) = m.entries.iter_mut().find(|e| &e.path == p) {
+                    e.written = Some(h);
+                }
+            });
             if let Err(e) = res {
-                let _ = snaps.restore(m);
+                let _ = snaps.restore(m, false);
                 m.state = SnapshotState::RolledBack;
                 let _ = snaps.save(m);
                 return Err(e);
             }
+            if let (false, Some(f)) = (ops.is_empty(), &self.after_conf_write) {
+                f(p);
+            }
+        }
+        // read every shared config back: a running CLI may have saved its own copy over it
+        let mut lost = vec![];
+        for Write(p, _, ops) in writes {
+            let cur = std::fs::read(p).ok();
+            for op in ops.iter().filter(|op| !units::conf_state(cur.as_deref(), op).1) {
+                lost.push(format!("{}: {}", self.tilde(p), op.label()));
+            }
+        }
+        if !lost.is_empty() {
+            m.state = SnapshotState::NotApplied;
+            snaps.save(m)?;
+            return Err(KitError::NotApplied { snapshot: m.id.clone(), cli: env_name(&m.env), keys: lost });
         }
         m.state = SnapshotState::Done;
         snaps.save(m)
@@ -998,10 +1045,12 @@ impl Kits {
             held,
             project_files,
         };
-        self.apply(&mut m, &writes)?;
-        snaps.prune(&m.env, &m.id);
-        self.cache.lock().unwrap().remove(&plan.id);
-        Ok(id)
+        let res = self.apply(&mut m, &writes);
+        if matches!(res, Ok(()) | Err(KitError::NotApplied { .. })) {
+            snaps.prune(&m.env, &m.id);
+            self.cache.lock().unwrap().remove(&plan.id);
+        }
+        res.map(|_| id)
     }
 
     /// Turn on one held item (hook, MCP server, scripted skill, running setting) from the
@@ -1034,7 +1083,16 @@ impl Kits {
             }
         }
         m.held[pos].enabled = true;
-        self.apply(&mut m, &writes)
+        match self.apply(&mut m, &writes) {
+            Err(e @ KitError::NotApplied { .. }) => {
+                // the install itself stays Done; only this item did not take
+                m.held[pos].enabled = false;
+                m.state = SnapshotState::Done;
+                snaps.save(&m)?;
+                Err(e)
+            }
+            r => r,
+        }
     }
 
     pub fn snapshots(&self, env: &str) -> Vec<SnapshotInfo> {
@@ -1059,15 +1117,19 @@ impl Kits {
     }
 
     /// Put back every file the kit (and items turned on later) changed; remove what it added.
-    pub fn rollback(&self, id: &str) -> Result<(), KitError> {
+    pub fn rollback(&self, id: &str) -> Result<RollbackReport, KitError> {
         let snaps = self.snaps();
         let mut m = snaps.load(id)?;
         if matches!(m.state, SnapshotState::RolledBack | SnapshotState::Interrupted) {
-            return Ok(());
+            return Ok(RollbackReport::default());
         }
-        snaps.restore(&m)?;
+        let kept = snaps.restore(&m, true)?;
         m.state = SnapshotState::RolledBack;
-        snaps.save(&m)
+        snaps.save(&m)?;
+        Ok(RollbackReport {
+            kept_changed: kept.keys.iter().map(|(p, k)| format!("{}: {k}", self.tilde(p))).collect(),
+            kept_files: kept.files.iter().map(|p| self.tilde(p)).collect(),
+        })
     }
 
     /// At start: an install left open (the app quit or the disk failed mid-way) is rolled back.
@@ -1079,7 +1141,7 @@ impl Kits {
             if m.state != SnapshotState::Installing {
                 continue;
             }
-            if snaps.restore(&m).is_ok() {
+            if snaps.restore(&m, false).is_ok() {
                 m.state = SnapshotState::Interrupted;
                 let _ = snaps.save(&m);
                 out.push(Recovered { snapshot: m.id.clone(), env: m.env.clone(), kit_name: m.kit_name.clone(), message: "kit_install_interrupted_rolled_back".into() });

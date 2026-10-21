@@ -2,6 +2,7 @@
 //! (or a later "enable") changes, the list of files it created, and the kit itself for items
 //! that stay off until the human turns them on.
 
+use super::source;
 use super::units::{self, ConfOp};
 use super::{HeldItem, KitError, KitSource, Scope, SnapshotId};
 use chrono::{DateTime, Local};
@@ -66,6 +67,9 @@ pub enum SnapshotState {
     RolledBack,
     /// Found unfinished at start and rolled back by `recover()`.
     Interrupted,
+    /// Written, but the CLI saved its own copy of a shared config over the kit's keys right
+    /// after (it was running): the human closes the CLI and installs again, or rolls back.
+    NotApplied,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -78,6 +82,10 @@ pub(crate) struct Entry {
     /// puts back only these, keeping whatever the CLI wrote to other keys since.
     #[serde(default)]
     pub conf: Vec<(ConfOp, Option<String>)>,
+    /// sha256 of the bytes the last write put there: a file new to the install is removed on
+    /// rollback only while it still holds exactly these.
+    #[serde(default)]
+    pub written: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -94,6 +102,15 @@ pub(crate) struct Meta {
     pub created_dirs: Vec<PathBuf>,
     pub held: Vec<HeldItem>,
     pub project_files: Vec<String>,
+}
+
+/// What a rollback left in place because it changed after the install.
+#[derive(Default, Debug)]
+pub(crate) struct Kept {
+    /// (config file, key)
+    pub keys: Vec<(PathBuf, String)>,
+    /// Files new to the install that the human wrote into since: kept, minus the kit's keys.
+    pub files: Vec<PathBuf>,
 }
 
 pub(crate) const KEEP: usize = 20;
@@ -211,16 +228,40 @@ impl Snaps {
                 }
             }
         }
-        m.entries.push(Entry { path: path.to_path_buf(), existed, backup, mode: mode_of(path), conf: vec![] });
+        m.entries.push(Entry { path: path.to_path_buf(), existed, backup, mode: mode_of(path), conf: vec![], written: None });
         Ok(())
     }
 
-    /// Put every remembered file back as it was and remove what was added.
-    pub fn restore(&self, m: &Meta) -> Result<(), KitError> {
+    /// Put every remembered file back as it was and remove what was added. A config key whose
+    /// live value is no longer what the install wrote (the human or the CLI changed it since)
+    /// stays as it is and comes back in `Kept`. `careful` = a rollback the human asked for; an
+    /// install cut short (nobody edited anything in between) removes what it added outright.
+    pub fn restore(&self, m: &Meta, careful: bool) -> Result<Kept, KitError> {
+        let mut kept = Kept::default();
         for e in m.entries.iter().rev() {
+            let cur = std::fs::read(&e.path).ok();
+            // a file new to the install that no longer holds what the install wrote
+            let touched = careful && e.backup.is_none() && e.written.as_ref().is_some_and(|h| cur.as_deref().is_some_and(|c| source::sha256_hex(c) != *h));
+            if touched {
+                kept.files.push(e.path.clone());
+            }
             if !e.conf.is_empty() {
-                let cur = std::fs::read(&e.path).ok();
-                let undone = units::undo_conf(cur.as_deref(), &e.conf)?;
+                let Some(mut undone) = cur else {
+                    // the file is gone since: nothing of the kit is left in it, the old one goes back
+                    if let Some(b) = &e.backup {
+                        write_atomic(&e.path, &std::fs::read(self.dir(&m.id).join(b)).map_err(io)?, e.mode)?;
+                    }
+                    continue;
+                };
+                let mut any_kept = false;
+                for (op, old) in e.conf.iter().rev() {
+                    if units::conf_state(Some(&undone), op).1 {
+                        undone = units::undo_conf(Some(&undone), &[(op.clone(), old.clone())])?;
+                    } else if units::conf_old(Some(&undone), op) != *old {
+                        any_kept = true;
+                        kept.keys.push((e.path.clone(), op.label()));
+                    }
+                }
                 let orig = match &e.backup {
                     Some(b) => Some(std::fs::read(self.dir(&m.id).join(b)).map_err(io)?),
                     None => None,
@@ -228,7 +269,7 @@ impl Snaps {
                 match orig {
                     // nobody else touched the file: the exact old bytes go back
                     Some(o) if units::same_conf(&undone, &o) => write_atomic(&e.path, &o, e.mode)?,
-                    None if units::empty_conf(&undone) => {
+                    None if !touched && !any_kept && units::empty_conf(&undone) => {
                         if std::fs::symlink_metadata(&e.path).is_ok() {
                             std::fs::remove_file(&e.path).map_err(io)?;
                         }
@@ -242,6 +283,7 @@ impl Snaps {
                     let bytes = std::fs::read(self.dir(&m.id).join(b)).map_err(io)?;
                     write_atomic(&e.path, &bytes, e.mode)?;
                 }
+                None if touched => {}
                 None => {
                     if std::fs::symlink_metadata(&e.path).is_ok() {
                         std::fs::remove_file(&e.path).map_err(io)?;
@@ -263,6 +305,6 @@ impl Snaps {
             // only if empty: never removes anything the human put there since
             let _ = std::fs::remove_dir(d);
         }
-        Ok(())
+        Ok(kept)
     }
 }

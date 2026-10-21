@@ -146,6 +146,16 @@ impl ConfOp {
             ConfOp::JsonSet { file, .. } | ConfOp::JsonPush { file, .. } | ConfOp::TomlKey { file, .. } | ConfOp::TomlTables { file, .. } => file,
         }
     }
+
+    /// The key as a human finds it in the file (for reports).
+    pub fn label(&self) -> String {
+        match self {
+            ConfOp::JsonSet { path, .. } | ConfOp::JsonPush { path, .. } => path.join("."),
+            ConfOp::TomlKey { key, .. } => key.clone(),
+            ConfOp::TomlTables { sel: TomlSel::Exact(h) | TomlSel::Prefix(h), .. } => h.clone(),
+            ConfOp::TomlTables { sel: TomlSel::Sub(p, n), .. } => format!("{p}.{n}"),
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
