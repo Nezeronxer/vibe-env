@@ -14,4 +14,6 @@ tauri-plugin-single-instance = "2"
 tauri-plugin-dialog = "2"
 # json! for command results and event payloads (already in the workspace via core)
 serde_json = "1"
+# DateTime<Local> for the engine clock and summary_since (already in the workspace through core)
+chrono = { version = "0.4", features = ["serde"] }
 nightshift-core = { path = "../core" }

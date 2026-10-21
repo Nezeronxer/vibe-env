@@ -942,3 +942,34 @@ fn a_config_the_running_cli_overwrote_right_after_the_write_is_reported_not_appl
     assert_eq!(s.state, SnapshotState::NotApplied, "not Done");
     assert_eq!(read_json(&sp), serde_json::json!({ "theme": "light" }));
 }
+
+#[test]
+fn every_kit_error_serializes_with_its_kind_and_fields() {
+    use nightshift_core::kits::KitError::*;
+    let s = |x: nightshift_core::kits::KitError| serde_json::to_value(x).unwrap();
+    let cases = vec![
+        (s(NotAKit("a".into())), "not_a_kit", "detail"),
+        (s(BadZip("a".into())), "bad_zip", "detail"),
+        (s(UnsafePath("a".into())), "unsafe_path", "detail"),
+        (s(Symlink("a".into())), "symlink", "detail"),
+        (s(FileTooLarge { path: "p".into(), size: 3 }), "file_too_large", "path"),
+        (s(KitTooLarge { size: 3 }), "kit_too_large", "size"),
+        (s(TooManyFiles(9)), "too_many_files", "size"),
+        (s(Corrupt("a".into())), "corrupt", "detail"),
+        (s(WrongEnv { kit_env: "codex".into(), kit_env_name: "Codex".into(), target_env: "claude".into(), target_env_name: "Claude".into() }), "wrong_env", "kit_env_name"),
+        (s(CloneFailed("a".into())), "clone_failed", "detail"),
+        (s(UnknownEnv("a".into())), "unknown_env", "detail"),
+        (s(DestNotEmpty("a".into())), "dest_not_empty", "detail"),
+        (s(NotFound("a".into())), "not_found", "detail"),
+        (s(Changed), "changed", "kind"),
+        (s(BadName("a b".into())), "bad_name", "detail"),
+        (s(Interrupted), "interrupted", "kind"),
+        (s(NotApplied { snapshot: "s".into(), cli: "claude".into(), keys: vec!["k".into()] }), "not_applied", "cli"),
+        (s(Io("a".into())), "io", "detail"),
+    ];
+    for (v, kind, field) in cases {
+        assert_eq!(v["kind"], kind);
+        assert!(v.get(field).is_some(), "{kind} has {field}: {v}");
+    }
+    assert_eq!(s(BadName("a b".into()))["detail"], "a b");
+}

@@ -46,6 +46,8 @@ pub mod keys {
     pub const NOTE_NOT_PASSED: &str = "note_not_passed";
     /// "This was a question": the task was cancelled and the message goes back to the model.
     pub const BACK_TO_QUESTION: &str = "back_to_question";
+    /// The chat was opened in the person's terminal: edits made there in the read-only copy are not kept (A07.2).
+    pub const TERMINAL_EDITS_LOST: &str = "terminal_edits_lost";
 }
 
 /// Reasons after `not_answered: ` - keys, details after `: `; the UI translates the key.
@@ -514,6 +516,13 @@ impl Chats {
         let Some(msg) = self.find_msg(chat, |m| m.id == msg_id && m.who == Who::Human) else { return Ok(()) };
         self.line(chat, keys::BACK_TO_QUESTION, "", None, Some(&msg_id), Some(task_id));
         self.enqueue(chat, Job { msg, no_task: true });
+        Ok(())
+    }
+
+    /// The terminal of the chat was opened: the feed says that edits made there do not stay (A07.2).
+    pub fn terminal_opened(&self, chat: &str) -> Result<(), String> {
+        self.chat(chat).ok_or("chat_not_found")?;
+        self.line(chat, keys::TERMINAL_EDITS_LOST, "", Some(ChatKind::Warn), None, None);
         Ok(())
     }
 

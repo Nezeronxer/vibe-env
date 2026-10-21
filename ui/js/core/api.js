@@ -14,9 +14,11 @@
     'kits_inventory', 'kits_export', 'kits_preview', 'kits_install', 'kits_enable', 'kits_snapshots', 'kits_rollback', 'kits_check_update', 'set_secret',
     // not in "Границы v2" by name: A07.2 "Продолжить в терминале" for a chat (the spec gives the behaviour, not the command) - see the report of task 15
     'open_chat_terminal',
+    // data that cannot be read at start (G16.4): ask, show the folder, start clean after a confirmation
+    'data_state', 'open_data_folder', 'start_fresh',
   ]);
   const EVENTS = new Set(['task-changed', 'task-log', 'task-removed', 'project-changed', 'chat-msg', 'limits-changed', 'catalog-changed', 'frozen',
-    'focus-input', 'tauri://drag-enter', 'tauri://drag-leave', 'tauri://drag-drop',
+    'focus-input', 'open-task', 'tauri://drag-enter', 'tauri://drag-leave', 'tauri://drag-drop',
     // app -> window notices named in task 13 without a fixed name: settings file replaced (G16.4), system notifications blocked (R15i.7),
     // tray host missing (R10.2), kit install rolled back at start (G25.9). Names chosen by task 15, see its report.
     'settings-replaced', 'notify-blocked', 'tray-state', 'kits-recovered']);

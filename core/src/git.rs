@@ -722,7 +722,6 @@ const DIFF_FILE_MAX_BYTES: usize = 256 * 1024;
 /// 256 KiB, whichever comes first (`truncated` then). git's output is read as a stream and git is
 /// stopped at the cut, so a huge diff is never held whole.
 pub fn diff_file(wt: &Path, base: &str, path: &str, max_lines: usize) -> FileDiff {
-    use std::io::BufRead;
     let mut d = FileDiff { path: path.to_string(), ..FileDiff::default() };
     if safe_rel(path).is_err() {
         return d;
@@ -735,17 +734,20 @@ pub fn diff_file(wt: &Path, base: &str, path: &str, max_lines: usize) -> FileDif
         d.binary = true;
         return d;
     }
-    let Ok(mut child) = git_cmd(wt)
-        .args(["diff", &mb, "--", &spec])
-        .stdin(std::process::Stdio::null())
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::null())
-        .spawn()
-    else {
-        return d;
+    let (text, truncated) = stream_diff(wt, &["diff", &mb, "--", &spec], max_lines);
+    d.text = text;
+    d.truncated = truncated;
+    d
+}
+
+/// Output of a git diff command read as a stream and cut at `max_lines` lines or the byte limit.
+fn stream_diff(dir: &Path, args: &[&str], max_lines: usize) -> (String, bool) {
+    use std::io::BufRead;
+    let Ok(mut child) = git_cmd(dir).args(args).stdin(std::process::Stdio::null()).stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::null()).spawn() else {
+        return (String::new(), false);
     };
     let mut reader = std::io::BufReader::new(child.stdout.take().expect("piped"));
-    let (mut text, mut lines, mut buf) = (String::new(), 0usize, Vec::new());
+    let (mut text, mut lines, mut buf, mut truncated) = (String::new(), 0usize, Vec::new(), false);
     loop {
         buf.clear();
         // a single line is read at most up to the byte limit too
@@ -754,17 +756,58 @@ pub fn diff_file(wt: &Path, base: &str, path: &str, max_lines: usize) -> FileDif
             break;
         }
         if lines >= max_lines || text.len() + buf.len() > DIFF_FILE_MAX_BYTES {
-            d.truncated = true;
+            truncated = true;
             break;
         }
         text.push_str(&String::from_utf8_lossy(&buf));
         lines += 1;
     }
-    if d.truncated {
+    if truncated {
         let _ = child.kill();
     }
     let _ = child.wait();
-    d.text = text.trim_end_matches('\n').to_string();
+    (text.trim_end_matches('\n').to_string(), truncated)
+}
+
+/// The first commit(s) of the repository: two folders are the same repository when these are equal. None = not a repository.
+pub fn root_commits(repo: &Path) -> Option<String> {
+    let o = run(repo, &["rev-list", "--max-parents=0", "HEAD"]).ok()?;
+    let mut v: Vec<&str> = o.stdout.lines().collect();
+    v.sort();
+    Some(v.join(","))
+}
+
+/// The files a commit changed (a squash commit on base: a merged task), with their line counts.
+pub fn commit_stat(repo: &Path, sha: &str) -> Vec<FileStat> {
+    if !sha.chars().all(|c| c.is_ascii_hexdigit()) || sha.is_empty() {
+        return vec![];
+    }
+    let out = run(repo, &["show", "--numstat", "--format=", "--no-renames", sha]).map(|o| o.stdout).unwrap_or_default();
+    out.lines()
+        .filter_map(|l| {
+            let mut p = l.splitn(3, '\t');
+            let (a, d, path) = (p.next()?, p.next()?, p.next()?);
+            Some(FileStat { path: path.to_string(), insertions: a.parse().unwrap_or(0), deletions: d.parse().unwrap_or(0) })
+        })
+        .collect()
+}
+
+/// The diff one commit made to one file, like `diff_file` but for a commit that is already on base.
+pub fn commit_file_diff(repo: &Path, sha: &str, path: &str, max_lines: usize) -> FileDiff {
+    let mut d = FileDiff { path: path.to_string(), ..FileDiff::default() };
+    if safe_rel(path).is_err() || sha.is_empty() || !sha.chars().all(|c| c.is_ascii_hexdigit()) {
+        return d;
+    }
+    let spec = literal(path);
+    d.size = run(repo, &["cat-file", "-s", &format!("{sha}:{path}")]).ok().and_then(|o| o.stdout.trim().parse().ok()).unwrap_or(0);
+    let stat = run(repo, &["show", "--numstat", "--format=", "--no-renames", sha, "--", &spec]).map(|o| o.stdout).unwrap_or_default();
+    if stat.starts_with("-\t-\t") {
+        d.binary = true;
+        return d;
+    }
+    let (text, truncated) = stream_diff(repo, &["show", "--format=", "--no-renames", sha, "--", &spec], max_lines);
+    d.text = text;
+    d.truncated = truncated;
     d
 }
 

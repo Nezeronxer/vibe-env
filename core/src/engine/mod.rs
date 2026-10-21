@@ -23,6 +23,7 @@ mod watch;
 
 pub use ops::{is_snoozed, HandOff, NoteResult, Summary, SummaryItem};
 // what the chat shares with the engine's own runs: one way to pick a model, fold a run, record a limit
+pub(crate) const WAITING_FOLDER: &str = "waiting_folder";
 pub(crate) use roles::{pick, Picked, AUTH_REQUIRED, ENV_UNAVAILABLE};
 pub(crate) use runs::fold;
 pub(crate) use util::tail;
@@ -175,6 +176,8 @@ pub struct Engine {
     auth: Mutex<HashMap<EnvId, AuthWait>>,
     /// env -> (when checked, answer of `Adapter::available`)
     avail: Mutex<HashMap<EnvId, (Instant, Result<(), String>)>>,
+    /// Tasks whose project folder is gone and that said so on their feed (R11.10); cleared when the folder is back.
+    folder_wait: Mutex<std::collections::HashSet<TaskId>>,
 }
 
 impl Engine {
@@ -211,6 +214,7 @@ impl Engine {
             env_vars: Mutex::new(None),
             auth: Mutex::new(HashMap::new()),
             avail: Mutex::new(HashMap::new()),
+            folder_wait: Mutex::new(Default::default()),
         })
     }
 
@@ -573,7 +577,27 @@ impl Engine {
         };
         // continuing tasks first, then the queue in submit order
         let ready = tasks.iter().filter(|t| continuing(t)).chain(tasks.iter().filter(|t| t.status == Status::Queued));
+        // a project whose folder is gone holds its tasks: nothing starts or goes on until it is found again (R11.10)
+        let projects = lk(&self.store).projects();
+        let gone = |t: &Task| projects.iter().find(|p| p.id == t.project_id).filter(|p| !p.path.is_dir());
+        {
+            let mut w = lk(&self.folder_wait);
+            let back: Vec<TaskId> = tasks.iter().filter(|t| w.contains(&t.id) && gone(t).is_none()).map(|t| t.id.clone()).collect();
+            for id in back {
+                w.remove(&id);
+                let _ = self.cas(&id, "changed", |x| x.status == Status::Queued && x.outcome.error.as_deref().is_some_and(|e| e.starts_with(WAITING_FOLDER)), |x| x.outcome.error = None);
+                self.log(&id, LogKind::Stage, "folder_found: continuing");
+            }
+        }
         for t in ready {
+            if let Some(p) = gone(t) {
+                if lk(&self.folder_wait).insert(t.id.clone()) {
+                    let line = format!("{WAITING_FOLDER}: {}", p.path.display());
+                    let _ = self.cas(&t.id, "changed", |x| x.status == Status::Queued, |x| x.outcome.error = Some(line.clone()));
+                    self.log(&t.id, LogKind::Stage, &line);
+                }
+                continue;
+            }
             if used.get(&t.agent).copied().unwrap_or(0) + lane_seats(&t.agent) >= cap || !due(t) {
                 continue;
             }

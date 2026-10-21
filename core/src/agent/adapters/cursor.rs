@@ -38,6 +38,12 @@ impl Adapter for Cursor {
     fn available(&self) -> Result<(), String> {
         check_installed(&self.bin, "curl https://cursor.com/install -fsS | bash")
     }
+    fn cli_path(&self) -> Option<std::path::PathBuf> {
+        find_bin(&self.bin)
+    }
+    fn version(&self) -> Option<String> {
+        cli_version(&self.bin)
+    }
     fn command(&self, run: &Run) -> Command {
         let mut c = Command::new(find_bin(&self.bin).unwrap_or_else(|| self.bin.clone().into()));
         c.current_dir(&run.cwd).args(["-p", "--output-format", "stream-json"]);

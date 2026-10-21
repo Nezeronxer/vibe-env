@@ -291,8 +291,7 @@ pub struct Recovered {
     pub message: String,
 }
 
-#[derive(thiserror::Error, Serialize, Clone, Debug, PartialEq)]
-#[serde(rename_all = "snake_case", tag = "kind")]
+#[derive(thiserror::Error, Clone, Debug, PartialEq)]
 pub enum KitError {
     #[error("not a kit: {0}")]
     NotAKit(String),
@@ -333,6 +332,69 @@ pub enum KitError {
     NotApplied { snapshot: SnapshotId, cli: String, keys: Vec<String> },
     #[error("io: {0}")]
     Io(String),
+}
+
+impl KitError {
+    /// The name the window translates: `{kind, ...fields}`; a variant with one value carries it as `detail`.
+    pub fn kind(&self) -> &'static str {
+        use KitError::*;
+        match self {
+            NotAKit(_) => "not_a_kit",
+            BadZip(_) => "bad_zip",
+            UnsafePath(_) => "unsafe_path",
+            Symlink(_) => "symlink",
+            FileTooLarge { .. } => "file_too_large",
+            KitTooLarge { .. } => "kit_too_large",
+            TooManyFiles(_) => "too_many_files",
+            Corrupt(_) => "corrupt",
+            WrongEnv { .. } => "wrong_env",
+            CloneFailed(_) => "clone_failed",
+            UnknownEnv(_) => "unknown_env",
+            DestNotEmpty(_) => "dest_not_empty",
+            NotFound(_) => "not_found",
+            Changed => "changed",
+            BadName(_) => "bad_name",
+            Interrupted => "interrupted",
+            NotApplied { .. } => "not_applied",
+            Io(_) => "io",
+        }
+    }
+}
+
+impl Serialize for KitError {
+    fn serialize<S: serde::Serializer>(&self, ser: S) -> Result<S::Ok, S::Error> {
+        use KitError::*;
+        let mut v = serde_json::json!({ "kind": self.kind() });
+        let o = v.as_object_mut().expect("object");
+        match self {
+            NotAKit(d) | BadZip(d) | UnsafePath(d) | Symlink(d) | Corrupt(d) | CloneFailed(d) | UnknownEnv(d) | DestNotEmpty(d) | NotFound(d) | BadName(d) | Io(d) => {
+                o.insert("detail".into(), d.clone().into());
+            }
+            TooManyFiles(n) => {
+                o.insert("detail".into(), n.to_string().into());
+                o.insert("size".into(), (*n).into());
+            }
+            FileTooLarge { path, size } => {
+                o.insert("path".into(), path.clone().into());
+                o.insert("size".into(), (*size).into());
+            }
+            KitTooLarge { size } => {
+                o.insert("size".into(), (*size).into());
+            }
+            WrongEnv { kit_env, kit_env_name, target_env, target_env_name } => {
+                for (k, x) in [("kit_env", kit_env), ("kit_env_name", kit_env_name), ("target_env", target_env), ("target_env_name", target_env_name)] {
+                    o.insert(k.into(), x.clone().into());
+                }
+            }
+            NotApplied { snapshot, cli, keys } => {
+                o.insert("snapshot".into(), snapshot.clone().into());
+                o.insert("cli".into(), cli.clone().into());
+                o.insert("keys".into(), keys.clone().into());
+            }
+            Changed | Interrupted => {}
+        }
+        v.serialize(ser)
+    }
 }
 
 fn io(e: impl std::fmt::Display) -> KitError {

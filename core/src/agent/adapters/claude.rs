@@ -100,6 +100,12 @@ impl Adapter for Claude {
     fn available(&self) -> Result<(), String> {
         check_installed(&self.bin, "npm i -g @anthropic-ai/claude-code")
     }
+    fn cli_path(&self) -> Option<std::path::PathBuf> {
+        find_bin(&self.bin)
+    }
+    fn version(&self) -> Option<String> {
+        cli_version(&self.bin)
+    }
     fn guarded(&self) -> bool {
         true // deny rules for push/remote/sudo + sandbox are passed on every run
     }

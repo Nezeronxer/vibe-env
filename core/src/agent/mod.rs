@@ -102,6 +102,14 @@ pub trait Adapter: Send + Sync {
     fn name(&self) -> &str;
     /// Err = install hint, e.g. "not installed: npm i -g ...".
     fn available(&self) -> Result<(), String>;
+    /// Where the CLI of the env is on this machine; None = not found, or not a program (an own command).
+    fn cli_path(&self) -> Option<std::path::PathBuf> {
+        None
+    }
+    /// The version the CLI prints for `--version`, if it can be read.
+    fn version(&self) -> Option<String> {
+        None
+    }
     /// Fully built command: cwd set, stdout piped.
     fn command(&self, run: &Run) -> Command;
     fn parse(&self, line: &str) -> Vec<AgentEvent>;

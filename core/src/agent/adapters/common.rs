@@ -382,3 +382,9 @@ pub fn finish_without_result(exit_ok: bool, all_text: &str) -> Vec<AgentEvent> {
     let msg = if exit_ok { "engine ended without a result".to_string() } else { tail(all_text) };
     vec![classify_failure(&msg, "")]
 }
+
+/// `<bin> --version`, the first line, at most 3 seconds; None when it cannot be read.
+pub fn cli_version(bin: &str) -> Option<String> {
+    let out = capture(bin, &["--version"], std::time::Duration::from_secs(3)).ok()?;
+    out.lines().map(str::trim).find(|l| !l.is_empty()).map(|l| l.chars().take(60).collect())
+}

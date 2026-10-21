@@ -2,6 +2,9 @@
 // Loaded right after i18n.js; selftest.html checks that ru and en keep the same keys.
 (function (root) {
   const ru = {
+    // data that cannot be read (G16.4)
+    'data.title': 'Данные приложения не читаются', 'data.lead': 'Файл с задачами и настройками повреждён. Он не тронут, рядом лежит его копия: {copy}', 'data.open': 'Открыть папку', 'data.fresh': 'Начать с чистого листа (копия останется)', 'data.fresh_title': 'Начать с чистого листа?', 'data.fresh_text': 'Старый файл будет отложен в сторону, приложение начнёт с пустого. Копия останется, ничего не удаляется.', 'data.fresh_ok': 'Начать с чистого листа',
+    'err.terminal_edits_lost': 'правки там не сохранятся - поручи задачей', 'err.waiting_folder': 'папка проекта не найдена: {detail}. Задача ждёт',
     // chat: continue in the terminal (A07.2)
     'chat.terminal': 'Продолжить в терминале', 'chat.terminal_warn': 'правки там не сохранятся - поручи задачей',
     // edge of the window
@@ -139,6 +142,9 @@
     'import.done': 'Набор «{name}» установлен. Откатить можно в «Наборах».',
   };
   const en = {
+    // data that cannot be read (G16.4)
+    'data.title': 'The app data cannot be read', 'data.lead': 'The file with tasks and settings is damaged. It is untouched, a copy is next to it: {copy}', 'data.open': 'Open the folder', 'data.fresh': 'Start clean (the copy stays)', 'data.fresh_title': 'Start clean?', 'data.fresh_text': 'The old file is put aside and the app starts empty. The copy stays, nothing is deleted.', 'data.fresh_ok': 'Start clean',
+    'err.terminal_edits_lost': 'edits made there are not kept - give it to an agent as a task', 'err.waiting_folder': 'the project folder is not found: {detail}. The task waits',
     'chat.terminal': 'Continue in terminal', 'chat.terminal_warn': 'edits made there are not kept - hand them over as a task',
     'frozen.edge': 'Frozen', 'role.queue': 'Queue',
     'hint.empty': 'This field cannot be empty.', 'hint.key_busy': 'This combination is already taken.', 'hint.key_digit': 'A digit with a modifier is needed, for example ⌘1.',

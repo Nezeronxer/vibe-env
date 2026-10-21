@@ -1,75 +1,85 @@
-//! Window, tray, hotkey and system notifications around the core engine.
-//! Commands are thin wrappers over `Engine` / `Store` / `git`.
+//! Window, tray, keys, notifications and the OS around the core: the commands are thin wrappers over `Hub`
+//! (see `hub.rs` and its neighbours, where the logic and its tests live).
+mod custom;
+mod envs;
+mod hub;
+mod kitcmds;
+mod notifier;
+mod open;
+mod ops;
+mod pathfix;
+mod presence;
+mod proj;
+mod settings_check;
+mod startup;
+mod term;
+#[cfg(test)]
+mod testkit;
+mod tray;
+
+use hub::{e2s, lk, Hub, Res};
+use kitcmds::KRes;
 use nightshift_core::agent;
-use nightshift_core::engine::{Engine, EngineEvent, NewTask};
-use nightshift_core::git;
-use nightshift_core::model::{Project, Settings, Status, Task};
-use nightshift_core::notify::{Notice, Notifier};
-use nightshift_core::store::Store;
+use nightshift_core::chat::{ChatEvent, ChatTarget};
+use nightshift_core::engine::EngineEvent;
+use nightshift_core::kits::{Choices, ExportDest, HeldRef, Installed, KitSource, Kits, Scope, Selection};
+use nightshift_core::model::{ModelChoice, OutwardChoice, Project, Settings};
+use nightshift_core::notify::Notifier;
+use notifier::{AppNotifier, Shown, Sink};
+use presence::KeepAwake;
 use serde_json::{json, Value};
 use std::path::{Path, PathBuf};
-use std::process::Command;
-use std::sync::atomic::{AtomicBool, AtomicI32, Ordering};
-use std::sync::{Arc, Mutex, MutexGuard, RwLock};
+use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
+use std::sync::{Arc, Mutex};
+use std::time::Duration;
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
 use tauri::tray::{TrayIcon, TrayIconBuilder};
 use tauri::{AppHandle, Emitter, Manager, State, Wry};
+use tauri_plugin_dialog::{DialogExt, MessageDialogButtons};
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
 use tauri_plugin_notification::NotificationExt;
 
 struct Tray {
     icon: TrayIcon,
-    pause: MenuItem<Wry>,
+    freeze: MenuItem<Wry>,
     /// Disabled first menu item: the only place the counter is visible on Linux.
     status: MenuItem<Wry>,
 }
 
+/// Lines the window must get after it has loaded (it may load later than they happen): name -> payload.
+type Startup = Arc<Mutex<Vec<(String, Value)>>>;
+
 struct App {
-    engine: RwLock<Arc<Engine>>,
-    dir: PathBuf,
+    hub: Arc<Hub>,
     tray: Mutex<Option<Tray>>,
-    /// Serializes `set_settings`, so only one hotkey change / adapter swap is in flight.
+    /// Serializes `set_settings`, so only one key change / adapter swap is in flight.
     settings_lock: Mutex<()>,
     /// UI language, recomputed at start and when settings change (not on every event).
-    ru: AtomicBool,
+    ru: Arc<AtomicBool>,
+    /// The notification settings the notifier reads (it sits below the engine, before the store is reachable).
+    notify_cfg: Arc<Mutex<nightshift_core::model::NotifySettings>>,
+    keep: KeepAwake,
+    /// 0 unknown, 1 there is a tray host, 2 there is none.
+    host: AtomicU8,
+    startup: Startup,
+    /// `--new-chat` at the first start: the window gets `focus-input` once it is up.
+    first_new_chat: AtomicBool,
+    /// The data folder and the copy of the unreadable state file, when the file could not be read at start (G16.4).
+    unreadable: Option<(PathBuf, String)>,
+    fresh: startup::FreshGate,
 }
 
-type Res<T> = Result<T, String>;
-
-fn lk<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
-    m.lock().unwrap_or_else(|e| e.into_inner())
-}
-fn e2s<E: std::fmt::Display>(e: E) -> String {
-    e.to_string()
-}
-/// Runs `f` with the engine. Do not nest it or call `eng` inside.
-fn with_engine<T>(s: &State<App>, f: impl FnOnce(&Engine) -> T) -> T {
-    let g = s.engine.read().unwrap_or_else(|e| e.into_inner());
-    f(&g)
-}
-fn eng(s: &State<App>) -> Arc<Engine> {
-    s.engine.read().unwrap_or_else(|e| e.into_inner()).clone()
+fn hub(s: &State<App>) -> Arc<Hub> {
+    s.hub.clone()
 }
 
-// ---------- tray counter, window title ----------
-
-/// `2 ▶ 1 ?`: only non-zero parts, empty when idle.
-fn tray_label(running: usize, waiting: usize) -> String {
-    let mut parts = vec![];
-    if running > 0 {
-        parts.push(format!("{running} ▶"));
-    }
-    if waiting > 0 {
-        parts.push(format!("{waiting} ?"));
-    }
-    parts.join(" ")
+fn note_startup(list: &Startup, name: &str, payload: Value) {
+    let mut v = lk(list);
+    v.retain(|(n, p)| !(n == name && (name != "kits-recovered" || *p == payload)));
+    v.push((name.to_string(), payload));
 }
 
-fn counts(tasks: &[Task]) -> (usize, usize) {
-    let running = tasks.iter().filter(|t| nightshift_core::engine::is_active(&t.status)).count();
-    let waiting = tasks.iter().filter(|t| matches!(t.status, Status::NeedsHuman | Status::AwaitingOutward)).count();
-    (running, waiting)
-}
+// ---------- language ----------
 
 fn is_ru(s: &Settings) -> bool {
     match s.language.as_str() {
@@ -77,7 +87,7 @@ fn is_ru(s: &Settings) -> bool {
         "auto" => {
             let env = std::env::var("LC_ALL").or_else(|_| std::env::var("LANG")).unwrap_or_default();
             let mac = if cfg!(target_os = "macos") {
-                Command::new("defaults").args(["read", "-g", "AppleLanguages"]).output().map(|o| String::from_utf8_lossy(&o.stdout).to_string()).unwrap_or_default()
+                std::process::Command::new("defaults").args(["read", "-g", "AppleLanguages"]).output().map(|o| String::from_utf8_lossy(&o.stdout).to_string()).unwrap_or_default()
             } else {
                 String::new()
             };
@@ -87,17 +97,16 @@ fn is_ru(s: &Settings) -> bool {
     }
 }
 
+// ---------- tray counter, window title ----------
+
 fn refresh_tray(app: &AppHandle) {
     // events can arrive before setup has registered the state
     let Some(st) = app.try_state::<App>() else { return };
-    let e = st.engine.read().unwrap_or_else(|e| e.into_inner()).clone();
-    let (tasks, settings) = {
-        let s = lk(e.store());
-        (s.tasks(), s.settings())
-    };
-    let (running, waiting) = counts(&tasks);
-    let label = tray_label(running, waiting);
+    let tasks = lk(st.hub.engine.store()).tasks();
+    let (running, waiting) = tray::counts(&tasks);
+    let label = tray::label(running, waiting);
     let ru = st.ru.load(Ordering::Relaxed);
+    let frozen = st.hub.engine.is_frozen();
     if let Some(t) = lk(&st.tray).as_ref() {
         if cfg!(target_os = "macos") {
             let _ = t.icon.set_title(if label.is_empty() { None } else { Some(label.as_str()) });
@@ -106,16 +115,38 @@ fn refresh_tray(app: &AppHandle) {
         let _ = t.icon.set_tooltip(Some(tip));
         let idle = if ru { "Ничего не идёт" } else { "Idle" };
         let _ = t.status.set_text(if label.is_empty() { idle } else { label.as_str() });
-        let text = match (settings.paused, ru) {
-            (true, true) => "Снять паузу",
-            (true, false) => "Resume all",
-            (false, true) => "Пауза всего",
-            (false, false) => "Pause all",
+        let text = match (frozen, ru) {
+            (true, true) => "Разморозить",
+            (true, false) => "Unfreeze",
+            (false, true) => "Заморозить всё",
+            (false, false) => "Freeze all",
         };
-        let _ = t.pause.set_text(text);
+        let _ = t.freeze.set_text(text);
     }
     if let Some(w) = app.get_webview_window("main") {
         let _ = w.set_title(&if waiting > 0 { format!("Nightshift ({waiting})") } else { "Nightshift".into() });
+    }
+}
+
+fn sync_keep_awake(app: &AppHandle) {
+    if let Some(st) = app.try_state::<App>() {
+        st.keep.update(st.hub.keep_awake_wanted());
+    }
+}
+
+/// What the window learns about the tray and the global key (R10.1, R10.2).
+fn tray_state(st: &App) -> Value {
+    json!({ "available": st.host.load(Ordering::Relaxed) == 1, "hotkey": tray::hotkey_available(), "wayland": !tray::hotkey_available() })
+}
+
+fn check_tray_host(app: &AppHandle) {
+    let Some(st) = app.try_state::<App>() else { return };
+    let now = match tray::tray_host() {
+        Some(true) => 1,
+        _ => 2,
+    };
+    if st.host.swap(now, Ordering::Relaxed) != now {
+        let _ = app.emit("tray-state", tray_state(&st));
     }
 }
 
@@ -131,12 +162,28 @@ fn show_window(app: &AppHandle) {
     }
 }
 
+fn new_chat(app: &AppHandle) {
+    show_window(app);
+    let _ = app.emit("focus-input", ());
+}
+
+/// "Выход": with work going on the person is asked first; then the runs are stopped, the state stays on disk (R08.2).
 fn quit(app: &AppHandle) {
     let app = app.clone();
-    // shutdown waits for agent processes, so keep it off the UI thread
+    // the dialog and the shutdown wait, so they stay off the UI thread
     std::thread::spawn(move || {
-        let e = app.state::<App>().engine.read().unwrap_or_else(|e| e.into_inner()).clone();
-        e.shutdown();
+        let st = app.state::<App>();
+        let tasks = lk(st.hub.engine.store()).tasks();
+        let ru = st.ru.load(Ordering::Relaxed);
+        if let Some(text) = tray::quit_prompt(tray::counts(&tasks).0, ru) {
+            let (yes, no) = if ru { ("Выйти", "Остаться") } else { ("Quit", "Stay") };
+            if !app.dialog().message(text).title("Nightshift").buttons(MessageDialogButtons::OkCancelCustom(yes.into(), no.into())).blocking_show() {
+                return;
+            }
+        }
+        st.hub.chats.shutdown();
+        st.hub.engine.shutdown();
+        st.keep.update(false);
         app.exit(0);
     });
 }
@@ -145,26 +192,23 @@ fn quit(app: &AppHandle) {
 
 /// notification id -> task, so a click can open the task (the last 200 are kept)
 static NOTES: Mutex<Vec<(i32, String)>> = Mutex::new(Vec::new());
-static NOTE_ID: AtomicI32 = AtomicI32::new(1);
 
-struct SystemNotifier(AppHandle);
-impl Notifier for SystemNotifier {
-    fn send(&self, n: &Notice) {
-        let id = NOTE_ID.fetch_add(1, Ordering::Relaxed);
+struct SystemSink(AppHandle);
+impl Sink for SystemSink {
+    fn show(&self, s: &Shown) -> Result<(), String> {
         {
             let mut v = lk(&NOTES);
-            v.push((id, n.task_id.clone()));
+            v.retain(|(id, _)| *id != s.id);
+            v.push((s.id, s.task_id.clone()));
             if v.len() > 200 {
                 v.remove(0);
             }
         }
-        let mut b = self.0.notification().builder().id(id).title(format!("{} · {}", n.project, n.title)).body(&n.body);
-        if n.kind.is_loud() {
-            b = b.sound("default");
+        let mut b = self.0.notification().builder().id(s.id).title(&s.title).body(&s.body);
+        if let Some(sound) = &s.sound {
+            b = b.sound(sound);
         }
-        if let Err(e) = b.show() {
-            eprintln!("notification failed: {e}");
-        }
+        b.show().map_err(e2s)
     }
 }
 
@@ -177,18 +221,26 @@ fn on_notification_click(app: &AppHandle, a: &tauri_plugin_notification::ActionP
     }
 }
 
-// ---------- engine wiring ----------
+// ---------- events from the core to the window ----------
 
-fn build_engine(app: &AppHandle, dir: &Path) -> Res<Arc<Engine>> {
-    let store = Store::open(dir).map_err(e2s)?;
-    let adapters = agent::adapters(&store.settings());
-    let e = Engine::new(store, adapters, Arc::new(SystemNotifier(app.clone())), dir.join("worktrees"));
-    let rx = e.subscribe();
-    let h = app.clone();
+fn forward_events(app: &AppHandle, hub: &Arc<Hub>, notifier: &Arc<AppNotifier>) {
+    let rx = hub.engine.subscribe();
+    let (h, hub2, n) = (app.clone(), hub.clone(), notifier.clone());
     std::thread::spawn(move || {
         for ev in rx {
             let changed = match ev {
-                EngineEvent::TaskChanged(t) => h.emit("task-changed", &t).is_ok(),
+                EngineEvent::TaskChanged(t) => {
+                    let _ = h.emit("task-changed", hub2.task_view(&t));
+                    if !envs::waits_for_human(&t) {
+                        n.forget(&t.id);
+                    }
+                    if t.convoy_id.is_some() {
+                        hub2.deliver_cards(&mut |m| {
+                            let _ = h.emit("chat-msg", m);
+                        });
+                    }
+                    true
+                }
                 EngineEvent::Log(id, ev) => {
                     let _ = h.emit("task-log", json!({ "id": id, "event": ev }));
                     false // log lines do not change the counter
@@ -204,170 +256,106 @@ fn build_engine(app: &AppHandle, dir: &Path) -> Res<Arc<Engine>> {
                 }
                 EngineEvent::Frozen(on) => {
                     let _ = h.emit("frozen", on);
-                    false
+                    true
                 }
             };
             if changed {
                 refresh_tray(&h);
+                sync_keep_awake(&h);
             }
         }
     });
-    e.start();
-    Ok(e)
+    let (h, rx) = (app.clone(), hub.chats.subscribe());
+    std::thread::spawn(move || {
+        for ev in rx {
+            // the list of chats is read again by the window when a message of an unknown chat arrives
+            if let ChatEvent::Msg(m) = ev {
+                let _ = h.emit("chat-msg", &m);
+            }
+        }
+    });
 }
 
-/// Registers `new` first and drops `old` only afterwards, so a failure leaves the old key working.
-fn register_hotkey(app: &AppHandle, new: &str, old: Option<&str>) -> Res<()> {
-    let sc: Shortcut = new.parse().map_err(|e| format!("bad hotkey '{new}': {e}"))?;
-    let old_sc = old.and_then(|o| o.parse::<Shortcut>().ok());
-    if old_sc == Some(sc) {
+/// Everything that runs on a timer: envs again every 5 minutes (G17.3), the models once a day (G18.1), the chat
+/// answers that waited for a limit, the cards of a convoy, the person's presence and the hold on sleep.
+fn start_timers(app: &AppHandle, hub: &Arc<Hub>) {
+    let (h, hb) = (app.clone(), hub.clone());
+    std::thread::spawn(move || {
+        let mut tick = 0u64;
+        loop {
+            if tick % 10 == 0 {
+                // every 5 minutes (tick = 30 s)
+                hb.recheck_envs();
+                check_tray_host(&h);
+            }
+            if tick % 2880 == 0 {
+                // at start and then once a day; the CLIs answer slowly, so not on this thread
+                let hc = hb.clone();
+                std::thread::spawn(move || {
+                    for e in hc.list_envs().iter().filter(|e| e["installed"] == true).filter_map(|e| e["id"].as_str().map(String::from)) {
+                        let _ = hc.engine.refresh_catalog(&e);
+                    }
+                });
+            }
+            hb.chats.release_due();
+            hb.deliver_cards(&mut |m| {
+                let _ = h.emit("chat-msg", m);
+            });
+            tick += 1;
+            std::thread::sleep(Duration::from_secs(30));
+        }
+    });
+    let (h, hb) = (app.clone(), hub.clone());
+    std::thread::spawn(move || loop {
+        let (idle, locked) = presence::probe(hb.settings().limits.away_min);
+        hb.set_presence(presence::decide(idle, locked, hb.settings().limits.away_min));
+        sync_keep_awake(&h);
+        std::thread::sleep(Duration::from_secs(15));
+    });
+}
+
+// ---------- global keys ----------
+
+/// Puts the keys of `new` in place (new ones first, so a refusal leaves the old ones working) and drops the ones `old`
+/// had that `new` does not. Nothing to do where the system has no global keys (Wayland, R10.1).
+fn register_keys(app: &AppHandle, old: Option<&Settings>, new: &Settings) -> Res<()> {
+    if !tray::hotkey_available() {
         return Ok(());
     }
+    let parse = |s: &Settings| -> Vec<Shortcut> { [&s.keys.new_chat, &s.keys.freeze].iter().filter_map(|k| k.parse().ok()).collect() };
+    let old_set = old.map(parse).unwrap_or_default();
     let gs = app.global_shortcut();
-    gs.register(sc).map_err(|e| format!("hotkey '{new}': {e}"))?;
-    if let Some(o) = old_sc {
+    let mut added: Vec<Shortcut> = vec![];
+    for (field, text) in [("new_chat", &new.keys.new_chat), ("freeze", &new.keys.freeze)] {
+        let sc: Shortcut = text.parse().map_err(|_| format!("bad_key: keys.{field}"))?;
+        if old_set.contains(&sc) || added.contains(&sc) {
+            continue;
+        }
+        if gs.register(sc).is_err() {
+            for a in &added {
+                let _ = gs.unregister(*a);
+            }
+            return Err(format!("key_busy: keys.{field}"));
+        }
+        added.push(sc);
+    }
+    let keep = parse(new);
+    for o in old_set.into_iter().filter(|o| !keep.contains(o)) {
         let _ = gs.unregister(o);
     }
     Ok(())
-}
-
-/// GUI apps start with a minimal PATH; agents, gh and node live elsewhere.
-fn fix_path() {
-    if !cfg!(unix) {
-        return;
-    }
-    let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".into());
-    let (tx, rx) = std::sync::mpsc::channel();
-    std::thread::spawn(move || {
-        let out = Command::new(shell).args(["-ilc", "printf '\\nNSPATH=%s\\n' \"$PATH\""]).stdin(std::process::Stdio::null()).output();
-        let _ = tx.send(out);
-    });
-    let from_shell = rx
-        .recv_timeout(std::time::Duration::from_secs(4))
-        .ok()
-        .and_then(|r| r.ok())
-        .and_then(|o| String::from_utf8_lossy(&o.stdout).lines().find_map(|l| l.strip_prefix("NSPATH=").map(str::to_string)))
-        .unwrap_or_default();
-    let home = std::env::var("HOME").unwrap_or_default();
-    let extra = ["/opt/homebrew/bin", "/usr/local/bin"].map(String::from).into_iter().chain([format!("{home}/.local/bin"), format!("{home}/.cargo/bin")]);
-    let cur = std::env::var("PATH").unwrap_or_default();
-    let mut seen = vec![];
-    for p in from_shell.split(':').map(String::from).chain(extra).chain(cur.split(':').map(String::from)) {
-        if !p.is_empty() && !seen.contains(&p) {
-            seen.push(p);
-        }
-    }
-    std::env::set_var("PATH", seen.join(":"));
-}
-
-// ---------- opening things ----------
-
-/// Files that may be opened: plain text, code, images, PDF. Everything else (no extension,
-/// .terminal, .webloc, .command, .app, scripts, ...) is refused; folders are only revealed.
-const OPENABLE: [&str; 37] = [
-    "md", "txt", "json", "toml", "yaml", "yml", "rs", "ts", "tsx", "js", "jsx", "mjs", "py", "go", "java", "c", "h", "cpp", "css", "html", "log",
-    "diff", "patch", "csv", "xml", "ini", "lock", "png", "jpg", "jpeg", "gif", "svg", "webp", "pdf", "rb", "php", "sql",
-];
-
-#[derive(Debug, PartialEq)]
-enum Target {
-    Url(String),
-    File(PathBuf),
-    /// shown in the file manager, never launched
-    Dir(PathBuf),
-}
-
-/// open_path: http(s), or a plain file / folder inside a registered project or the worktrees dir.
-/// The returned path is the canonical one that passed the check; open exactly that.
-fn check_openable(target: &str, roots: &[PathBuf]) -> Res<Target> {
-    if target.starts_with("https://") || target.starts_with("http://") {
-        return Ok(Target::Url(target.to_string()));
-    }
-    let bad = || format!("cannot open: {target}");
-    let p = std::fs::canonicalize(target).map_err(|_| bad())?;
-    if !roots.iter().filter_map(|r| std::fs::canonicalize(r).ok()).any(|r| p.starts_with(r)) {
-        return Err(bad());
-    }
-    if p.is_dir() {
-        return Ok(Target::Dir(p));
-    }
-    use std::os::unix::fs::PermissionsExt;
-    let ext = p.extension().map(|e| e.to_string_lossy().to_lowercase()).unwrap_or_default();
-    let executable = p.metadata().map(|m| m.permissions().mode() & 0o111 != 0).unwrap_or(true);
-    if p.is_file() && OPENABLE.contains(&ext.as_str()) && !executable {
-        Ok(Target::File(p))
-    } else {
-        Err(bad())
-    }
-}
-
-/// open_terminal / open_editor: an existing local folder inside the same roots (canonical path returned).
-fn check_dir(target: &str, roots: &[PathBuf]) -> Res<PathBuf> {
-    match check_openable(target, roots)? {
-        Target::Dir(p) => Ok(p),
-        _ => Err(format!("not a folder: {target}")),
-    }
-}
-
-fn open_roots(s: &State<App>) -> Vec<PathBuf> {
-    let e = eng(s);
-    let mut v: Vec<PathBuf> = lk(e.store()).projects().into_iter().map(|p| p.path).collect();
-    v.push(s.dir.join("worktrees"));
-    v
-}
-
-fn opener(target: &Target) -> Res<()> {
-    let bin = if cfg!(target_os = "macos") { "open" } else { "xdg-open" };
-    let mut c = Command::new(bin);
-    match target {
-        Target::Url(u) => c.arg(u),
-        Target::File(p) => c.arg(p),
-        Target::Dir(p) if cfg!(target_os = "macos") => c.arg("-R").arg(p), // reveal, never launch a bundle
-        Target::Dir(p) => c.arg(p),
-    };
-    c.spawn().map(|_| ()).map_err(|e| format!("{bin}: {e}"))
-}
-
-fn exists_in_path(bin: &str) -> bool {
-    std::env::var("PATH").unwrap_or_default().split(':').any(|d| Path::new(d).join(bin).is_file())
-}
-
-/// `$VISUAL` / `$EDITOR` only when it is not a terminal editor.
-fn gui_editor() -> Option<Vec<String>> {
-    const TUI: [&str; 11] = ["vi", "vim", "nvim", "nano", "emacs", "micro", "hx", "helix", "pico", "ed", "joe"];
-    ["VISUAL", "EDITOR"].iter().filter_map(|k| std::env::var(k).ok()).find_map(|v| {
-        let parts: Vec<String> = v.split_whitespace().map(String::from).collect();
-        let name = Path::new(parts.first()?).file_name()?.to_string_lossy().to_string();
-        (!TUI.contains(&name.as_str()) && !parts.contains(&"-nw".to_string())).then_some(parts)
-    })
 }
 
 // ---------- commands ----------
 
 #[tauri::command]
 async fn list_projects(s: State<'_, App>) -> Res<Vec<Project>> {
-    Ok(lk(eng(&s).store()).projects())
+    Ok(lk(s.hub.engine.store()).projects())
 }
 
 #[tauri::command]
 async fn add_project(app: AppHandle, s: State<'_, App>, path: String) -> Res<Project> {
-    let p = std::fs::canonicalize(&path).map_err(|e| format!("{path}: {e}"))?;
-    let info = git::repo_info(&p);
-    if !info.is_repo {
-        return Err("not a git repo".into());
-    }
-    let name = p.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_else(|| "project".into());
-    let mut proj = Project::new(&name, p.clone(), info.base_branch.as_deref().unwrap_or("main"));
-    let (check, setup) = git::detect_commands(&p);
-    proj.check_cmd = check;
-    proj.setup_cmd = setup;
-    with_engine(&s, |e| {
-        let mut st = lk(e.store());
-        if st.projects().iter().any(|x| x.path == p) {
-            return Err("already added".to_string());
-        }
-        st.upsert_project(proj.clone()).map_err(e2s)
-    })?;
+    let proj = s.hub.add_project(&path)?;
     let _ = app.emit("project-changed", &proj.id);
     Ok(proj)
 }
@@ -375,72 +363,66 @@ async fn add_project(app: AppHandle, s: State<'_, App>, path: String) -> Res<Pro
 #[tauri::command]
 async fn update_project(app: AppHandle, s: State<'_, App>, project: Project) -> Res<()> {
     let id = project.id.clone();
-    with_engine(&s, |e| lk(e.store()).upsert_project(project).map_err(e2s))?;
+    hub(&s).update_project(project)?;
     let _ = app.emit("project-changed", id);
     Ok(())
 }
 
 #[tauri::command]
 async fn remove_project(app: AppHandle, s: State<'_, App>, id: String) -> Res<()> {
-    with_engine(&s, |e| lk(e.store()).remove_project(&id).map_err(e2s))?;
+    s.hub.remove_project(&id)?;
     let _ = app.emit("project-changed", id);
     Ok(())
 }
 
 #[tauri::command]
 async fn init_repo(path: String) -> Res<()> {
-    git::init_repo(Path::new(&path)).map_err(e2s)
-}
-
-fn project_of(s: &State<App>, id: &str) -> Res<Project> {
-    lk(eng(s).store()).project(&id.to_string()).ok_or_else(|| format!("project not found: {id}"))
+    nightshift_core::git::init_repo(Path::new(&path)).map_err(e2s)
 }
 
 #[tauri::command]
 async fn repo_info(s: State<'_, App>, id: String) -> Res<Value> {
-    let i = git::repo_info(&project_of(&s, &id)?.path);
-    Ok(json!({ "is_repo": i.is_repo, "base_branch": i.base_branch, "current_branch": i.current_branch, "dirty": i.dirty,
-        "origin_url": i.origin_url, "web_url": i.web_url, "ahead": i.ahead, "behind": i.behind }))
+    hub(&s).repo_info(&id)
 }
 
 #[tauri::command]
-async fn list_tasks(s: State<'_, App>) -> Res<Vec<Task>> {
-    Ok(lk(eng(&s).store()).tasks())
+async fn list_tasks(s: State<'_, App>) -> Res<Vec<Value>> {
+    Ok(s.hub.list_tasks())
 }
 
 #[tauri::command]
 async fn get_log(s: State<'_, App>, id: String, limit: usize) -> Res<Value> {
-    Ok(json!(lk(eng(&s).store()).read_log(&id, limit)))
+    Ok(json!(lk(s.hub.engine.store()).read_log(&id, limit)))
 }
 
 #[tauri::command]
 async fn submit_task(s: State<'_, App>, project_id: String, prompt: String, agent: Option<String>) -> Res<String> {
-    with_engine(&s, |e| e.submit(NewTask { project_id, prompt, agent, ..NewTask::default() }))
+    hub(&s).submit_task(&project_id, &prompt, agent)
 }
 
 #[tauri::command]
 async fn answer(s: State<'_, App>, id: String, text: String) -> Res<()> {
-    with_engine(&s, |e| e.answer(&id, &text))
+    s.hub.engine.answer(&id, &text)
 }
 
 #[tauri::command]
 async fn approve_outward(s: State<'_, App>, id: String, yes: bool) -> Res<()> {
-    with_engine(&s, |e| e.approve_outward(&id, yes))
+    s.hub.engine.approve_outward(&id, yes)
 }
 
 #[tauri::command]
 async fn cancel(s: State<'_, App>, id: String) -> Res<()> {
-    with_engine(&s, |e| e.cancel(&id))
+    s.hub.engine.cancel(&id)
 }
 
 #[tauri::command]
 async fn retry(s: State<'_, App>, id: String) -> Res<()> {
-    with_engine(&s, |e| e.retry(&id))
+    s.hub.retry(&id)
 }
 
 #[tauri::command]
 async fn remove_task(app: AppHandle, s: State<'_, App>, id: String) -> Res<()> {
-    with_engine(&s, |e| e.remove(&id))?;
+    s.hub.engine.remove(&id)?;
     let _ = app.emit("task-removed", &id);
     refresh_tray(&app);
     Ok(())
@@ -448,246 +430,537 @@ async fn remove_task(app: AppHandle, s: State<'_, App>, id: String) -> Res<()> {
 
 #[tauri::command]
 async fn undo(s: State<'_, App>, id: String) -> Res<()> {
-    with_engine(&s, |e| e.undo(&id))
+    s.hub.engine.undo(&id)
 }
 
 #[tauri::command]
 async fn push_base(s: State<'_, App>, project_id: String) -> Res<()> {
-    with_engine(&s, |e| e.push_base(&project_id))
+    s.hub.push_base(&project_id)
 }
 
 #[tauri::command]
 async fn pull_base(s: State<'_, App>, project_id: String) -> Res<()> {
-    with_engine(&s, |e| e.pull_base(&project_id))
+    hub(&s).project_ready(&project_id)?;
+    s.hub.engine.pull_base(&project_id)
 }
 
 #[tauri::command]
 async fn pause_all(app: AppHandle, s: State<'_, App>, paused: bool) -> Res<()> {
-    with_engine(&s, |e| e.pause_all(paused));
+    s.hub.engine.pause_all(paused);
     refresh_tray(&app);
     Ok(())
 }
 
 #[tauri::command]
 async fn list_agents(s: State<'_, App>) -> Res<Value> {
-    let settings = lk(eng(&s).store()).settings();
-    Ok(json!(agent::adapters(&settings)
+    let h = hub(&s);
+    let list = h.list_envs();
+    Ok(json!(list
         .iter()
-        .map(|a| {
-            let r = a.available();
-            json!({ "id": a.id(), "name": a.name(), "available": r.is_ok(), "hint": r.err().unwrap_or_default(), "guarded": a.guarded() })
-        })
+        .map(|e| json!({ "id": e["id"], "name": e["name"], "available": e["installed"], "hint": e["error"].as_str().unwrap_or(""), "guarded": e["sandbox"]["push_blocked"] }))
         .collect::<Vec<_>>()))
 }
 
 #[tauri::command]
 async fn get_settings(s: State<'_, App>) -> Res<Settings> {
-    Ok(lk(eng(&s).store()).settings())
+    Ok(s.hub.settings())
 }
 
 #[tauri::command]
-async fn set_settings(app: AppHandle, s: State<'_, App>, settings: Settings) -> Res<()> {
+async fn set_settings(app: AppHandle, s: State<'_, App>, settings: Value) -> Res<()> {
     let _one_at_a_time = lk(&s.settings_lock);
-    let old = with_engine(&s, |e| -> Res<Settings> {
-        let old = lk(e.store()).settings();
-        // new key first: if it cannot be registered nothing is saved and the old key keeps working
-        let hotkey_changed = settings.hotkey != old.hotkey;
-        if hotkey_changed {
-            register_hotkey(&app, &settings.hotkey, Some(&old.hotkey))?;
-        }
-        if let Err(x) = lk(e.store()).set_settings(settings.clone()) {
-            if hotkey_changed {
-                let _ = register_hotkey(&app, &old.hotkey, Some(&settings.hotkey));
-            }
-            return Err(e2s(x));
-        }
-        Ok(old)
-    })?;
-    // running tasks keep the adapter they started with; the next runs see the new commands
-    if json!(settings.custom_agents) != json!(old.custom_agents) || json!(settings.envs) != json!(old.envs) {
-        with_engine(&s, |e| e.set_adapters(agent::adapters(&settings)));
-    }
-    s.ru.store(is_ru(&settings), Ordering::Relaxed);
-    refresh_tray(&app);
+    s.hub.set_settings(settings, &|from, to| register_keys(&app, Some(from), to))?;
     Ok(())
 }
 
 #[tauri::command]
 async fn github_info(s: State<'_, App>, project_id: String) -> Res<Value> {
-    let p = project_of(&s, &project_id)?;
-    let gh = match git::gh_status(&p.path) {
-        Ok(u) => json!({ "ghUser": u }),
-        Err(e) => json!({ "ghHint": e.to_string() }),
-    };
-    let branches: Vec<Value> = git::list_ns_branches(&p.path).into_iter().map(|(name, merged)| json!({ "name": name, "merged": merged })).collect();
-    let mut out = gh;
-    out["repoUrl"] = json!(git::repo_info(&p.path).web_url);
-    out["branches"] = json!(branches);
-    Ok(out)
+    hub(&s).github_info(&project_id)
 }
 
 #[tauri::command]
 async fn delete_merged_branches(s: State<'_, App>, project_id: String) -> Res<u32> {
-    git::delete_merged_ns_branches(&project_of(&s, &project_id)?.path).map_err(e2s)
+    s.hub.delete_merged_branches(&project_id)
 }
 
 #[tauri::command]
 async fn pr_state(s: State<'_, App>, task_id: String) -> Res<String> {
-    let e = eng(&s);
-    let t = lk(e.store()).task(&task_id).ok_or("task not found")?;
-    let url = t.outcome.pr_url.ok_or("no PR for this task")?;
-    git::pr_state(&project_of(&s, &t.project_id)?.path, &url).map_err(e2s)
-}
-
-/// `git --numstat` lines: `<ins>\t<del>\t<path>`; binary files show `-`.
-fn parse_numstat(out: &str) -> Vec<Value> {
-    out.lines()
-        .filter_map(|l| {
-            let mut p = l.splitn(3, '\t');
-            let (a, d, path) = (p.next()?, p.next()?, p.next()?);
-            Some(json!({ "path": path, "insertions": a.parse::<u32>().unwrap_or(0), "deletions": d.parse::<u32>().unwrap_or(0) }))
-        })
-        .collect()
+    hub(&s).pr_state(&task_id)
 }
 
 #[tauri::command]
 async fn get_diffstat(s: State<'_, App>, task_id: String) -> Res<Vec<Value>> {
-    let t = lk(eng(&s).store()).task(&task_id).ok_or("task not found")?;
-    let p = project_of(&s, &t.project_id)?;
-    if let Some(wt) = t.worktree.as_ref().filter(|w| w.exists()) {
-        return Ok(git::diffstat(wt, &p.base_branch)
-            .into_iter()
-            .map(|f| json!({ "path": f.path, "insertions": f.insertions, "deletions": f.deletions }))
-            .collect());
-    }
-    // merged task: its worktree is gone, the squash commit on base has the changes
-    let Some(sha) = t.outcome.commit.as_deref().filter(|c| c.chars().all(|ch| ch.is_ascii_hexdigit())) else { return Ok(vec![]) };
-    let out = Command::new("git").current_dir(&p.path).args(["show", "--numstat", "--format=", "--no-renames", sha]).output().map_err(e2s)?;
-    Ok(parse_numstat(&String::from_utf8_lossy(&out.stdout)))
+    hub(&s).get_diffstat(&task_id)
 }
 
 #[tauri::command]
 async fn open_path(s: State<'_, App>, path: String) -> Res<()> {
-    let t = check_openable(&path, &open_roots(&s))?;
-    opener(&t)
+    s.hub.open_path(&path)
 }
 
 #[tauri::command]
 async fn open_editor(s: State<'_, App>, path: String) -> Res<()> {
-    let dir = check_dir(&path, &open_roots(&s))?;
-    let path = dir.to_string_lossy().to_string();
-    if let Some(mut parts) = gui_editor() {
-        let bin = parts.remove(0);
-        return Command::new(bin).args(parts).arg(&path).spawn().map(|_| ()).map_err(e2s);
-    }
-    if exists_in_path("code") {
-        return Command::new("code").arg(&path).spawn().map(|_| ()).map_err(e2s);
-    }
-    if cfg!(target_os = "macos") && Command::new("open").args(["-a", "Visual Studio Code", &path]).status().map(|s| s.success()).unwrap_or(false) {
-        return Ok(());
-    }
-    opener(&Target::Dir(dir))
+    s.hub.open_editor(&path)
+}
+
+fn terminal_dir(s: &State<App>) -> PathBuf {
+    s.hub.dir.join("terminal")
 }
 
 #[tauri::command]
 async fn open_terminal(s: State<'_, App>, path: String) -> Res<()> {
-    let path = check_dir(&path, &open_roots(&s))?.to_string_lossy().to_string();
-    if cfg!(target_os = "macos") {
-        return Command::new("open").args(["-a", "Terminal", &path]).spawn().map(|_| ()).map_err(e2s);
+    let dir = s.hub.terminal_folder(&path)?;
+    term::open(&term::Launch { cwd: Some(dir), argv: vec![], banner: None, env: vec![] }, &terminal_dir(&s))
+}
+
+// ---- data that cannot be read (G16.4) ----
+
+#[tauri::command]
+async fn data_state(s: State<'_, App>) -> Res<Value> {
+    // showing the screen issues the token that "start clean" needs
+    Ok(json!({ "unreadable": s.unreadable.as_ref().map(|(_, c)| c), "token": s.unreadable.as_ref().map(|_| s.fresh.issue()) }))
+}
+
+#[tauri::command]
+async fn open_data_folder(s: State<'_, App>) -> Res<()> {
+    let (dir, _) = s.unreadable.as_ref().ok_or("data_readable")?;
+    open::opener(&open::Target::Dir(dir.clone()))
+}
+
+/// Only with the token the screen was given: the file is put aside (never deleted), the app restarts on an empty store.
+#[tauri::command]
+async fn start_fresh(app: AppHandle, s: State<'_, App>, token: String) -> Res<()> {
+    let (dir, _) = s.unreadable.as_ref().ok_or("data_readable")?;
+    s.fresh.start_fresh(dir, &token)?;
+    app.restart()
+}
+
+// ---- v2: envs, models, limits ----
+
+#[tauri::command]
+async fn list_envs(s: State<'_, App>) -> Res<Vec<Value>> {
+    Ok(s.hub.list_envs())
+}
+
+#[tauri::command]
+async fn get_catalog(s: State<'_, App>, env: String) -> Res<Value> {
+    s.hub.get_catalog(&env)
+}
+
+#[tauri::command]
+async fn refresh_catalog(s: State<'_, App>, env: String) -> Res<Value> {
+    s.hub.refresh_catalog(&env)
+}
+
+#[tauri::command]
+async fn get_limits(s: State<'_, App>, env: String) -> Res<Value> {
+    Ok(s.hub.get_limits(&env))
+}
+
+#[tauri::command]
+async fn check_custom(s: State<'_, App>, id: String) -> Res<Value> {
+    let r = hub(&s).check_custom(&id)?;
+    match (r.code, r.timed_out) {
+        (Some(0), _) => Ok(json!({ "output": r.output, "code": 0 })),
+        (_, true) => Err(format!("check_timeout: {}", r.output)),
+        (c, _) => Err(format!("check_failed: exit {}: {}", c.map(|c| c.to_string()).unwrap_or_else(|| "?".into()), r.output)),
     }
-    let env_term = std::env::var("TERMINAL").ok().filter(|t| !t.is_empty());
-    for bin in env_term.iter().map(String::as_str).chain(["x-terminal-emulator", "kitty", "gnome-terminal", "konsole"]) {
-        let mut c = Command::new(bin);
-        c.current_dir(&path);
-        match bin.rsplit('/').next().unwrap_or(bin) {
-            "kitty" => c.args(["--directory", &path]),
-            "gnome-terminal" => c.arg(format!("--working-directory={path}")),
-            "konsole" => c.args(["--workdir", &path]),
-            _ => &mut c,
-        };
-        if c.spawn().is_ok() {
-            return Ok(());
+}
+
+#[tauri::command]
+async fn install_env(s: State<'_, App>, env: String) -> Res<Value> {
+    let dir = terminal_dir(&s);
+    s.hub.install_env(&env, &|l| term::open(l, &dir))
+}
+
+#[tauri::command]
+async fn login_env(s: State<'_, App>, env: String) -> Res<()> {
+    let dir = terminal_dir(&s);
+    s.hub.login_env(&env, &|l| term::open(l, &dir))
+}
+
+// ---- v2: chats ----
+
+#[tauri::command]
+async fn list_chats(s: State<'_, App>, env: String) -> Res<Value> {
+    Ok(json!(s.hub.chats.list(&env)))
+}
+
+#[tauri::command]
+async fn get_chat(s: State<'_, App>, id: String, before: Option<String>, limit: usize) -> Res<Value> {
+    Ok(json!(s.hub.get_chat(&id, before.as_deref(), limit)?))
+}
+
+#[tauri::command]
+async fn send_chat(s: State<'_, App>, target: ChatTarget, msg_id: String, text: String) -> Res<String> {
+    hub(&s).send_chat(target, &msg_id, &text)
+}
+
+#[tauri::command]
+async fn retry_chat(s: State<'_, App>, id: String, msg_id: String) -> Res<()> {
+    s.hub.chats.retry(&id, &msg_id)
+}
+
+#[tauri::command]
+async fn remove_chat(s: State<'_, App>, id: String) -> Res<()> {
+    s.hub.chats.remove(&id)
+}
+
+#[tauri::command]
+async fn open_chat_terminal(s: State<'_, App>, id: String) -> Res<()> {
+    let dir = terminal_dir(&s);
+    s.hub.open_chat_terminal(&id, &|l| term::open(l, &dir))
+}
+
+// ---- v2: tasks ----
+
+#[tauri::command]
+async fn note(s: State<'_, App>, task_id: String, to: Option<String>, text: String) -> Res<Value> {
+    s.hub.note(&task_id, to, &text)
+}
+
+#[tauri::command]
+async fn answer_outward(s: State<'_, App>, task_id: String, choice: OutwardChoice) -> Res<()> {
+    s.hub.answer_outward(&task_id, choice)
+}
+
+#[tauri::command]
+async fn resume_failed(s: State<'_, App>, task_id: String, hint: Option<String>, model: Option<ModelChoice>) -> Res<()> {
+    s.hub.resume_failed(&task_id, hint, model)
+}
+
+#[tauri::command]
+async fn pick_variant(s: State<'_, App>, task_id: String, variant: String) -> Res<()> {
+    s.hub.engine.pick_variant(&task_id, &variant)
+}
+
+#[tauri::command]
+async fn stop_swarm(s: State<'_, App>, task_id: String) -> Res<()> {
+    s.hub.engine.stop_swarm(&task_id)
+}
+
+#[tauri::command]
+async fn nudge(s: State<'_, App>, task_id: String) -> Res<()> {
+    s.hub.engine.nudge(&task_id)
+}
+
+#[tauri::command]
+async fn switch_model(s: State<'_, App>, task_id: String, model: ModelChoice) -> Res<()> {
+    s.hub.engine.switch_model(&task_id, model)
+}
+
+#[tauri::command]
+async fn freeze(app: AppHandle, s: State<'_, App>, on: bool) -> Res<()> {
+    s.hub.freeze(on);
+    refresh_tray(&app);
+    Ok(())
+}
+
+#[tauri::command]
+async fn hand_off(s: State<'_, App>, task_id: String) -> Res<Value> {
+    let dir = terminal_dir(&s);
+    s.hub.hand_off(&task_id, &|l| term::open(l, &dir))
+}
+
+#[tauri::command]
+async fn take_back(s: State<'_, App>, task_id: String) -> Res<()> {
+    s.hub.take_back(&task_id)
+}
+
+#[tauri::command]
+async fn start_now(s: State<'_, App>, task_id: String) -> Res<()> {
+    s.hub.engine.start_now(&task_id)
+}
+
+#[tauri::command]
+async fn not_a_task(s: State<'_, App>, task_id: String) -> Res<()> {
+    s.hub.not_a_task(&task_id)
+}
+
+#[tauri::command]
+async fn submit_convoy(s: State<'_, App>, project_id: String, env: String, text: String) -> Res<String> {
+    hub(&s).submit_convoy(&project_id, &env, &text)
+}
+
+#[tauri::command]
+async fn summary_since(s: State<'_, App>, at: String) -> Res<Value> {
+    s.hub.summary_since(&at)
+}
+
+#[tauri::command]
+async fn diff_file(s: State<'_, App>, task_id: String, path: String, variant: Option<String>) -> Res<Value> {
+    s.hub.diff_file(&task_id, &path, variant.as_deref())
+}
+
+// ---- v2: kits and secrets ----
+
+#[tauri::command]
+async fn kits_inventory(s: State<'_, App>, env: String, scope: Scope) -> KRes<Value> {
+    s.hub.kits_inventory(&env, &scope)
+}
+
+#[tauri::command]
+async fn kits_export(s: State<'_, App>, env: String, selection: Selection, dest: ExportDest) -> KRes<Value> {
+    s.hub.kits_export(&env, &selection, dest)
+}
+
+#[tauri::command]
+async fn kits_preview(s: State<'_, App>, env: String, source: KitSource, scope: Scope) -> KRes<Value> {
+    s.hub.kits_preview(&env, source, &scope)
+}
+
+#[tauri::command]
+async fn kits_install(app: AppHandle, s: State<'_, App>, plan: Value, choices: Choices) -> KRes<Value> {
+    let (snapshot, project) = s.hub.kits_install(&plan, &choices)?;
+    if let Some(id) = project {
+        let _ = app.emit("project-changed", id);
+    }
+    Ok(json!(snapshot))
+}
+
+#[tauri::command]
+async fn kits_enable(s: State<'_, App>, env: String, item: HeldRef) -> KRes<()> {
+    s.hub.kits_enable(&env, &item)
+}
+
+#[tauri::command]
+async fn kits_snapshots(s: State<'_, App>, env: String) -> KRes<Value> {
+    s.hub.kits_snapshots(&env)
+}
+
+#[tauri::command]
+async fn kits_rollback(s: State<'_, App>, id: String) -> KRes<Value> {
+    s.hub.kits_rollback(&id)
+}
+
+#[tauri::command]
+async fn kits_check_update(s: State<'_, App>, installed: Installed) -> KRes<Value> {
+    s.hub.kits_check_update(&installed)
+}
+
+#[tauri::command]
+async fn set_secret(s: State<'_, App>, env: String, name: String, value: String) -> KRes<Value> {
+    s.hub.set_secret(&env, &name, &value)
+}
+
+#[cfg(test)]
+mod tests {
+    /// The window: no remote sources, no inline code; the capabilities name only what the window itself calls (R13).
+    #[test]
+    fn the_security_config_has_no_outside_source_and_the_capabilities_stay_small() {
+        let conf: serde_json::Value = serde_json::from_str(include_str!("../tauri.conf.json")).unwrap();
+        let csp = conf["app"]["security"]["csp"].as_str().unwrap();
+        assert!(!csp.contains("unsafe-inline") && !csp.contains("unsafe-eval") && !csp.contains('*'), "{csp}");
+        let sources: Vec<&str> = csp.split([';', ' ']).filter(|w| w.contains("://") || w.contains('.')).collect();
+        assert_eq!(sources, ["http://ipc.localhost"], "the only address is Tauri's own IPC");
+        assert!(conf["app"]["windows"].as_array().unwrap().iter().all(|w| w.get("url").is_none()), "the window loads the bundled ui, no remote URL");
+        let caps: serde_json::Value = serde_json::from_str(include_str!("../capabilities/default.json")).unwrap();
+        assert_eq!(caps["permissions"], serde_json::json!(["core:event:default", "dialog:allow-open"]));
+        assert_eq!(caps["windows"], serde_json::json!(["main"]));
+        let targets: Vec<&str> = conf["bundle"]["targets"].as_array().unwrap().iter().filter_map(|t| t.as_str()).collect();
+        for t in ["app", "dmg", "deb", "appimage"] {
+            assert!(targets.contains(&t), "{t}");
         }
     }
-    Err("no terminal found (set $TERMINAL)".into())
+}
+
+// ---------- start ----------
+
+fn build_app(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
+    let h = app.handle().clone();
+    let dir = h.path().app_data_dir()?;
+    let home = h.path().home_dir()?;
+    let startup_list: Startup = Arc::new(Mutex::new(vec![]));
+    let (store, replaced, unreadable) = match startup::open_store(&dir)? {
+        startup::Opened::Ready { store, replaced } => (store, replaced, None),
+        // keep the window quiet: an empty store somewhere else stands in while the dialog is open
+        startup::Opened::Unreadable { copy } => {
+            let tmp = std::env::temp_dir().join(format!("nightshift-unreadable-{}", std::process::id()));
+            (nightshift_core::store::Store::open(&tmp).map_err(e2s)?, None, Some(copy))
+        }
+    };
+    let settings = store.settings();
+    let ru = Arc::new(AtomicBool::new(is_ru(&settings)));
+    let notify_cfg = Arc::new(Mutex::new(settings.notify.clone()));
+    let (hb_h, list) = (h.clone(), startup_list.clone());
+    let notifier = Arc::new(AppNotifier::new(
+        Arc::new(SystemSink(h.clone())),
+        { let c = notify_cfg.clone(); Arc::new(move || lk(&c).clone()) },
+        Arc::new(chrono::Local::now),
+        { let r = ru.clone(); Arc::new(move || r.load(Ordering::Relaxed)) },
+        Arc::new(move |how| {
+            note_startup(&list, "notify-blocked", json!({ "how": how }));
+            let _ = hb_h.emit("notify-blocked", json!({ "how": how }));
+        }),
+    ));
+    let hub_dir = if unreadable.is_some() { std::env::temp_dir().join(format!("nightshift-unreadable-{}", std::process::id())) } else { dir.clone() };
+    let kits = Kits::new(home, hub_dir.join("kits"));
+    let hb = Hub::new(store, agent::adapters(&settings), notifier.clone() as Arc<dyn Notifier>, kits, hub_dir, Arc::new(chrono::Local::now));
+    let state = App {
+        hub: hb.clone(),
+        tray: Mutex::new(None),
+        settings_lock: Mutex::new(()),
+        ru: ru.clone(),
+        notify_cfg,
+        keep: KeepAwake::system(),
+        host: AtomicU8::new(0),
+        startup: startup_list.clone(),
+        first_new_chat: AtomicBool::new(tray::wants_new_chat(&std::env::args().collect::<Vec<_>>())),
+        unreadable: unreadable.clone().map(|c| (dir.clone(), c)),
+        fresh: startup::FreshGate::default(),
+    };
+    app.manage(state);
+    {
+        // what follows a saved setting: the notifier's copy, the language, the tray and the hold on sleep
+        let (cfg, ru, h2) = (app.state::<App>().notify_cfg.clone(), ru.clone(), h.clone());
+        hb.on_settings(Box::new(move |s| {
+            *lk(&cfg) = s.notify.clone();
+            ru.store(is_ru(s), Ordering::Relaxed);
+            refresh_tray(&h2);
+            sync_keep_awake(&h2);
+        }));
+    }
+
+    if unreadable.is_some() {
+        // the window shows its own screen; the engine of the stand-in store is never started
+        return Ok(());
+    }
+    if let Some(p) = replaced {
+        note_startup(&startup_list, "settings-replaced", json!({ "path": p }));
+    }
+    for r in hb.kits_recover() {
+        note_startup(&startup_list, "kits-recovered", json!({ "kit_name": r.kit_name, "env": r.env, "message": r.message, "snapshot": r.snapshot }));
+    }
+
+    // tray
+    let is_ru_now = ru.load(Ordering::Relaxed);
+    let t = |ru_s: &'static str, en: &'static str| if is_ru_now { ru_s } else { en };
+    let open_i = MenuItem::with_id(app, "open", t("Открыть", "Open"), true, None::<&str>)?;
+    let new_i = MenuItem::with_id(app, "new", t("Новый чат", "New chat"), true, None::<&str>)?;
+    let freeze_i = MenuItem::with_id(app, "freeze", t("Заморозить всё", "Freeze all"), true, None::<&str>)?;
+    let quit_i = MenuItem::with_id(app, "quit", t("Выход", "Quit"), true, None::<&str>)?;
+    let status = MenuItem::with_id(app, "status", t("Ничего не идёт", "Idle"), false, None::<&str>)?;
+    let menu = Menu::new(app)?;
+    if cfg!(target_os = "linux") {
+        // Linux trays have no tooltip: the counter is the first (disabled) menu line
+        menu.append(&status)?;
+        menu.append(&PredefinedMenuItem::separator(app)?)?;
+    }
+    menu.append_items(&[&open_i, &new_i, &freeze_i, &PredefinedMenuItem::separator(app)?, &quit_i])?;
+    let mut tb = TrayIconBuilder::with_id("main").menu(&menu).tooltip("Nightshift").on_menu_event(|app, ev| match ev.id().as_ref() {
+        "open" => show_window(app),
+        "new" => new_chat(app),
+        "freeze" => {
+            let st = app.state::<App>();
+            st.hub.freeze(!st.hub.engine.is_frozen());
+            refresh_tray(app);
+        }
+        "quit" => quit(app),
+        _ => {}
+    });
+    if let Some(icon) = app.default_window_icon() {
+        tb = tb.icon(icon.clone());
+    }
+    let tray_icon = tb.build(app)?;
+    *lk(&app.state::<App>().tray) = Some(Tray { icon: tray_icon, freeze: freeze_i, status });
+
+    h.notification().on_action({
+        let h = h.clone();
+        move |a| on_notification_click(&h, a)
+    }).ok();
+    if let Err(e) = register_keys(&h, None, &settings) {
+        eprintln!("global keys not registered: {e}");
+    }
+    forward_events(&h, &hb, &notifier);
+    check_tray_host(&h);
+    hb.start();
+    start_timers(&h, &hb);
+    refresh_tray(&h);
+    Ok(())
+}
+
+/// The window may load later than the things it must be told: send them (again) when a page has loaded.
+fn emit_startup(app: &AppHandle) {
+    let Some(st) = app.try_state::<App>() else { return };
+    for (name, payload) in lk(&st.startup).iter() {
+        let _ = app.emit(name, payload);
+    }
+    let _ = app.emit("tray-state", tray_state(&st));
+    if st.first_new_chat.swap(false, Ordering::Relaxed) {
+        let _ = app.emit("focus-input", ());
+    }
 }
 
 fn main() {
-    fix_path();
+    pathfix::fix_path();
     let app = tauri::Builder::default()
-        .plugin(tauri_plugin_single_instance::init(|app, _, _| show_window(app)))
+        // a second start: show the window; with `--new-chat` also put the cursor into a new chat (R10.1)
+        .plugin(tauri_plugin_single_instance::init(|app, args, _| {
+            if tray::wants_new_chat(&args) {
+                new_chat(app);
+            } else {
+                show_window(app);
+            }
+        }))
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_notification::init())
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
-                .with_handler(|app, _, ev| {
-                    if ev.state() == ShortcutState::Pressed {
-                        show_window(app);
-                        let _ = app.emit("focus-input", ());
+                .with_handler(|app, sc, ev| {
+                    if ev.state() != ShortcutState::Pressed {
+                        return;
+                    }
+                    let Some(st) = app.try_state::<App>() else { return };
+                    let keys = st.hub.settings().keys;
+                    if keys.new_chat.parse::<Shortcut>().ok().as_ref() == Some(sc) {
+                        new_chat(app);
+                    } else if keys.freeze.parse::<Shortcut>().ok().as_ref() == Some(sc) {
+                        st.hub.freeze(!st.hub.engine.is_frozen());
+                        refresh_tray(app);
                     }
                 })
                 .build(),
         )
-        .setup(|app| {
-            let h = app.handle().clone();
-            let dir = h.path().app_data_dir()?;
-            let engine = build_engine(&h, &dir)?;
-            let settings = lk(engine.store()).settings();
-            app.manage(App { engine: RwLock::new(engine), dir, tray: Mutex::new(None), settings_lock: Mutex::new(()), ru: AtomicBool::new(false) });
-
-            let ru = is_ru(&settings);
-            app.state::<App>().ru.store(ru, Ordering::Relaxed);
-            let t = |ru_s: &'static str, en: &'static str| if ru { ru_s } else { en };
-            let open = MenuItem::with_id(app, "open", t("Открыть", "Open"), true, None::<&str>)?;
-            let new = MenuItem::with_id(app, "new", t("Новый чат", "New chat"), true, None::<&str>)?;
-            let pause = MenuItem::with_id(app, "pause", t("Пауза всего", "Pause all"), true, None::<&str>)?;
-            let quit_i = MenuItem::with_id(app, "quit", t("Выход", "Quit"), true, None::<&str>)?;
-            let status = MenuItem::with_id(app, "status", t("Ничего не идёт", "Idle"), false, None::<&str>)?;
-            let menu = Menu::new(app)?;
-            if cfg!(target_os = "linux") {
-                // Linux trays have no tooltip: the counter is the first (disabled) menu line
-                menu.append(&status)?;
-                menu.append(&PredefinedMenuItem::separator(app)?)?;
+        .setup(|app| build_app(app))
+        .on_page_load(|webview, payload| {
+            if matches!(payload.event(), tauri::webview::PageLoadEvent::Finished) {
+                let app = webview.app_handle().clone();
+                std::thread::spawn(move || {
+                    std::thread::sleep(Duration::from_millis(1200));
+                    emit_startup(&app);
+                });
             }
-            menu.append_items(&[&open, &new, &pause, &PredefinedMenuItem::separator(app)?, &quit_i])?;
-            let mut tb = TrayIconBuilder::with_id("main").menu(&menu).tooltip("Nightshift").on_menu_event(|app, ev| match ev.id().as_ref() {
-                "open" => show_window(app),
-                "new" => {
-                    show_window(app);
-                    let _ = app.emit("focus-input", ());
-                }
-                "pause" => {
-                    let e = app.state::<App>().engine.read().unwrap_or_else(|e| e.into_inner()).clone();
-                    let paused = lk(e.store()).settings().paused;
-                    e.pause_all(!paused);
-                    refresh_tray(app);
-                }
-                "quit" => quit(app),
-                _ => {}
-            });
-            if let Some(icon) = app.default_window_icon() {
-                tb = tb.icon(icon.clone());
-            }
-            let tray = tb.build(app)?;
-            *lk(&app.state::<App>().tray) = Some(Tray { icon: tray, pause, status });
-
-            h.notification().on_action({
-                let h = h.clone();
-                move |a| on_notification_click(&h, a)
-            }).ok();
-            if let Err(e) = register_hotkey(&h, &settings.hotkey, None) {
-                eprintln!("hotkey not registered: {e}");
-            }
-            refresh_tray(&h);
-            Ok(())
         })
-        .on_window_event(|w, ev| {
-            if let tauri::WindowEvent::CloseRequested { api, .. } = ev {
+        .on_window_event(|w, ev| match ev {
+            tauri::WindowEvent::CloseRequested { api, .. } => {
                 api.prevent_close();
-                let _ = w.hide();
-                #[cfg(target_os = "macos")]
-                let _ = w.app_handle().set_activation_policy(tauri::ActivationPolicy::Accessory);
+                let host = match w.app_handle().try_state::<App>().map(|s| s.host.load(Ordering::Relaxed)) {
+                    Some(1) => Some(true),
+                    Some(2) => Some(false),
+                    _ => None,
+                };
+                match tray::on_close(host) {
+                    tray::OnClose::Hide => {
+                        let _ = w.hide();
+                        #[cfg(target_os = "macos")]
+                        let _ = w.app_handle().set_activation_policy(tauri::ActivationPolicy::Accessory);
+                    }
+                    // no icon to come back by: the window stays in the taskbar (R10.2)
+                    tray::OnClose::Minimize => {
+                        let _ = w.minimize();
+                    }
+                }
             }
+            // back to the window: the envs are asked again (G17.3)
+            tauri::WindowEvent::Focused(true) => {
+                if let Some(st) = w.app_handle().try_state::<App>() {
+                    let hb = st.hub.clone();
+                    std::thread::spawn(move || {
+                        hb.recheck_envs();
+                    });
+                }
+            }
+            _ => {}
         })
         .invoke_handler(tauri::generate_handler![
             list_projects, add_project, update_project, remove_project, init_repo, repo_info,
@@ -695,7 +968,13 @@ fn main() {
             cancel, retry, remove_task, undo, push_base, pull_base, pause_all,
             list_agents, get_settings, set_settings,
             github_info, delete_merged_branches, pr_state, get_diffstat,
-            open_path, open_editor, open_terminal
+            open_path, open_editor, open_terminal,
+            list_envs, get_catalog, refresh_catalog, get_limits, check_custom, install_env, login_env,
+            list_chats, get_chat, send_chat, retry_chat, remove_chat, open_chat_terminal,
+            note, answer_outward, resume_failed, pick_variant, stop_swarm, nudge, switch_model, freeze,
+            hand_off, take_back, start_now, not_a_task, submit_convoy, summary_since, diff_file,
+            kits_inventory, kits_export, kits_preview, kits_install, kits_enable, kits_snapshots, kits_rollback, kits_check_update, set_secret,
+            data_state, open_data_folder, start_fresh
         ])
         .build(tauri::generate_context!())
         .expect("error while building Nightshift");
@@ -705,67 +984,4 @@ fn main() {
             api.prevent_exit();
         }
     });
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn tray_label_shows_only_nonzero_parts() {
-        assert_eq!(tray_label(2, 1), "2 ▶ 1 ?");
-        assert_eq!(tray_label(0, 3), "3 ?");
-        assert_eq!(tray_label(1, 0), "1 ▶");
-        assert_eq!(tray_label(0, 0), "");
-    }
-
-    fn scratch(name: &str) -> PathBuf {
-        let d = std::env::temp_dir().join(format!("ns-app-{name}-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&d);
-        std::fs::create_dir_all(&d).unwrap();
-        d.canonicalize().unwrap()
-    }
-
-    #[test]
-    fn open_allows_web_links_and_listed_file_types_inside_projects_only() {
-        use std::os::unix::fs::PermissionsExt;
-        let root = scratch("open");
-        let outside = scratch("open-outside");
-        for f in ["notes.txt", "run.sh", "tool", "tool.txt", "a.terminal", "a.webloc", "a.fileloc", "a.inetloc", "noext"] {
-            std::fs::write(root.join(f), "x").unwrap();
-        }
-        std::fs::set_permissions(root.join("tool.txt"), std::fs::Permissions::from_mode(0o755)).unwrap();
-        std::fs::create_dir(root.join("Thing.app")).unwrap();
-        std::fs::write(outside.join("notes.txt"), "x").unwrap();
-        std::os::unix::fs::symlink(outside.join("notes.txt"), root.join("link.txt")).unwrap();
-        let roots = vec![root.clone()];
-        let p = |n: &str| root.join(n).to_string_lossy().to_string();
-
-        assert_eq!(check_openable("https://github.com/o/r", &roots), Ok(Target::Url("https://github.com/o/r".into())));
-        assert_eq!(check_openable(&p("notes.txt"), &roots), Ok(Target::File(root.join("notes.txt"))));
-        assert_eq!(check_openable(&root.to_string_lossy(), &roots), Ok(Target::Dir(root.clone())));
-        // a folder named like a bundle is only revealed, not launched
-        assert_eq!(check_openable(&p("Thing.app"), &roots), Ok(Target::Dir(root.join("Thing.app"))));
-        for bad in [p("run.sh"), p("tool"), p("tool.txt"), p("a.terminal"), p("a.webloc"), p("a.fileloc"), p("a.inetloc"), p("noext"),
-                    p("link.txt"), outside.join("notes.txt").to_string_lossy().to_string(),
-                    "/".into(), "file:///etc/passwd".into(), "javascript:alert(1)".into(), "-a Calculator".into(), p("missing")] {
-            assert!(check_openable(&bad, &roots).is_err(), "{bad}");
-        }
-    }
-
-    #[test]
-    fn terminal_and_editor_take_only_existing_folders() {
-        let root = scratch("dir");
-        std::fs::write(root.join("a.txt"), "x").unwrap();
-        let roots = vec![root.clone()];
-        assert_eq!(check_dir(&root.to_string_lossy(), &roots), Ok(root.clone()));
-        assert!(check_dir(&root.join("a.txt").to_string_lossy(), &roots).is_err());
-        assert!(check_dir("https://example.com", &roots).is_err());
-    }
-
-    #[test]
-    fn numstat_lines_become_file_stats() {
-        let s = parse_numstat("3\t1\tsrc/a.rs\n-\t-\timg/logo.png\n");
-        assert_eq!(s, vec![json!({"path":"src/a.rs","insertions":3,"deletions":1}), json!({"path":"img/logo.png","insertions":0,"deletions":0})]);
-    }
 }

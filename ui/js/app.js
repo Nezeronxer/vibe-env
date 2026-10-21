@@ -27,6 +27,8 @@
     api.listen('catalog-changed', async (envId) => { await store.loadCatalog(envId); store.emit('catalog', envId); });
     api.listen('frozen', (v) => store.emit('frozen', !!v));
     api.listen('focus-input', () => store.emit('focus-input'));
+    // a click on a system notification: the chat of that task, where its "Нужен ты" block is (R15i.8)
+    api.listen('open-task', (id) => { const tk = s.tasks.get(id); if (tk) NS.nav('env', { env: tk.agent, chat: tk.chat_id || undefined }); });
     api.listen('tauri://drag-enter', () => document.body.classList.add('dragging'));
     api.listen('tauri://drag-leave', () => document.body.classList.remove('dragging'));
     api.listen('tauri://drag-drop', async (pl) => {
@@ -44,6 +46,8 @@
   // ---------- start ----------
   const isGitMissing = (e) => /git/i.test(api.errText(e)) && /(not found|missing|not installed|no such)/i.test(api.errText(e));
   async function start() {
+    // data that cannot be read: nothing else is asked of the core, the person chooses (G16.4)
+    try { const ds = await api.call('data_state'); if (ds && ds.unreadable) return NS.nav('unreadable', { copy: ds.unreadable, token: ds.token }); } catch (e) { /* an older core or the browser mock: go on */ }
     try { await store.loadAll(); }
     catch (e) {
       if (isGitMissing(e)) return NS.nav('nogit');

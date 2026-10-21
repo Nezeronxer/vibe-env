@@ -631,6 +631,23 @@ pub enum EnvLimits {
     NoData(String),
 }
 
+/// (field, min, max, whole numbers only). The allowed ranges of the numeric settings (G16.2); the app refuses anything outside, the window shows the same numbers.
+pub const SETTING_RANGES: [(&str, f64, f64, bool); 13] = [
+    ("max_parallel", 1.0, 10.0, true),
+    ("review_rounds", 1.0, 10.0, true),
+    ("attempts", 1.0, 10.0, true),
+    ("stall_min", 5.0, 120.0, true),
+    ("autopick_min", 0.0, 120.0, true),
+    ("limits.task_usd", 0.5, 1000.0, false),
+    ("limits.day_usd", 1.0, 10000.0, false),
+    ("limits.warn_pct", 50.0, 99.0, true),
+    ("limits.away_min", 5.0, 240.0, true),
+    ("look.font_px", 11.0, 20.0, true),
+    ("swarm_default.n", 2.0, 5.0, true),
+    ("keep.archive_days", 1.0, 3650.0, true),
+    ("keep.summary_after_min", 1.0, 1440.0, true),
+];
+
 /// Per-env settings, `Settings.envs[env]`.
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 #[serde(default)]

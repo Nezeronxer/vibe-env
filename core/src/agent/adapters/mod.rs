@@ -1,7 +1,7 @@
 //! Concrete CLI adapters, one file per engine. Shared helpers live in `common`.
 mod claude;
 mod codex;
-mod common;
+pub mod common;
 mod cursor;
 mod custom;
 mod gemini;

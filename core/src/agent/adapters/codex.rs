@@ -74,6 +74,12 @@ impl Adapter for Codex {
     fn available(&self) -> Result<(), String> {
         check_installed(&self.bin, "npm i -g @openai/codex")
     }
+    fn cli_path(&self) -> Option<std::path::PathBuf> {
+        find_bin(&self.bin)
+    }
+    fn version(&self) -> Option<String> {
+        cli_version(&self.bin)
+    }
     fn command(&self, run: &Run) -> Command {
         let mut c = Command::new(find_bin(&self.bin).unwrap_or_else(|| self.bin.clone().into()));
         // writes only inside the working copy; the reviewer cannot write at all
