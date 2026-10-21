@@ -25,11 +25,10 @@ struct Tray {
 }
 
 struct App {
-    /// Readers are commands; the writer is an engine rebuild, which makes commands wait.
     engine: RwLock<Arc<Engine>>,
     dir: PathBuf,
     tray: Mutex<Option<Tray>>,
-    /// Serializes `set_settings`, so only one rebuild / hotkey change is in flight.
+    /// Serializes `set_settings`, so only one hotkey change / adapter swap is in flight.
     settings_lock: Mutex<()>,
     /// UI language, recomputed at start and when settings change (not on every event).
     ru: AtomicBool,
@@ -43,8 +42,7 @@ fn lk<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
 fn e2s<E: std::fmt::Display>(e: E) -> String {
     e.to_string()
 }
-/// Runs `f` while holding the slot's read lock, so an engine rebuild cannot start (and a stale
-/// Store cannot write over the new one) until the write is done. Do not nest it or call `eng` inside.
+/// Runs `f` with the engine. Do not nest it or call `eng` inside.
 fn with_engine<T>(s: &State<App>, f: impl FnOnce(&Engine) -> T) -> T {
     let g = s.engine.read().unwrap_or_else(|e| e.into_inner());
     f(&g)
@@ -67,11 +65,8 @@ fn tray_label(running: usize, waiting: usize) -> String {
     parts.join(" ")
 }
 
-/// Stages that count as "running". Keep in sync with engine::is_active (private in core).
-const ACTIVE: [Status; 5] = [Status::Preparing, Status::Working, Status::Checking, Status::Reviewing, Status::Merging];
-
 fn counts(tasks: &[Task]) -> (usize, usize) {
-    let running = tasks.iter().filter(|t| ACTIVE.contains(&t.status)).count();
+    let running = tasks.iter().filter(|t| nightshift_core::engine::is_active(&t.status)).count();
     let waiting = tasks.iter().filter(|t| matches!(t.status, Status::NeedsHuman | Status::AwaitingOutward)).count();
     (running, waiting)
 }
@@ -199,6 +194,18 @@ fn build_engine(app: &AppHandle, dir: &Path) -> Res<Arc<Engine>> {
                     false // log lines do not change the counter
                 }
                 EngineEvent::ProjectChanged(id) => h.emit("project-changed", id).is_ok(),
+                EngineEvent::LimitsChanged(env) => {
+                    let _ = h.emit("limits-changed", env);
+                    false
+                }
+                EngineEvent::CatalogChanged(env) => {
+                    let _ = h.emit("catalog-changed", env);
+                    false
+                }
+                EngineEvent::Frozen(on) => {
+                    let _ = h.emit("frozen", on);
+                    false
+                }
             };
             if changed {
                 refresh_tray(&h);
@@ -222,32 +229,6 @@ fn register_hotkey(app: &AppHandle, new: &str, old: Option<&str>) -> Res<()> {
         let _ = gs.unregister(o);
     }
     Ok(())
-}
-
-/// Stops the running engine completely, then builds the next one, all under the write lock:
-/// commands wait on the lock instead of hitting a stopping engine, and there is never more than
-/// one Engine / Store on the data directory. If `build` fails, `fallback` (same settings as before
-/// the change) must leave a working engine in the slot; the build error is still returned.
-fn swap_engine(
-    slot: &RwLock<Arc<Engine>>,
-    build: impl FnOnce() -> Res<Arc<Engine>>,
-    fallback: impl FnOnce() -> Res<Arc<Engine>>,
-) -> Res<()> {
-    let mut w = slot.write().unwrap_or_else(|e| e.into_inner());
-    w.shutdown();
-    match build() {
-        Ok(e) => {
-            *w = e;
-            Ok(())
-        }
-        Err(first) => match fallback() {
-            Ok(e) => {
-                *w = e;
-                Err(format!("{first} (previous settings kept)"))
-            }
-            Err(second) => Err(format!("{first}; restart failed: {second}")),
-        },
-    }
 }
 
 /// GUI apps start with a minimal PATH; agents, gh and node live elsewhere.
@@ -434,7 +415,7 @@ async fn get_log(s: State<'_, App>, id: String, limit: usize) -> Res<Value> {
 
 #[tauri::command]
 async fn submit_task(s: State<'_, App>, project_id: String, prompt: String, agent: Option<String>) -> Res<String> {
-    with_engine(&s, |e| e.submit(NewTask { project_id, prompt, agent }))
+    with_engine(&s, |e| e.submit(NewTask { project_id, prompt, agent, ..NewTask::default() }))
 }
 
 #[tauri::command]
@@ -507,7 +488,6 @@ async fn get_settings(s: State<'_, App>) -> Res<Settings> {
 #[tauri::command]
 async fn set_settings(app: AppHandle, s: State<'_, App>, settings: Settings) -> Res<()> {
     let _one_at_a_time = lk(&s.settings_lock);
-    // hotkey + save happen under the read lock; the rebuild below needs the write lock
     let old = with_engine(&s, |e| -> Res<Settings> {
         let old = lk(e.store()).settings();
         // new key first: if it cannot be registered nothing is saved and the old key keeps working
@@ -523,14 +503,9 @@ async fn set_settings(app: AppHandle, s: State<'_, App>, settings: Settings) -> 
         }
         Ok(old)
     })?;
-    // The engine keeps its adapter list from construction: a changed custom command needs a new engine.
-    if json!(settings.custom_agents) != json!(old.custom_agents) {
-        let stale = eng(&s);
-        swap_engine(&s.engine, || build_engine(&app, &s.dir), || {
-            // `stale` is stopped but its Store still writes: put the old settings back, then build again
-            lk(stale.store()).set_settings(old.clone()).map_err(e2s)?;
-            build_engine(&app, &s.dir)
-        })?;
+    // running tasks keep the adapter they started with; the next runs see the new commands
+    if json!(settings.custom_agents) != json!(old.custom_agents) || json!(settings.envs) != json!(old.envs) {
+        with_engine(&s, |e| e.set_adapters(agent::adapters(&settings)));
     }
     s.ru.store(is_ru(&settings), Ordering::Relaxed);
     refresh_tray(&app);
@@ -786,97 +761,6 @@ mod tests {
         assert_eq!(check_dir(&root.to_string_lossy(), &roots), Ok(root.clone()));
         assert!(check_dir(&root.join("a.txt").to_string_lossy(), &roots).is_err());
         assert!(check_dir("https://example.com", &roots).is_err());
-    }
-
-    fn git(dir: &Path, args: &[&str]) {
-        let o = Command::new("git").current_dir(dir).args(args).output().unwrap();
-        assert!(o.status.success(), "git {args:?}");
-    }
-
-    /// A data dir holding one project (temp repo, agent "fake", reviewer "rev") and an engine over it.
-    fn working_engine(dir: &Path) -> Res<Arc<Engine>> {
-        use nightshift_core::agent::{Adapter, FakeAdapter, FakeStep};
-        let store = Store::open(&dir.join("data")).map_err(e2s)?;
-        let adapters: Vec<Arc<dyn Adapter>> = vec![
-            Arc::new(FakeAdapter::new(vec![vec![FakeStep::Write("b.txt".into(), "hi\n".into()), FakeStep::Done("done".into())]]).with_id("fake")),
-            Arc::new(FakeAdapter::new(vec![vec![FakeStep::Done(r#"{"verdict":"approve","issues":[]}"#.into())]]).with_id("rev")),
-        ];
-        let e = Engine::new(store, adapters, Arc::new(nightshift_core::notify::NullNotifier), dir.join("wts"));
-        e.start();
-        Ok(e)
-    }
-
-    fn project_dir(name: &str) -> (PathBuf, Project) {
-        let dir = scratch(name);
-        let repo = dir.join("repo");
-        std::fs::create_dir(&repo).unwrap();
-        git(&repo, &["init", "-q", "-b", "main"]);
-        git(&repo, &["config", "user.email", "t@example.com"]);
-        git(&repo, &["config", "user.name", "T"]);
-        std::fs::write(repo.join("a.txt"), "one\n").unwrap();
-        git(&repo, &["add", "-A"]);
-        git(&repo, &["commit", "-q", "-m", "init"]);
-        let mut p = Project::new("demo", repo, "main");
-        p.agent = "fake".into();
-        p.reviewer = Some("rev".into());
-        let mut st = Store::open(&dir.join("data")).unwrap();
-        st.upsert_project(p.clone()).unwrap();
-        (dir, p)
-    }
-
-    #[test]
-    fn concurrent_rebuilds_never_overlap_and_readers_wait_for_the_new_engine() {
-        use std::sync::atomic::AtomicUsize;
-        let (dir, _) = project_dir("swap");
-        let first = working_engine(&dir).unwrap();
-        let slot = Arc::new(RwLock::new(first.clone()));
-        let (live, max) = (Arc::new(AtomicUsize::new(0)), Arc::new(AtomicUsize::new(0)));
-        let mut hs = vec![];
-        for _ in 0..3 {
-            let (slot, dir, live, max) = (slot.clone(), dir.clone(), live.clone(), max.clone());
-            hs.push(std::thread::spawn(move || {
-                swap_engine(
-                    &slot,
-                    || {
-                        let n = live.fetch_add(1, Ordering::SeqCst) + 1;
-                        max.fetch_max(n, Ordering::SeqCst);
-                        std::thread::sleep(std::time::Duration::from_millis(80));
-                        live.fetch_sub(1, Ordering::SeqCst);
-                        working_engine(&dir)
-                    },
-                    || Err("unused".into()),
-                )
-                .unwrap();
-            }));
-        }
-        // a command arriving mid-rebuild must get a finished replacement, not the stopped original
-        std::thread::sleep(std::time::Duration::from_millis(40));
-        let seen = slot.read().unwrap().clone();
-        for h in hs {
-            h.join().unwrap();
-        }
-        assert_eq!(max.load(Ordering::SeqCst), 1);
-        assert!(!Arc::ptr_eq(&seen, &first));
-    }
-
-    #[test]
-    fn failed_build_leaves_a_working_engine_in_the_slot() {
-        let (dir, p) = project_dir("swapfail");
-        let slot = RwLock::new(working_engine(&dir).unwrap());
-        let r = swap_engine(&slot, || Err("boom".to_string()), || working_engine(&dir));
-        assert!(r.unwrap_err().starts_with("boom"));
-        let e = slot.read().unwrap().clone();
-        let id = e.submit(NewTask { project_id: p.id.clone(), prompt: "add b".into(), agent: None }).unwrap();
-        let start = std::time::Instant::now();
-        loop {
-            let t = lk(e.store()).task(&id).unwrap();
-            if t.status == Status::Done {
-                break;
-            }
-            assert!(start.elapsed() < std::time::Duration::from_secs(30), "stuck at {:?}: {:?}", t.status, t.outcome);
-            std::thread::sleep(std::time::Duration::from_millis(20));
-        }
-        assert_eq!(std::fs::read_to_string(p.path.join("b.txt")).unwrap(), "hi\n");
     }
 
     #[test]

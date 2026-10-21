@@ -143,6 +143,11 @@ pub trait Adapter: Send + Sync {
     fn sandbox_info(&self) -> SandboxInfo {
         unprotected()
     }
+    /// A folder the app owns for this adapter's helper files (Codex: the answer schemas). The
+    /// engine passes it on `Engine::new` / `set_adapters`, derived from the data folder it was
+    /// given, so an adapter never works out a location of its own. A folder set explicitly
+    /// on the adapter (`Codex::with_schema_dir`) wins.
+    fn set_private_dir(&self, _dir: &Path) {}
 }
 
 /// Six built-in engines (at `EnvSettings.cli_path` when set), then every custom command from the settings.

@@ -10,19 +10,21 @@ use std::process::Command;
 
 pub struct Codex {
     bin: String,
-    /// Private folder for answer-schema files (`--output-schema` takes a path).
-    schema_dir: std::path::PathBuf,
+    /// Private folder for answer-schema files (`--output-schema` takes a path). Set by
+    /// `with_schema_dir` or, from the engine's data folder, by `Adapter::set_private_dir`; never
+    /// worked out here. Without one a run that wants a schema fails and says so.
+    schema_dir: std::sync::Mutex<Option<std::path::PathBuf>>,
 }
 
 impl Codex {
     pub fn new() -> Codex {
-        Codex { bin: "codex".into(), schema_dir: default_schema_dir() }
+        Codex { bin: "codex".into(), schema_dir: std::sync::Mutex::new(None) }
     }
     pub fn with_bin(bin: &str) -> Codex {
-        Codex { bin: bin.into(), schema_dir: default_schema_dir() }
+        Codex { bin: bin.into(), schema_dir: std::sync::Mutex::new(None) }
     }
-    pub fn with_schema_dir(mut self, dir: &std::path::Path) -> Codex {
-        self.schema_dir = dir.to_path_buf();
+    pub fn with_schema_dir(self, dir: &std::path::Path) -> Codex {
+        *self.schema_dir.lock().unwrap_or_else(|e| e.into_inner()) = Some(dir.to_path_buf());
         self
     }
 }
@@ -81,7 +83,8 @@ impl Adapter for Codex {
             c.args(["-m", m]);
         }
         if let Some(schema) = run.json_schema.as_deref() {
-            match schema_file(&self.schema_dir, schema) {
+            let dir = self.schema_dir.lock().unwrap_or_else(|e| e.into_inner()).clone();
+            match dir.ok_or_else(|| std::io::Error::other("no private folder for it")).and_then(|d| schema_file(&d, schema)) {
                 Ok(path) => {
                     c.arg("--output-schema").arg(path); // unverified: documented as a file path, not inline JSON
                 }
@@ -123,17 +126,9 @@ impl Adapter for Codex {
         if fams.is_empty() { Err("codex debug models: no models in the output".into()) } else { Ok(fams) }
     }
     // Codex has no interactive resume template (only `codex exec resume`): interactive_resume stays None.
-}
-
-/// `<data dir>/nightshift/schemas` (macOS `~/Library/Application Support`, else `$XDG_DATA_HOME` or `~/.local/share`).
-fn default_schema_dir() -> std::path::PathBuf {
-    let home = std::env::var_os("HOME").map(std::path::PathBuf::from).unwrap_or_default();
-    let data = if cfg!(target_os = "macos") {
-        home.join("Library/Application Support")
-    } else {
-        std::env::var_os("XDG_DATA_HOME").map(std::path::PathBuf::from).unwrap_or_else(|| home.join(".local/share"))
-    };
-    data.join("nightshift").join("schemas")
+    fn set_private_dir(&self, dir: &std::path::Path) {
+        self.schema_dir.lock().unwrap_or_else(|e| e.into_inner()).get_or_insert_with(|| dir.join("schemas"));
+    }
 }
 
 /// Writes the schema into the private folder under a name unique to this run (tmp + rename), mode 0700 /
@@ -153,7 +148,11 @@ fn schema_file(dir: &std::path::Path, schema: &str) -> std::io::Result<std::path
     }
     let name = uuid::Uuid::new_v4().to_string();
     let (tmp, path) = (dir.join(format!("{name}.tmp")), dir.join(format!("{name}.json")));
-    let mut f = std::fs::File::create(&tmp)?;
+    let mut opts = std::fs::OpenOptions::new();
+    opts.write(true).create(true).truncate(true);
+    #[cfg(unix)]
+    std::os::unix::fs::OpenOptionsExt::mode(&mut opts, 0o600); // the comment above promises it: set it
+    let mut f = opts.open(&tmp)?;
     f.write_all(schema.as_bytes())?;
     f.sync_all()?;
     std::fs::rename(&tmp, &path)?;

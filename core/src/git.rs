@@ -247,11 +247,17 @@ pub fn hide_untracked(wt: &Path, paths: &[String]) -> Result<(), GitError> {
     std::fs::write(&f, all).map_err(|e| GitError::Other(format!("{}: {e}", f.display())))
 }
 
-/// `-- :(literal)p ...` for the hidden paths; None when there are none.
-fn hidden_specs(wt: &Path) -> Option<Vec<String>> {
-    let hidden = hidden_list(wt).and_then(|f| std::fs::read_to_string(f).ok()).unwrap_or_default();
-    let specs: Vec<String> = hidden.lines().filter(|l| !l.is_empty()).map(|l| format!(":(literal){l}")).collect();
-    (!specs.is_empty()).then_some(specs)
+/// `:(literal)p ...` pathspecs of the hidden paths; empty when there are none. A list that does not
+/// exist (`NotFound`) means none are hidden; a list that exists but cannot be read is an error, and
+/// whoever commits stops: committing without knowing what to leave out could publish a `.env` (R11.9).
+fn hidden_specs(wt: &Path) -> Result<Vec<String>, GitError> {
+    let Some(f) = hidden_list(wt) else { return Ok(vec![]) };
+    let hidden = match std::fs::read_to_string(&f) {
+        Ok(text) => text,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => String::new(),
+        Err(e) => return Err(GitError::Other(format!("hidden_list_unreadable: {}: {e}", f.display()))),
+    };
+    Ok(hidden.lines().filter(|l| !l.is_empty()).map(|l| format!(":(literal){l}")).collect())
 }
 
 fn run_with(wt: &Path, head: &[&str], specs: &[String]) -> Result<Out, GitError> {
@@ -264,8 +270,9 @@ fn run_with(wt: &Path, head: &[&str], specs: &[String]) -> Result<Out, GitError>
 /// `git add -A`, then the hidden paths are put back as HEAD has them (out of the index if HEAD
 /// lacks them). Naming ignored paths here is fine, unlike in an `add` pathspec.
 fn add_all(wt: &Path) -> Result<(), GitError> {
+    let specs = hidden_specs(wt)?; // before anything is staged: an unreadable list stops the commit
     ok(wt, &["add", "-A"])?;
-    if let Some(specs) = hidden_specs(wt) {
+    if !specs.is_empty() {
         let o = run_with(wt, &["reset", "-q"], &specs)?;
         if !o.ok {
             return Err(GitError::Other(format!("git reset hidden paths: {}", o.stderr)));
@@ -274,22 +281,32 @@ fn add_all(wt: &Path) -> Result<(), GitError> {
     Ok(())
 }
 
-/// Hidden paths that a commit of the branch since it forked from `base` added or changed.
-pub fn hidden_committed(wt: &Path, base: &str) -> Vec<String> {
-    let Some(specs) = hidden_specs(wt) else { return vec![] };
+/// Hidden paths that a commit of the branch since it forked from `base` added or changed. A list that
+/// cannot be read is an error (see `hidden_specs`).
+pub fn try_hidden_committed(wt: &Path, base: &str) -> Result<Vec<String>, GitError> {
+    let specs = hidden_specs(wt)?;
+    if specs.is_empty() {
+        return Ok(vec![]);
+    }
     let range = format!("{}..HEAD", merge_base(wt, base));
     let out = run_with(wt, &["log", "--format=", "--name-only", &range], &specs).map(|o| o.stdout).unwrap_or_default();
     let mut v: Vec<String> = out.lines().filter(|l| !l.is_empty()).map(str::to_string).collect();
     v.sort();
     v.dedup();
-    v
+    Ok(v)
+}
+
+/// `try_hidden_committed` that reads an unreadable list as "none": for callers that cannot fail and
+/// have already been through `commit_all`, which does not tolerate one.
+pub fn hidden_committed(wt: &Path, base: &str) -> Vec<String> {
+    try_hidden_committed(wt, base).unwrap_or_default()
 }
 
 /// Someone (the agent) committed a hidden path: fold the branch back into the index
 /// (`reset --soft` to the fork point, files stay) so the next `commit_all` leaves it out and
 /// no commit of the branch keeps it. Ok(true) when it did that.
 pub fn uncommit_hidden(wt: &Path, base: &str) -> Result<bool, GitError> {
-    if hidden_committed(wt, base).is_empty() {
+    if try_hidden_committed(wt, base)?.is_empty() {
         return Ok(false);
     }
     ok(wt, &["reset", "-q", "--soft", &merge_base(wt, base)])?;

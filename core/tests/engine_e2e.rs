@@ -1,221 +1,15 @@
-//! Engine + FakeAdapter + temporary git repo (seam 1 of the spec).
-use chrono::{DateTime, Local};
+//! Engine + FakeAdapter + temporary git repo (seam 1 of the spec): the state machine of v1, which v2 keeps.
+mod common;
+use common::*;
 use nightshift_core::agent::{Adapter, FakeAdapter, FakeStep};
-use nightshift_core::engine::{Clock, Engine, NewTask};
+use nightshift_core::engine::Engine;
 use nightshift_core::model::*;
 use nightshift_core::notify::{Notice, NoticeKind, Notifier, RecordingNotifier};
 use nightshift_core::store::Store;
 use std::fs;
-use std::path::{Path, PathBuf};
 use std::process::Command;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::time::{Duration, Instant};
-use tempfile::TempDir;
-
-fn g(dir: &Path, args: &[&str]) -> String {
-    let o = Command::new("git").current_dir(dir).args(args).output().unwrap();
-    assert!(o.status.success(), "git {:?}: {}", args, String::from_utf8_lossy(&o.stderr));
-    String::from_utf8_lossy(&o.stdout).trim().to_string()
-}
-
-const APPROVE: &str = r#"{"verdict":"approve","issues":[]}"#;
-
-fn approve() -> Vec<FakeStep> {
-    vec![FakeStep::Done(APPROVE.into())]
-}
-fn done(text: &str) -> FakeStep {
-    FakeStep::Done(text.into())
-}
-fn write(path: &str, body: &str) -> FakeStep {
-    FakeStep::Write(path.into(), body.into())
-}
-
-/// A temp dir with a repo (one commit on main, `a.txt`), the store and the worktrees dir.
-struct Env {
-    d: TempDir,
-    repo: PathBuf,
-}
-
-impl Env {
-    fn new() -> Env {
-        let d = tempfile::tempdir().unwrap();
-        let repo = d.path().join("repo");
-        fs::create_dir(&repo).unwrap();
-        g(&repo, &["init", "-q", "-b", "main"]);
-        g(&repo, &["config", "user.email", "t@example.com"]);
-        g(&repo, &["config", "user.name", "T"]);
-        fs::write(repo.join("a.txt"), "one\n").unwrap();
-        g(&repo, &["add", "-A"]);
-        g(&repo, &["commit", "-q", "-m", "init"]);
-        Env { d, repo }
-    }
-
-    fn project(&self, f: impl FnOnce(&mut Project)) -> Project {
-        let mut p = Project::new("demo", self.repo.clone(), "main");
-        p.agent = "fake".into();
-        p.reviewer = Some("rev".into());
-        p.finish = Finish::Local;
-        f(&mut p);
-        p
-    }
-
-    fn store(&self, p: &Project, settings: impl FnOnce(&mut Settings)) -> Store {
-        let mut st = Store::open(&self.d.path().join("data")).unwrap();
-        st.upsert_project(p.clone()).unwrap();
-        let mut s = st.settings();
-        settings(&mut s);
-        st.set_settings(s).unwrap();
-        st
-    }
-
-    fn engine(&self, store: Store, adapters: Vec<Arc<dyn Adapter>>, n: Arc<RecordingNotifier>, clock: Option<Clock>) -> Arc<Engine> {
-        let wts = self.d.path().join("wts");
-        let e = match clock {
-            Some(c) => Engine::new_with_clock(store, adapters, n, wts, c),
-            None => Engine::new(store, adapters, n, wts),
-        };
-        e.start();
-        e
-    }
-
-    fn main_count(&self) -> u32 {
-        g(&self.repo, &["rev-list", "--count", "main"]).parse().unwrap()
-    }
-    fn main_file(&self, f: &str) -> String {
-        g(&self.repo, &["show", &format!("main:{f}")])
-    }
-}
-
-fn task(e: &Engine, id: &str) -> Task {
-    e.store().lock().unwrap().task(id).unwrap()
-}
-
-fn wait(e: &Engine, id: &str, what: &str, pred: impl Fn(&Task) -> bool) -> Task {
-    let start = Instant::now();
-    loop {
-        let t = task(e, id);
-        if pred(&t) {
-            return t;
-        }
-        assert!(start.elapsed() < Duration::from_secs(30), "timeout waiting for {what}; task is {:?}: {:?}", t.status, t.outcome);
-        std::thread::sleep(Duration::from_millis(20));
-    }
-}
-
-fn wait_status(e: &Engine, id: &str, s: Status) -> Task {
-    wait(e, id, &format!("{s:?}"), |t| t.status == s)
-}
-
-fn submit(e: &Engine, p: &Project, prompt: &str) -> String {
-    e.submit(NewTask { project_id: p.id.clone(), prompt: prompt.into(), agent: None }).unwrap()
-}
-
-/// The notice follows the status change, so wait until `count` notices have arrived.
-fn notices(n: &RecordingNotifier, count: usize) -> Vec<Notice> {
-    let start = Instant::now();
-    while n.0.lock().unwrap().len() < count && start.elapsed() < Duration::from_secs(5) {
-        std::thread::sleep(Duration::from_millis(10));
-    }
-    n.0.lock().unwrap().clone()
-}
-
-fn kinds(n: &RecordingNotifier) -> Vec<NoticeKind> {
-    notices(n, 1).iter().map(|x| x.kind.clone()).collect()
-}
-
-fn fake(scripts: Vec<Vec<FakeStep>>) -> Arc<FakeAdapter> {
-    Arc::new(FakeAdapter::new(scripts))
-}
-fn reviewer(n: usize) -> Arc<FakeAdapter> {
-    Arc::new(FakeAdapter::new((0..n).map(|_| approve()).collect()).with_id("rev"))
-}
-
-/// FakeAdapter whose invocation number `gated` first writes its shell pid to `dir/pid` and then
-/// waits until the test creates `dir/gate`: the test knows the agent is running and holds it there.
-struct Gated {
-    inner: FakeAdapter,
-    gated: usize,
-    dir: PathBuf,
-}
-
-impl Gated {
-    fn new(id: &str, scripts: Vec<Vec<FakeStep>>, gated: usize, dir: &Path) -> Arc<Gated> {
-        Arc::new(Gated { inner: FakeAdapter::new(scripts).with_id(id), gated, dir: dir.to_path_buf() })
-    }
-    fn calls(&self) -> usize {
-        self.inner.calls().len()
-    }
-    /// Pid of the gated agent once it is running.
-    fn wait_started(&self) -> u32 {
-        let f = self.dir.join("pid");
-        let start = Instant::now();
-        loop {
-            if let Some(pid) = fs::read_to_string(&f).ok().and_then(|s| s.trim().parse().ok()) {
-                return pid;
-            }
-            assert!(start.elapsed() < Duration::from_secs(30), "gated agent never started");
-            std::thread::sleep(Duration::from_millis(10));
-        }
-    }
-    fn open(&self) {
-        fs::write(self.dir.join("gate"), "").unwrap();
-    }
-}
-
-impl Adapter for Gated {
-    fn id(&self) -> &str {
-        self.inner.id()
-    }
-    fn name(&self) -> &str {
-        "Gated"
-    }
-    fn available(&self) -> Result<(), String> {
-        Ok(())
-    }
-    fn command(&self, run: &nightshift_core::agent::Run) -> Command {
-        let n = self.calls();
-        let inner = self.inner.command(run);
-        let script = inner.get_args().nth(1).unwrap().to_string_lossy().to_string();
-        let script = if n == self.gated {
-            let (pid, gate) = (self.dir.join("pid"), self.dir.join("gate"));
-            format!("echo $$ > '{}'\nwhile [ ! -e '{}' ]; do sleep 0.02; done\n{script}", pid.display(), gate.display())
-        } else {
-            script
-        };
-        let mut c = Command::new("sh");
-        c.arg("-c").arg(script).current_dir(&run.cwd).stdout(std::process::Stdio::piped());
-        c
-    }
-    fn parse(&self, line: &str) -> Vec<nightshift_core::agent::AgentEvent> {
-        self.inner.parse(line)
-    }
-    fn finish(&self, ok: bool, all: &str) -> Vec<nightshift_core::agent::AgentEvent> {
-        self.inner.finish(ok, all)
-    }
-}
-
-fn alive(pid: u32) -> bool {
-    Command::new("kill").args(["-0", &pid.to_string()]).stderr(std::process::Stdio::null()).status().unwrap().success()
-}
-
-/// One fake `gh` for the whole test binary (NIGHTSHIFT_GH is process-wide): logs its arguments.
-fn fake_gh() -> PathBuf {
-    static GH: std::sync::OnceLock<TempDir> = std::sync::OnceLock::new();
-    let d = GH.get_or_init(|| {
-        let d = tempfile::tempdir().unwrap();
-        let p = d.path().join("gh");
-        let log = d.path().join("calls");
-        fs::write(&p, format!("#!/bin/sh\necho \"$@\" >> '{}'\necho https://github.com/o/r/pull/9\n", log.display())).unwrap();
-        Command::new("chmod").arg("755").arg(&p).status().unwrap();
-        std::env::set_var("NIGHTSHIFT_GH", &p);
-        d
-    });
-    d.path().join("calls")
-}
-
-fn gh_calls_for(log: &Path, branch: &str) -> usize {
-    fs::read_to_string(log).unwrap_or_default().lines().filter(|l| l.contains(branch)).count()
-}
 
 #[test]
 fn task_reaches_done_alone_with_exactly_one_commit_on_main() {
@@ -382,7 +176,7 @@ fn two_reviewer_rejections_fail_with_the_issues_on_the_card() {
     let n = Arc::new(RecordingNotifier::default());
     let w = fake(vec![vec![write("f.txt", "v1"), done("v1")], vec![write("f.txt", "v2"), done("v2")]]);
     let r = Arc::new(FakeAdapter::new(vec![vec![done(CHANGES)], vec![done(CHANGES)]]).with_id("rev"));
-    let e = env.engine(env.store(&p, |_| {}), vec![w, r], n.clone(), None);
+    let e = env.engine(env.store(&p, |s| s.review_rounds = 2), vec![w, r], n.clone(), None);
     let main_before = g(&env.repo, &["rev-parse", "main"]);
 
     let id = submit(&e, &p, "Parse input");
@@ -419,14 +213,6 @@ fn reviewer_bad_json_is_retried_once_then_counts_as_changes() {
     assert!(w2.calls()[1].prompt.contains("reviewer answered in wrong format"));
 }
 
-fn fake_as(id: &str, scripts: Vec<Vec<FakeStep>>) -> Arc<FakeAdapter> {
-    Arc::new(FakeAdapter::new(scripts).with_id(id))
-}
-
-fn submit_with(e: &Engine, p: &Project, prompt: &str, agent: &str) -> String {
-    e.submit(NewTask { project_id: p.id.clone(), prompt: prompt.into(), agent: Some(agent.into()) }).unwrap()
-}
-
 #[test]
 fn two_parallel_tasks_on_different_files_both_land_with_a_commit_each() {
     let env = Env::new();
@@ -460,22 +246,21 @@ fn two_parallel_tasks_on_different_files_both_land_with_a_commit_each() {
 }
 
 #[test]
-fn with_max_parallel_one_the_second_task_waits_queued() {
+fn with_max_parallel_one_the_second_task_of_the_env_waits_queued() {
     let env = Env::new();
     let p = env.project(|_| {});
     let n = Arc::new(RecordingNotifier::default());
     let gd = env.d.path().join("gate");
     fs::create_dir(&gd).unwrap();
-    let wa = Gated::new("fa", vec![vec![write("x.txt", "x"), done("x")]], 0, &gd);
-    let wb = fake_as("fb", vec![vec![write("y.txt", "y"), done("y")]]);
-    let e = env.engine(env.store(&p, |s| s.max_parallel = 1), vec![wa.clone(), wb.clone(), reviewer(2)], n, None);
+    let wa = Gated::new("fa", vec![vec![write("x.txt", "x"), done("x")], vec![write("y.txt", "y"), done("y")]], 0, &gd);
+    let e = env.engine(env.store(&p, |s| s.max_parallel = 1), vec![wa.clone(), reviewer(2)], n, None);
 
     let a = submit_with(&e, &p, "Add x", "fa");
-    let b = submit_with(&e, &p, "Add y", "fb");
-    wa.wait_started(); // held at the gate: the only slot is taken
+    let b = submit_with(&e, &p, "Add y", "fa");
+    wa.wait_started(); // held at the gate: the only seat of the env is taken
     std::thread::sleep(Duration::from_millis(200));
     assert_eq!(task(&e, &b).status, Status::Queued);
-    assert!(wb.calls().is_empty());
+    assert_eq!(wa.calls(), 1);
     wa.open();
 
     wait_status(&e, &a, Status::Done);
@@ -499,33 +284,27 @@ fn conflicting_pair(resolution: Vec<FakeStep>) -> (Env, Arc<Engine>, String, Arc
 }
 
 #[test]
-fn rebase_conflict_is_resolved_by_the_worker_then_done() {
+fn rebase_conflict_is_resolved_by_the_integrator_in_a_fresh_session_then_done() {
     let (env, e, b, wb) = conflicting_pair(vec![write("a.txt", "A\nB\n"), done("merged both")]);
     let t = wait_status(&e, &b, Status::Done);
     let calls = wb.calls();
     assert_eq!(calls.len(), 3);
+    assert_eq!(calls[2].role, RoleKind::Integrator);
     assert!(calls[2].prompt.contains("conflict"), "{}", calls[2].prompt);
-    assert_eq!(calls[2].resume.as_deref(), Some("fake-session-0"));
+    assert!(calls[2].resume.is_none(), "the executor is not the one who resolves");
     assert_eq!(env.main_file("a.txt"), "A\nB");
     assert_eq!(g(&env.repo, &["log", "-1", "--format=%s", "main"]), "Write B");
     assert!(t.outcome.commit.is_some());
 }
 
 #[test]
-fn conflict_the_worker_leaves_unresolved_fails_as_conflict_with_main() {
+fn conflict_the_integrator_leaves_unresolved_fails_as_conflict_with_main() {
     let (env, e, b, _) = conflicting_pair(vec![done("could not")]);
     let main_before = g(&env.repo, &["rev-parse", "main"]);
     let t = wait_status(&e, &b, Status::Failed);
     assert_eq!(t.outcome.error.as_deref(), Some("conflict_with_main"));
     assert_eq!(g(&env.repo, &["rev-parse", "main"]), main_before);
     assert_eq!(env.main_file("a.txt"), "A");
-}
-
-/// A clock that only moves when the test says so.
-fn manual_clock() -> (Clock, Arc<Mutex<DateTime<Local>>>) {
-    let now = Arc::new(Mutex::new(Local::now()));
-    let n = now.clone();
-    (Arc::new(move || *n.lock().unwrap()), now)
 }
 
 #[test]
@@ -557,14 +336,6 @@ fn dirty_main_postpones_the_merge_keeps_the_humans_edit_and_retries_each_minute(
     assert_eq!(env.main_file("a.txt"), "human edit");
     assert_eq!(env.main_file("feature.txt"), "f");
     assert!(t.outcome.error.is_none());
-}
-
-fn with_origin(env: &Env) -> PathBuf {
-    let bare = env.d.path().join("origin.git");
-    g(env.d.path(), &["init", "-q", "--bare", "-b", "main", bare.to_str().unwrap()]);
-    g(&env.repo, &["remote", "add", "origin", bare.to_str().unwrap()]);
-    g(&env.repo, &["push", "-q", "-u", "origin", "main"]);
-    bare
 }
 
 #[test]
@@ -650,32 +421,50 @@ fn usage_limit_pauses_until_reset_and_then_continues_by_itself() {
     assert_eq!(env.main_file("rest.txt"), "rest");
 }
 
+/// Settings of the env "fake" with two models of its own, the first the executor's, the second the spare.
+fn two_models(s: &mut Settings, big: &str, spare: &str) {
+    let m = |f: &str| ModelChoice { family: f.into(), version: None };
+    s.envs.insert(
+        "fake".into(),
+        EnvSettings {
+            custom_models: vec![big.into(), spare.into()],
+            default_model: Some(m(big)),
+            fallback: Some(m(spare)),
+            ask_push: false,
+            ask_pr: false,
+            ..EnvSettings::default()
+        },
+    );
+}
+
 #[test]
-fn usage_limit_with_fallback_agent_continues_there_on_the_same_branch() {
+fn usage_limit_with_a_fallback_model_continues_there_on_the_same_branch_in_a_new_session() {
     let env = Env::new();
     let p = env.project(|p| {
-        p.fallback_agent = Some("spare".into());
         p.check_cmd = Some("test -f rest.txt || { echo 'need rest.txt'; exit 1; }".into());
     });
     let n = Arc::new(RecordingNotifier::default());
     // red check, then the limit hits the run that was to fix it
-    let w = fake(vec![vec![write("half.txt", "half"), done("half")], vec![FakeStep::Limit]]);
-    let spare = fake_as("spare", vec![vec![write("rest.txt", "rest"), done("finished on spare")]]);
-    let e = env.engine(env.store(&p, |_| {}), vec![w.clone(), spare.clone(), reviewer(1)], n.clone(), None);
+    let w = fake(vec![
+        vec![write("half.txt", "half"), done("half")],
+        vec![FakeStep::Limit],
+        vec![write("rest.txt", "rest"), done("finished on the spare model")],
+    ]);
+    let e = env.engine(env.store(&p, |s| two_models(s, "big", "spare")), vec![w.clone(), reviewer(1)], n.clone(), None);
 
     let id = submit(&e, &p, "Big job");
     let t = wait_status(&e, &id, Status::Done);
 
-    assert_eq!(w.calls().len(), 2);
-    let sc = spare.calls();
-    assert_eq!(sc.len(), 1);
-    assert!(sc[0].resume.is_none(), "new session on the fallback");
-    assert!(sc[0].prompt.contains("Big job") && sc[0].prompt.contains("+half"), "{}", sc[0].prompt);
-    assert!(sc[0].prompt.contains("need rest.txt"), "the pending fix request reaches the fallback: {}", sc[0].prompt);
+    let c = w.calls();
+    assert_eq!(c.len(), 3);
+    assert_eq!((c[0].model.as_deref(), c[1].model.as_deref(), c[2].model.as_deref()), (Some("big"), Some("big"), Some("spare")));
+    assert!(c[2].resume.is_none(), "new session on the fallback");
+    assert!(c[2].prompt.contains("Big job") && c[2].prompt.contains("+half"), "{}", c[2].prompt);
+    assert!(c[2].prompt.contains("need rest.txt"), "the pending fix request reaches the fallback: {}", c[2].prompt);
     assert_eq!(t.attempts, 1);
-    assert_eq!(t.agent, "spare");
+    assert_eq!(t.agent, "fake", "the env never changes");
     let log = e.store().lock().unwrap().read_log(&id, 500);
-    assert!(log.iter().any(|l| l.text == "switched to spare"));
+    assert!(log.iter().any(|l| l.text == "switched_to: spare"));
     assert_eq!(env.main_file("half.txt"), "half");
     assert_eq!(env.main_file("rest.txt"), "rest");
     assert!(!kinds(&n).contains(&NoticeKind::Limit));
@@ -926,11 +715,11 @@ fn pause_lets_the_current_agent_step_finish_then_holds_everything_until_unpaused
     let p = env.project(|_| {});
     let gd = env.d.path().join("gate");
     fs::create_dir(&gd).unwrap();
-    let w = Gated::new("fa", vec![vec![write("x.txt", "x"), done("x")]], 0, &gd);
-    let wb = fake_as("fb", vec![vec![write("y.txt", "y"), done("y")]]);
-    let e = env.engine(env.store(&p, |s| s.max_parallel = 1), vec![w.clone(), wb.clone(), reviewer(2)], Arc::new(RecordingNotifier::default()), None);
+    // one env with one seat: the second task waits behind the first
+    let w = Gated::new("fa", vec![vec![write("x.txt", "x"), done("x")], vec![write("y.txt", "y"), done("y")]], 0, &gd);
+    let e = env.engine(env.store(&p, |s| s.max_parallel = 1), vec![w.clone(), reviewer(2)], Arc::new(RecordingNotifier::default()), None);
     let a = submit_with(&e, &p, "Add x", "fa");
-    let b = submit_with(&e, &p, "Add y", "fb");
+    let b = submit_with(&e, &p, "Add y", "fa");
     w.wait_started(); // the agent is running and cannot finish before the gate opens
 
     e.pause_all(true);
@@ -939,7 +728,7 @@ fn pause_lets_the_current_agent_step_finish_then_holds_everything_until_unpaused
     std::thread::sleep(Duration::from_millis(300));
     assert_eq!(task(&e, &a).status, held.status, "no next step while paused");
     assert_eq!(task(&e, &b).status, Status::Queued);
-    assert!(wb.calls().is_empty());
+    assert_eq!(w.calls(), 1, "the queued task did not start");
 
     e.pause_all(false);
     wait_status(&e, &a, Status::Done);
@@ -1028,8 +817,12 @@ fn env_files_of_a_project_made_by_init_repo_reach_the_worktree_but_never_main() 
     p.check_cmd = Some("test -f .env".into());
     let mut st = Store::open(&d.path().join("data")).unwrap();
     st.upsert_project(p.clone()).unwrap();
+    let mut s = st.settings();
+    s.quality.on = false; // the short path of v1
+    s.envs.insert("fake".into(), EnvSettings { ask_push: false, ask_pr: false, ..EnvSettings::default() });
+    st.set_settings(s).unwrap();
     let w = fake(vec![vec![write("f.txt", "f"), done("f")]]);
-    let e = Engine::new(st, vec![w, reviewer(1)], Arc::new(RecordingNotifier::default()), d.path().join("wts"));
+    let e = Engine::new(st, route_reviewers(vec![w, reviewer(1)]), Arc::new(RecordingNotifier::default()), d.path().join("wts"));
     e.start();
 
     let id = submit(&e, &p, "Add f");
@@ -1151,7 +944,7 @@ fn copied_env_never_lands_whatever_the_worker_does_with_gitignore_or_git() {
         2,
         "git add -A && git commit -qm 'agent commit'",
     );
-    // the 4th review commits .env after the worker's step
+    // the 4th review commits .env in its own copy
     let rev = Shell::new("rev", (0..4).map(|_| approve()).collect(), 3, "git add -f .env && git commit -qm 'reviewer commit'");
     let e = env.engine(env.store(&p, |_| {}), vec![w.clone(), rev], Arc::new(RecordingNotifier::default()), None);
 
@@ -1165,12 +958,12 @@ fn copied_env_never_lands_whatever_the_worker_does_with_gitignore_or_git() {
     }
     assert_eq!(env.main_file(".gitignore"), "tmp/");
 
-    // a commit of .env the worker's step did not clean up: refused, nothing lands
-    let main_before = g(&env.repo, &["rev-parse", "main"]);
+    // the reviewer commits .env too, but it reads in a throwaway copy: the commit never reaches the branch
     let id = submit(&e, &p, "Step 3");
-    let t = wait_status(&e, &id, Status::Failed);
-    assert!(t.outcome.error.as_deref().unwrap().starts_with("hidden_file_committed: .env"), "{:?}", t.outcome.error);
-    assert_eq!(g(&env.repo, &["rev-parse", "main"]), main_before);
+    let t = wait_status(&e, &id, Status::Done);
+    let files = g(&env.repo, &["ls-tree", "-r", "--name-only", "main"]);
+    assert!(!files.lines().any(|f| f == ".env"), "{files}");
+    assert!(t.outcome.error.is_none());
 }
 
 #[test]
@@ -1285,7 +1078,7 @@ fn a_panic_after_the_task_is_done_leaves_it_done() {
     let env = Env::new();
     let p = env.project(|_| {});
     let w = fake(vec![vec![write("f.txt", "f"), done("f")]]);
-    let e = Engine::new(env.store(&p, |_| {}), vec![w, reviewer(1)], Arc::new(PanicOnDone), env.d.path().join("wts"));
+    let e = Engine::new(env.store(&p, |_| {}), route_reviewers(vec![w, reviewer(1)]), Arc::new(PanicOnDone), env.d.path().join("wts"));
     e.start();
     let id = submit(&e, &p, "Add f");
     wait_status(&e, &id, Status::Done);

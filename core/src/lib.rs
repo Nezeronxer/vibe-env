@@ -5,4 +5,5 @@ pub mod kits;
 pub mod models;
 pub mod model;
 pub mod notify;
+pub mod prompt;
 pub mod store;

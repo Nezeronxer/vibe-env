@@ -125,6 +125,17 @@ pub struct Outcome {
     pub commit: Option<String>,
     pub pr_url: Option<String>,
     pub error: Option<String>,
+    /// What the gates ran at the last pass and how each ended (one entry per check).
+    #[serde(default)]
+    pub gates: Vec<GateResult>,
+}
+/// One check of the gates: the project's tests, build, linter, types (spec 142).
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct GateResult {
+    pub name: String,
+    pub passed: bool,
+    /// Last ~60 lines of its output.
+    pub tail: String,
 }
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct TestResult {
@@ -688,4 +699,33 @@ pub struct ChatMsg {
     pub task_id: Option<TaskId>,
     #[serde(default)]
     pub delivered_at: Option<DateTime<Local>>,
+    // v2, from the review of task 14: what the window shows next to the text
+    /// `task` (a task was made of it), `error`, `warn`.
+    #[serde(default)]
+    pub kind: Option<ChatKind>,
+    /// A folded tool action of the model.
+    #[serde(default)]
+    pub tool: Option<ToolCall>,
+    /// Model and run number, e.g. "Opus 5.5 · run 2".
+    #[serde(default)]
+    pub model: Option<String>,
+    /// The message this one answers.
+    #[serde(default)]
+    pub reply_to: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum ChatKind {
+    Task,
+    Error,
+    Warn,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct ToolCall {
+    pub name: String,
+    pub arg: String,
+    pub result: String,
+    pub ok: bool,
 }

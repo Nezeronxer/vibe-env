@@ -1,5 +1,5 @@
 use crate::model::{Catalog, Chat, ChatMsg, EnvId, EnvLimits, LogEvent, Project, ProjectId, Settings, Task};
-use chrono::{DateTime, Local};
+use chrono::{DateTime, Local, NaiveDate};
 use std::collections::BTreeMap;
 use serde::{Deserialize, Serialize};
 use std::fs;
@@ -19,6 +19,15 @@ pub enum StoreError {
     Unreadable { copy: String },
 }
 pub type Result<T> = std::result::Result<T, StoreError>;
+
+/// What an env spent on one day and what the person added to its daily cap ("Add $5").
+/// Kept apart from the tasks: a retried or removed task does not take its spending with it.
+#[derive(Serialize, Deserialize, Default, Clone, Debug, PartialEq)]
+pub struct DaySpend {
+    pub day: Option<NaiveDate>,
+    pub spent_usd: f64,
+    pub extra_usd: f64,
+}
 
 #[derive(Serialize, Deserialize, Default, Clone)]
 struct State {
@@ -272,5 +281,20 @@ impl Store {
 
     pub fn set_limits(&self, env: &str, l: EnvLimits) -> Result<()> {
         self.put_map("limits.json", env, l)
+    }
+
+    /// The env's spending on `day`; another day's record counts as nothing.
+    pub fn day_spend(&self, env: &str, day: NaiveDate) -> DaySpend {
+        self.read_map::<DaySpend>("day_spend.json")
+            .remove(env)
+            .filter(|d| d.day == Some(day))
+            .unwrap_or(DaySpend { day: Some(day), ..DaySpend::default() })
+    }
+
+    pub fn add_day_spend(&self, env: &str, day: NaiveDate, spent_usd: f64, extra_usd: f64) -> Result<()> {
+        let mut d = self.day_spend(env, day);
+        d.spent_usd += spent_usd;
+        d.extra_usd += extra_usd;
+        self.put_map("day_spend.json", env, d)
     }
 }

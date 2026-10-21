@@ -1,11 +1,20 @@
-//! Task lifecycle engine: queue with a parallelism limit, the task state machine, retries,
-//! one merge at a time per project. Everything runs on plain threads.
+//! Task lifecycle engine: queue with seats per env, the task state machine, the roles of the
+//! pipeline, retries, limits, one merge at a time per project. Everything runs on plain threads.
 //!
 //! Ownership rule: a task's state is written only by whoever holds its claim in `running`
 //! (the drive thread, or cancel / retry / undo / approve / answer while they work), checked
 //! against the status inside the store's critical section. `push_base` takes each claim too.
+//!
+//! One env per task (G22): every run of every role takes its adapter from `Task.agent` and nowhere else.
+//! The v1 project fields `reviewer` and `fallback_agent` are not read; seeing them is only noted in the log.
 mod flow;
+mod ops;
+mod roles;
+mod state;
+mod steps;
 mod util;
+
+pub use ops::{is_snoozed, HandOff, NoteResult, Summary, SummaryItem};
 
 use crate::agent::Adapter;
 use crate::git;
@@ -22,25 +31,56 @@ use std::sync::{Arc, Mutex, MutexGuard};
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
-/// Wall clock, replaceable in tests (limit pauses, the once-a-minute merge retry).
+/// Wall clock, replaceable in tests (limit pauses, the once-a-minute merge retry, the night window).
 pub type Clock = Arc<dyn Fn() -> DateTime<Local> + Send + Sync>;
+
+/// Variables for the runs of an env (kit secrets): env id -> pairs. Bound to `Kits::env_vars` by the app.
+pub type EnvVars = Arc<dyn Fn(&str) -> Vec<(String, String)> + Send + Sync>;
 
 #[derive(Clone, Debug)]
 pub enum EngineEvent {
     TaskChanged(Task),
     Log(TaskId, LogEvent),
     ProjectChanged(ProjectId),
+    /// New limit windows of the env were stored.
+    LimitsChanged(EnvId),
+    CatalogChanged(EnvId),
+    /// `freeze` was switched.
+    Frozen(bool),
 }
 
-#[derive(Clone, Debug)]
+/// A task to put in the queue. Everything but the project and the words is optional.
+#[derive(Clone, Debug, Default)]
 pub struct NewTask {
     pub project_id: ProjectId,
     pub prompt: String,
+    /// The env; the project's by default.
     pub agent: Option<String>,
+    pub chat_id: Option<ChatId>,
+    /// "Quality" for this task; the settings' by default.
+    pub quality: Option<QualityPlan>,
+    pub swarm: Option<SwarmSpec>,
+    pub start: Option<StartWhen>,
+    /// The executor's model; the env's default by default.
+    pub model: Option<ModelChoice>,
 }
+
+/// The longest task text `submit` takes (R04.1), in characters.
+pub const MAX_PROMPT_CHARS: usize = 100_000;
 
 const TICK: Duration = Duration::from_millis(40);
 const WAIT_LIMIT: Duration = Duration::from_secs(15);
+/// How often a task waiting for a login or for its env to come back tries again.
+const ENV_RETRY_SECS: i64 = 60;
+
+/// Stages that are worked on right now.
+pub fn is_active(s: &Status) -> bool {
+    matches!(s, Status::Preparing | Status::Working | Status::Checking | Status::Reviewing | Status::Merging)
+}
+
+fn cancellable(s: &Status) -> bool {
+    is_active(s) || matches!(s, Status::Queued | Status::NeedsHuman | Status::PausedLimit | Status::MergeBlocked)
+}
 
 /// What the worker gets next and where a limit pause resumes. Kept on disk next to the
 /// worktrees, so an answer or a fix request survives a restart.
@@ -58,16 +98,25 @@ struct Running {
     stopping: bool,
     /// task id -> cancel flag of whoever holds the claim
     tasks: HashMap<TaskId, Arc<AtomicBool>>,
+    /// Tasks somebody waits to take the claim of (`hold`): the scheduler leaves them alone, else it would
+    /// restart a task at the very moment a command stopped it.
+    wanted: HashMap<TaskId, usize>,
 }
 
 /// A held claim; released on drop.
 struct Held<'a> {
     e: &'a Engine,
     id: String,
+    /// Taken by `hold`: also ends the wish to take it.
+    wished: bool,
 }
 impl Drop for Held<'_> {
     fn drop(&mut self) {
-        lk(&self.e.running).tasks.remove(&self.id);
+        let mut r = lk(&self.e.running);
+        r.tasks.remove(&self.id);
+        if self.wished {
+            self.e.unwish(&mut r, &self.id);
+        }
     }
 }
 
@@ -76,9 +125,14 @@ fn lk<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
     m.lock().unwrap_or_else(|e| e.into_inner())
 }
 
+/// An env whose login was asked for: one call per env, then silence until it works again.
+struct AuthWait {
+    notified: bool,
+}
+
 pub struct Engine {
     store: Mutex<Store>,
-    adapters: Vec<Arc<dyn Adapter>>,
+    adapters: Mutex<Vec<Arc<dyn Adapter>>>,
     notifier: Arc<dyn Notifier>,
     worktrees_dir: PathBuf,
     clock: Clock,
@@ -86,14 +140,15 @@ pub struct Engine {
     running: Mutex<Running>,
     merge_locks: Mutex<HashMap<ProjectId, Arc<Mutex<()>>>>,
     scheduler: Mutex<Option<JoinHandle<()>>>,
-}
-
-fn is_active(s: &Status) -> bool {
-    matches!(s, Status::Preparing | Status::Working | Status::Checking | Status::Reviewing | Status::Merging)
-}
-
-fn cancellable(s: &Status) -> bool {
-    is_active(s) || matches!(s, Status::Queued | Status::NeedsHuman | Status::PausedLimit | Status::MergeBlocked)
+    /// `freeze`: no new runs, running ones are stopped, states stay.
+    frozen: AtomicBool,
+    /// The person is away (the app's idle / lock detection): night tasks may start.
+    away: AtomicBool,
+    state_lock: Mutex<()>,
+    env_vars: Mutex<Option<EnvVars>>,
+    auth: Mutex<HashMap<EnvId, AuthWait>>,
+    /// env -> (when checked, answer of `Adapter::available`)
+    avail: Mutex<HashMap<EnvId, (Instant, Result<(), String>)>>,
 }
 
 impl Engine {
@@ -109,9 +164,12 @@ impl Engine {
         worktrees_dir: PathBuf,
         clock: Clock,
     ) -> Arc<Engine> {
+        for a in &adapters {
+            a.set_private_dir(&worktrees_dir);
+        }
         Arc::new(Engine {
             store: Mutex::new(store),
-            adapters,
+            adapters: Mutex::new(adapters),
             notifier,
             worktrees_dir,
             clock,
@@ -119,7 +177,28 @@ impl Engine {
             running: Mutex::new(Running::default()),
             merge_locks: Mutex::new(HashMap::new()),
             scheduler: Mutex::new(None),
+            frozen: AtomicBool::new(false),
+            away: AtomicBool::new(false),
+            state_lock: Mutex::new(()),
+            env_vars: Mutex::new(None),
+            auth: Mutex::new(HashMap::new()),
+            avail: Mutex::new(HashMap::new()),
         })
+    }
+
+    /// Replaces the adapters (the person changed their own commands in the settings). Runs that are
+    /// going keep the adapter they started with; every run that starts afterwards sees the new list.
+    pub fn set_adapters(&self, adapters: Vec<Arc<dyn Adapter>>) {
+        for a in &adapters {
+            a.set_private_dir(&self.worktrees_dir);
+        }
+        *lk(&self.adapters) = adapters;
+        lk(&self.avail).clear();
+    }
+
+    /// The provider of `Run.extra_env` per env (task 13 binds it to `Kits::env_vars`).
+    pub fn set_env_vars(&self, f: EnvVars) {
+        *lk(&self.env_vars) = Some(f);
     }
 
     /// Starts the scheduler. Tasks left in an active stage by a previous run are picked up again:
@@ -129,6 +208,7 @@ impl Engine {
         if s.is_some() || lk(&self.running).stopping {
             return;
         }
+        self.sweep_ro_copies();
         let me = self.clone();
         *s = Some(std::thread::spawn(move || {
             while !lk(&me.running).stopping {
@@ -173,38 +253,50 @@ impl Engine {
         if prompt.is_empty() {
             return Err("empty_prompt".into());
         }
+        if prompt.chars().count() > MAX_PROMPT_CHARS {
+            return Err("prompt_too_long".into());
+        }
         let p = self.project(&t.project_id).ok_or("project_not_found")?;
-        let agent = t.agent.unwrap_or(p.agent);
+        let agent = t.agent.clone().unwrap_or_else(|| p.agent.clone());
         if self.adapter(&agent).is_none() {
             return Err(format!("agent_not_found: {agent}"));
         }
+        let settings = lk(&self.store).settings();
+        let env = settings.envs.get(&agent).cloned().unwrap_or_default();
         let id = uuid::Uuid::new_v4().to_string();
         let title = util::title_of(&prompt);
-        let task = Task {
+        // the models of the roles are a snapshot of the env's settings now (spec 16)
+        let mut models = env.roles.clone();
+        if let Some(m) = t.model.clone().or(env.default_model.clone()) {
+            models.insert(RoleKind::Worker, m);
+        }
+        let quality = t.quality.clone().unwrap_or_else(|| settings.quality.clone());
+        let mut task = Task {
             branch: format!("ns/{}-{}", &id[..8], util::slug(&title)),
             id: id.clone(),
-            project_id: p.id,
+            project_id: p.id.clone(),
             title,
             prompt,
             agent,
             status: Status::Queued,
-            worktree: None,
-            session: None,
-            attempts: 0,
-            review_rounds: 0,
-            question: None,
-            resume_at: None,
-            outcome: Outcome::default(),
             created_at: self.now(),
-            started_at: None,
-            finished_at: None,
+            chat_id: t.chat_id,
+            models,
+            swarm: t.swarm,
+            start: t.start.unwrap_or(StartWhen::Now),
+            budget_usd: Some(settings.limits.task_usd),
             ..Task::default()
         };
+        task.steps = flow::initial_steps(&quality, &p);
+        task.quality = quality;
+        self.note_v1_settings(&p);
         self.save(&task)?;
+        self.hold_back_if_limited(&task);
         Ok(id)
     }
 
-    /// Human answer to the worker's `NEEDS_HUMAN` question; the worker resumes the same session.
+    /// Human answer to a role's `NEEDS_HUMAN` question; the same role resumes the same session.
+    /// A question the engine asked itself (budget, login) is answered by pressing it through.
     pub fn answer(&self, id: &str, text: &str) -> Result<(), String> {
         let asks = |t: &Task| {
             t.status == Status::NeedsHuman && t.question.as_ref().is_some_and(|q| q.kind == QuestionKind::Agent)
@@ -212,14 +304,18 @@ impl Engine {
         // the claim orders two clicks (and the drive thread finishing its step); the second
         // finds the task no longer waiting
         let _h = self.hold(id, false)?;
-        if !self.task(id).is_some_and(|t| asks(&t)) {
-            return Err("not_waiting".into());
+        let Some(t) = self.task(id).filter(|t| asks(t)) else { return Err("not_waiting".into()) };
+        let special = self.state(id).special;
+        let stage = self.pending(id).stage.unwrap_or(Status::Working);
+        if let Some(key) = special {
+            return self.answer_special(&t, &key, text, stage);
         }
         // persisted before the status flips, so neither the scheduler nor a restart can miss it
-        self.set_pending(id, &Pending { prompt: Some(text.to_string()), ..Default::default() })?;
+        self.set_pending(id, &Pending { prompt: Some(text.to_string()), stage: Some(stage.clone()), ..Default::default() })?;
         if let Err(e) = self.cas(id, "not_waiting", asks, |t| {
             t.question = None;
-            t.status = Status::Working;
+            t.status = stage.clone();
+            t.resume_at = None;
         }) {
             self.clear_pending(id);
             return Err(e);
@@ -228,40 +324,14 @@ impl Engine {
         Ok(())
     }
 
-    pub fn approve_outward(&self, id: &str, yes: bool) -> Result<(), String> {
-        let _h = self.hold(id, false)?;
-        let mut t = self.task(id).ok_or("task_not_found")?;
-        if t.status != Status::AwaitingOutward {
-            return Err("not_waiting".into()); // e.g. the second of two clicks
-        }
-        let p = self.project(&t.project_id).ok_or("project_not_found")?;
-        let revert = t.question.as_ref().is_some_and(|q| q.text == flow::PUSH_REVERT);
-        t.question = None;
-        self.log(id, LogKind::Human, if yes { "approved: push" } else { "declined: push" });
-        match (revert, yes) {
-            (true, true) => {
-                t.status = Status::Reverted;
-                t.outcome.error = git::push(&p.path, &p.base_branch).err().map(|e| e.to_string());
-                self.save(&t)?;
-                self.emit(EngineEvent::ProjectChanged(p.id.clone()));
-            }
-            (true, false) => {
-                t.status = Status::Reverted;
-                t.outcome.error = Some("push_skipped".into());
-                self.save(&t)?;
-            }
-            (false, true) => self.outward(&mut t, &p),
-            (false, false) => {
-                t.outcome.error = Some("push_skipped".into());
-                self.complete(&mut t, &p, Status::DoneNotPushed);
-            }
-        }
-        Ok(())
-    }
-
     /// Stops the agent / check process, removes the worktree and the task branch.
     pub fn cancel(&self, id: &str) -> Result<(), String> {
         let _h = self.hold(id, true)?;
+        self.do_cancel(id)
+    }
+
+    /// `cancel` for whoever holds the claim already.
+    fn do_cancel(&self, id: &str) -> Result<(), String> {
         let now = self.now();
         let mut t = self.cas(id, "not_cancellable", |t| cancellable(&t.status), |t| {
             t.status = Status::Cancelled;
@@ -270,6 +340,7 @@ impl Engine {
             t.finished_at = Some(now);
         })?;
         self.clear_pending(id);
+        self.clear_state(id);
         self.log(id, LogKind::Stage, "cancelled");
         if let (Some(wt), Some(p)) = (t.worktree.take(), self.project(&t.project_id)) {
             git::remove_worktree(&p.path, &wt, true).map_err(|e| e.to_string())?;
@@ -278,7 +349,8 @@ impl Engine {
         Ok(())
     }
 
-    /// Failed / cancelled: start over from a clean branch. Done-not-pushed: push / open the PR again.
+    /// Failed / cancelled / done: start over from a clean branch (the new work reaches main even if the
+    /// task landed once). Done-not-pushed: push / open the PR again.
     pub fn retry(&self, id: &str) -> Result<(), String> {
         let _h = self.hold(id, false)?;
         let mut t = self.task(id).ok_or("task_not_found")?;
@@ -289,12 +361,13 @@ impl Engine {
                 self.outward(&mut t, &p);
                 Ok(())
             }
-            Status::Failed | Status::Cancelled => {
+            Status::Failed | Status::Cancelled | Status::Done | Status::Reverted => {
                 // failed tasks keep their worktree; removing it with the branch gives a clean start
                 if let Some(wt) = t.worktree.take() {
                     git::remove_worktree(&p.path, &wt, true).map_err(|e| e.to_string())?;
                 }
                 self.clear_pending(id);
+                self.clear_state(id);
                 git::forget_merged(&p.path, &t.branch); // else the new work would count as landed
                 t.status = Status::Queued;
                 t.session = None;
@@ -305,6 +378,11 @@ impl Engine {
                 t.outcome = Outcome::default();
                 t.started_at = None;
                 t.finished_at = None;
+                t.runs.clear();
+                let settings = lk(&self.store).settings();
+                t.steps = flow::initial_steps(&t.quality, &p);
+                t.budget_usd = Some(settings.limits.task_usd);
+                t.cost_usd = None;
                 self.save(&t)?;
                 self.log(id, LogKind::Human, "retry");
                 Ok(())
@@ -323,6 +401,7 @@ impl Engine {
             git::remove_worktree(&p.path, wt, true).map_err(|e| e.to_string())?;
         }
         self.clear_pending(id);
+        self.clear_state(id);
         lk(&self.store).remove_task(id).map_err(|e| e.to_string())
     }
 
@@ -346,7 +425,7 @@ impl Engine {
         t.status = Status::Reverted;
         self.save(&t)?;
         self.emit(EngineEvent::ProjectChanged(p.id.clone()));
-        if was_pushed && p.ask_outward {
+        if was_pushed && self.asks_outward(&t, &p) {
             let options = vec!["Push".to_string(), "Skip".to_string()];
             t.question = Some(Question { text: flow::PUSH_REVERT.into(), options: options.clone(), kind: QuestionKind::Outward });
             t.status = Status::AwaitingOutward;
@@ -403,6 +482,9 @@ impl Engine {
     // ---- scheduler ----
 
     fn tick(self: &Arc<Self>) {
+        if self.frozen.load(Ordering::SeqCst) {
+            return;
+        }
         let (settings, tasks) = {
             let st = lk(&self.store);
             (st.settings(), st.tasks())
@@ -411,31 +493,47 @@ impl Engine {
             return;
         }
         let now = self.now();
-        let mut free = (settings.max_parallel.max(1) as usize).saturating_sub(lk(&self.running).tasks.len());
+        // seats are per env (R19i.5): a task holding a claim uses one seat of its env
+        let mut used: HashMap<String, usize> = HashMap::new();
+        {
+            let r = lk(&self.running);
+            for t in tasks.iter().filter(|t| r.tasks.contains_key(&t.id)) {
+                *used.entry(t.agent.clone()).or_default() += 1;
+            }
+        }
+        let cap = settings.max_parallel.max(1) as usize;
         let due = |t: &Task| t.resume_at.map(|r| r <= now).unwrap_or(true);
+        let continuing = |t: &Task| {
+            is_active(&t.status)
+                || matches!(t.status, Status::PausedLimit | Status::MergeBlocked)
+                || (t.status == Status::NeedsHuman && t.question.as_ref().is_some_and(|q| q.text.starts_with(roles::AUTH_REQUIRED)))
+        };
         // continuing tasks first, then the queue in submit order
-        let ready = tasks
-            .iter()
-            .filter(|t| is_active(&t.status) || (matches!(t.status, Status::PausedLimit | Status::MergeBlocked) && due(t)))
-            .chain(tasks.iter().filter(|t| t.status == Status::Queued));
+        let ready = tasks.iter().filter(|t| continuing(t)).chain(tasks.iter().filter(|t| t.status == Status::Queued));
         for t in ready {
-            if free == 0 {
-                break;
+            if used.get(&t.agent).copied().unwrap_or(0) >= cap || !due(t) {
+                continue;
+            }
+            if t.status == Status::Queued && !self.may_start(t, &tasks, &settings, now) {
+                continue;
             }
             // claim first (refused while stopping or when someone holds it), then compare-and-set
             let Some(flag) = self.claim(&t.id) else { continue };
             let seen = t.status.clone();
             let stage = self.pending(&t.id).stage;
             let r = self.cas(&t.id, "changed", |x| x.status == seen && due(x), |x| match seen {
-                Status::PausedLimit => {
+                Status::PausedLimit | Status::NeedsHuman => {
                     x.status = stage.unwrap_or(Status::Working);
                     x.resume_at = None;
+                    x.question = None;
                 }
                 Status::MergeBlocked => {
                     x.status = Status::Merging;
                     x.resume_at = None;
                 }
-                _ => {}
+                _ => {
+                    x.resume_at = None;
+                }
             });
             if r.is_err() {
                 lk(&self.running).tasks.remove(&t.id);
@@ -444,10 +542,10 @@ impl Engine {
             if seen == Status::PausedLimit {
                 self.log(&t.id, LogKind::Stage, "limit reset, continuing");
             }
-            free -= 1;
+            *used.entry(t.agent.clone()).or_default() += 1;
             let (me, id) = (self.clone(), t.id.clone());
             std::thread::spawn(move || {
-                let _h = Held { e: &me, id: id.clone() };
+                let _h = Held { e: &me, id: id.clone(), wished: false };
                 let r = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| me.drive(&id, &flag)));
                 if let Err(p) = r {
                     let msg = p
@@ -465,10 +563,14 @@ impl Engine {
         }
     }
 
-    /// Takes the task's claim; None when it is held already or the engine is stopping.
+    /// Takes the task's claim for the scheduler; None when it is held already, somebody waits for it, or the engine is stopping.
     fn claim(&self, id: &str) -> Option<Arc<AtomicBool>> {
+        self.claim_as(id, false)
+    }
+
+    fn claim_as(&self, id: &str, wished: bool) -> Option<Arc<AtomicBool>> {
         let mut r = lk(&self.running);
-        if r.stopping || r.tasks.contains_key(id) {
+        if r.stopping || r.tasks.contains_key(id) || (!wished && r.wanted.contains_key(id)) {
             return None;
         }
         let f = Arc::new(AtomicBool::new(false));
@@ -476,13 +578,24 @@ impl Engine {
         Some(f)
     }
 
+    fn unwish(&self, r: &mut Running, id: &str) {
+        if let Some(n) = r.wanted.get_mut(id) {
+            *n -= 1;
+            if *n == 0 {
+                r.wanted.remove(id);
+            }
+        }
+    }
+
     /// Waits for the claim (`kill` = stop whoever holds it first) and keeps it until drop.
     fn hold(&self, id: &str, kill: bool) -> Result<Held<'_>, String> {
         let t0 = Instant::now();
+        *lk(&self.running).wanted.entry(id.to_string()).or_default() += 1;
         loop {
             {
-                let r = lk(&self.running);
+                let mut r = lk(&self.running);
                 if r.stopping {
+                    self.unwish(&mut r, id);
                     return Err("stopping".into());
                 }
                 match r.tasks.get(id) {
@@ -491,10 +604,11 @@ impl Engine {
                     None => {}
                 }
             }
-            if self.claim(id).is_some() {
-                return Ok(Held { e: self, id: id.to_string() });
+            if self.claim_as(id, true).is_some() {
+                return Ok(Held { e: self, id: id.to_string(), wished: true });
             }
             if t0.elapsed() > WAIT_LIMIT {
+                self.unwish(&mut lk(&self.running), id);
                 return Err("busy".into());
             }
             std::thread::sleep(Duration::from_millis(10));
@@ -555,8 +669,9 @@ impl Engine {
         lk(&self.store).project(id)
     }
 
+    /// The adapter of an env. A run in progress keeps the one it started with (`set_adapters`).
     fn adapter(&self, id: &str) -> Option<Arc<dyn Adapter>> {
-        self.adapters.iter().find(|a| a.id() == id).cloned()
+        lk(&self.adapters).iter().find(|a| a.id() == id).cloned()
     }
 
     fn merge_lock(&self, project: &ProjectId) -> Arc<Mutex<()>> {
@@ -570,7 +685,10 @@ impl Engine {
     }
 
     fn log(&self, id: &str, kind: LogKind, text: &str) {
-        let ev = LogEvent::new(self.now(), kind, text);
+        self.log_ev(id, LogEvent::new(self.now(), kind, text));
+    }
+
+    fn log_ev(&self, id: &str, ev: LogEvent) {
         let _ = lk(&self.store).append_log(id, &ev);
         self.emit(EngineEvent::Log(id.to_string(), ev));
     }
@@ -588,5 +706,23 @@ impl Engine {
             body,
             options,
         });
+    }
+
+    /// The project still has the v1 `reviewer` / `fallback_agent` settings: they do nothing now,
+    /// and its log says so once (G22.1). This is the only place those fields are looked at.
+    fn note_v1_settings(&self, p: &Project) {
+        if p.reviewer.is_none() && p.fallback_agent.is_none() {
+            return;
+        }
+        let seen = lk(&self.store).read_log(&p.id, 200).iter().any(|e| e.text.starts_with(ops::V1_SETTING_NOTE));
+        if !seen {
+            self.log(&p.id, LogKind::Stage, ops::V1_SETTING_NOTE);
+        }
+    }
+
+    /// Ask outward when the project asks or the env's rights ask (G01.9).
+    fn asks_outward(&self, t: &Task, p: &Project) -> bool {
+        let env = lk(&self.store).settings().envs.get(&t.agent).cloned().unwrap_or_default();
+        p.ask_outward || if p.finish == Finish::Pr { env.ask_pr } else { env.ask_push }
     }
 }
