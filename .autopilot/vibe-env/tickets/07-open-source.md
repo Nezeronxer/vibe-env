@@ -1,8 +1,8 @@
 # 07 - Open-source: README, лицензия, сборки в CI, знаки и товарные знаки
 
-**Требования:** R02, R02.1, R12, R13, R20i, R20i.1, R20i.2, R21, G04, G21.2, G25.13
+**Требования:** R02, R02.1, R12, R13, R20i, R20i.1, R20i.2, R21, G04, G21.2, G25.13, G27
 **Blocked by:** 13, 15
-**Зона:** `README.md`, `README.ru.md`, `LICENSE`, `CONTRIBUTING.md`, `.github/`, `docs/`, `scripts/install.sh`
+**Зона:** `README.md`, `README.ru.md`, `LICENSE`, `CONTRIBUTING.md`, `.github/`, `docs/`, `scripts/install.sh` + `app/tauri.conf.json` (только раздел `bundle`) + `app/installer/`
 **Волна:** 5
 **Status:** ready
 
@@ -42,3 +42,13 @@ README на английском (+ `README.ru.md`): что это одной ф
 - [ ] `docs/security.md` содержит все области таблицы «Аудит безопасности» и место под отчёт; в README чек-лист публикации по истории 223
 - [ ] Условия на знаки перепроверены по ссылкам из `SOURCES.md`, результат записан в отчёте
 - [ ] В репозитории нет секретов: `gitleaks` по дереву и истории, если установлен, иначе grep по шаблонам ключей
+
+## Дополнено координатором: красивый установщик (G27)
+
+> «Также сделай красивый установщик приложения»
+
+- [ ] macOS `.dmg`: фон по стилю приложения (токены из `ui/css/tokens.css`, тёмный, без градиентов, неона и теней), подпись и стрелка «Перетащи Nightshift в Программы», значок приложения и ярлык Applications расставлены (`bundle.macOS.dmg`: `background`, `windowSize`, `appPosition`, `applicationFolderPosition`), значок тома; фон в @1x и @2x; исходник фона (SVG) лежит в `app/installer/`
+- [ ] Linux: AppImage и deb - имя, значок всех размеров, категория Development, корректный `.desktop`; `scripts/install.sh` - одна команда, понятный вывод по шагам (скачал → проверил контрольную сумму → поставил → где запустить), без sudo там, где он не нужен
+- [ ] скриншот открытого `.dmg` (смонтировать и снять окно Finder) в `.autopilot/vibe-env/screens-v2/installer-dmg.png` - посмотреть самому
+- [ ] Linux - любой дистрибутив («это под все дистрибутивы Linux должно подходить»): цели bundle `appimage`, `deb`, `rpm`; `PKGBUILD` для AUR в `packaging/aur/`; зависимость webkit2gtk-4.1 указана в deb/rpm. AppImage собирается в CI на Ubuntu (на Arch linuxdeploy падает из-за /usr/lib/gdk-pixbuf-2.0 - известная грабля). `install.sh` определяет дистрибутив по `/etc/os-release` (ID и ID_LIKE): Debian-семейство → deb, Fedora/openSUSE → rpm, Arch-семейство → подсказка `yay -S nightshift`/PKGBUILD, остальное → AppImage в `~/.local/bin` с .desktop в `~/.local/share/applications`. CI-проверка: AppImage запускается (`--version` или старт с таймаутом) в контейнерах ubuntu, fedora, archlinux, opensuse
+- [ ] Flatpak - не делаем в этом заходе (строка в «Вне рамок» README: AppImage покрывает остальные дистрибутивы)

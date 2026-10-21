@@ -9,7 +9,7 @@ window.STATE =
   "briefFile": "2026-10-21-brief.md",
   "memoryFile": "CLAUDE.md",
   "startedAt": "2026-10-21T08:41:14+03:00",
-  "updatedAt": "2026-10-21T14:19:01+03:00",
+  "updatedAt": "2026-10-21T15:09:27+03:00",
   "finishedAt": null,
   "stages": [
     {
@@ -589,7 +589,7 @@ window.STATE =
     {
       "id": "12",
       "retries": 0,
-      "repairs": 0,
+      "repairs": 2,
       "title": "Наборы: экспорт и импорт скиллов, правил, хуков, MCP, субагентов; секреты; снимки и откат",
       "requirements": [
         "G25",
@@ -617,8 +617,19 @@ window.STATE =
         "core/tests/kits*.rs"
       ],
       "wave": 5,
-      "status": "in-progress",
-      "startedAt": "2026-10-21T14:19:01+03:00"
+      "status": "done",
+      "startedAt": "2026-10-21T14:19:01+03:00",
+      "tests": {
+        "passed": 20,
+        "failed": 0
+      },
+      "finishedAt": "2026-10-21T15:09:27+03:00",
+      "commit": "4015b3a",
+      "concerns": [
+        "доработка 12a в свежем контексте: ленивая догрузка в ls-tree, откат не затирает изменённое человеком, проверка после записи общего конфига, удаление файла только если не тронут",
+        "порядок ключей в переписанном JSON - по алфавиту",
+        "несверенные группы: Cursor, скиллы Codex/Gemini/Qwen, субагенты Codex"
+      ]
     },
     {
       "id": "13",
