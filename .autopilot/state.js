@@ -9,7 +9,7 @@ window.STATE =
   "briefFile": "2026-10-21-brief.md",
   "memoryFile": "CLAUDE.md",
   "startedAt": "2026-10-21T08:41:14+03:00",
-  "updatedAt": "2026-10-21T13:36:15+03:00",
+  "updatedAt": "2026-10-21T14:19:01+03:00",
   "finishedAt": null,
   "stages": [
     {
@@ -49,13 +49,13 @@ window.STATE =
       "id": "build",
       "status": "active",
       "startedAt": "2026-10-21T09:02:22+03:00",
-      "note": "волна 4: ядро v2 и интерфейс v2 часть 1"
+      "note": "готовы 01-03, 05, 06, 08, 14; волна 5: движок v2, наборы, интерфейс часть 2"
     },
     {
       "id": "review",
       "status": "active",
       "startedAt": "2026-10-21T10:07:22+03:00",
-      "note": "проверены 01, 02, 03, 05, 06"
+      "note": "проверены 01-03, 05, 06, 08, 14"
     },
     {
       "id": "final",
@@ -330,7 +330,7 @@ window.STATE =
     {
       "id": "08",
       "retries": 0,
-      "repairs": 0,
+      "repairs": 1,
       "title": "Ядро v2: типы, хранилище, адаптеры с моделью и лимитами, каталог моделей, git",
       "requirements": [
         "R01",
@@ -389,8 +389,19 @@ window.STATE =
         "core/tests/fixtures/"
       ],
       "wave": 4,
-      "status": "in-progress",
-      "startedAt": "2026-10-21T13:36:15+03:00"
+      "status": "done",
+      "startedAt": "2026-10-21T13:36:15+03:00",
+      "tests": {
+        "passed": 158,
+        "failed": 0
+      },
+      "finishedAt": "2026-10-21T14:19:01+03:00",
+      "commit": "17f8aa7",
+      "concerns": [
+        "лимиты не-Claude сред - нет данных (источник не подтверждён)",
+        "версии Claude/Gemini/Qwen из документации 2026-10-21, не сверены с CLI",
+        "форматы Codex/Cursor - по документации"
+      ]
     },
     {
       "id": "09",
@@ -493,7 +504,8 @@ window.STATE =
         "hidden_specs"
       ],
       "wave": 5,
-      "status": "pending"
+      "status": "in-progress",
+      "startedAt": "2026-10-21T14:19:01+03:00"
     },
     {
       "id": "10",
@@ -605,7 +617,8 @@ window.STATE =
         "core/tests/kits*.rs"
       ],
       "wave": 5,
-      "status": "pending"
+      "status": "in-progress",
+      "startedAt": "2026-10-21T14:19:01+03:00"
     },
     {
       "id": "13",
@@ -747,8 +760,18 @@ window.STATE =
         "logic.js"
       ],
       "wave": 4,
-      "status": "in-progress",
-      "startedAt": "2026-10-21T13:36:15+03:00"
+      "status": "done",
+      "startedAt": "2026-10-21T13:36:15+03:00",
+      "tests": {
+        "passed": 69,
+        "failed": 0
+      },
+      "finishedAt": "2026-10-21T14:19:01+03:00",
+      "commit": "dc43c99",
+      "concerns": [
+        "работает на dev-mock до таска 13",
+        "«Отложить» - команда в 09"
+      ]
     },
     {
       "id": "15",
@@ -814,12 +837,13 @@ window.STATE =
         "ui/"
       ],
       "wave": 5,
-      "status": "pending"
+      "status": "in-progress",
+      "startedAt": "2026-10-21T14:19:01+03:00"
     }
   ],
   "singlePass": null,
   "tests": {
-    "passed": 110,
+    "passed": 227,
     "failed": 0
   },
   "debt": {
