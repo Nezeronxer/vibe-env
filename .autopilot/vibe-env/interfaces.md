@@ -448,3 +448,10 @@ pub fn load_token() -> Option<String>; pub fn save_token(t: &str) -> Result<(), 
 - (ремонт 13) Команды ui: `data_state` → `{unreadable: путь копии | null}`, `open_data_folder`, `start_fresh{confirmed}` (без `confirmed=true` → `confirm_needed`, ничего не двигает). Событие `open-task` в EVENTS ui - открывает чат задачи. `list_envs[].version` - вывод `--version` (пусто без CLI и у своей команды).
 - (ремонт 13) Ключи: `waiting_folder: <путь>` (Outcome.error и лента - задача проекта с пропавшей папкой ждёт и продолжает после «Указать заново» с тем же репозиторием), `terminal_edits_lost` (строка чата), `remove_project` → `tasks_running`. `KitError` в JSON из ядра: `{kind, detail|path|size|…}`. Трей при 30+ зовах - «30». html/svg/xml от агента только показываются в менеджере файлов.
 - (ремонт 13) Ядро: `Adapter::cli_path()`, `Adapter::version()`, `git::{commit_stat, commit_file_diff, root_commits}`, `model::SETTING_RANGES` (диапазоны настроек; копия в ui/logic.js осталась), `Chats::terminal_opened`. Удержание ловит задачи до старта запуска; идущий запуск при удалении папки падает как раньше.
+
+### Из таска 07 - open-source
+
+- Установка: `curl -fsSL https://raw.githubusercontent.com/<OWNER>/<REPO>/main/scripts/install.sh | sh` (`--dry-run`, `NIGHTSHIFT_SKIP_VERIFY=1`; дистрибутив по os-release, SHA-256, без sudo). PKGBUILD - `app/installer/aur/`.
+- CI: `.github/workflows/ci.yml` (push main и PR), `release.yml` (тег `v*`, черновик релиза), actions закреплены на SHA. Секреты подписи macOS (по именам): `APPLE_CERTIFICATE`, `APPLE_CERTIFICATE_PASSWORD`, `APPLE_SIGNING_IDENTITY`, `APPLE_ID`, `APPLE_PASSWORD`, `APPLE_TEAM_ID` - подпись только при всех шести, иначе сборка без подписи.
+- `scripts/ui-selftest.js` - ui selftest в node. `docs/security.md` - области аудита. bundle: цели dmg/deb/rpm/appimage, фон dmg.
+- Заглушки до публикации: `<OWNER>`, `<REPO>`, `<REPO_URL>`, `<SECURITY_CONTACT>`, `<MAINTAINER NAME/EMAIL>`, `sha256sums=SKIP`. LICENSE: MIT, «Copyright (c) 2026 Nezeronxer». Ничего не опубликовано.

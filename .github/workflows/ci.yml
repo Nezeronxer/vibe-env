@@ -1,0 +1,56 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, ubuntu-22.04]
+    runs-on: ${{ matrix.os }}
+    env:
+      # the core tests commit in throwaway repositories
+      GIT_AUTHOR_NAME: ci
+      GIT_AUTHOR_EMAIL: ci@example.invalid
+      GIT_COMMITTER_NAME: ci
+      GIT_COMMITTER_EMAIL: ci@example.invalid
+    steps:
+      # actions are pinned to commit SHAs (the comment is the tag)
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Linux build dependencies (Tauri 2)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential pkg-config libssl-dev libxdo-dev librsvg2-dev \
+            libwebkit2gtk-4.1-dev libayatana-appindicator3-dev shellcheck
+
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+
+      - name: Core tests
+        run: cargo test -p nightshift-core
+
+      - name: App builds (validates app/tauri.conf.json)
+        run: cargo build -p nightshift-app
+
+      - name: UI self-test (headless, no window)
+        run: node scripts/ui-selftest.js
+
+      - name: Installer script syntax
+        run: |
+          sh -n scripts/install.sh
+          if command -v shellcheck >/dev/null 2>&1; then shellcheck -s sh scripts/install.sh; fi

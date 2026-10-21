@@ -8,3 +8,4 @@ target/
 dist/
 .autopilot/serve.pid
 app/gen/
+graphify-out/

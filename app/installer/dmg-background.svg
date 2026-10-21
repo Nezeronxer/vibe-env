@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="660" height="400" viewBox="0 0 660 400">
+  <!-- Tokens from ui/css/tokens.css, dark theme: bg 111112, ink ececea, ink3 8a8a86. Flat: no gradients, no shadows. -->
+  <rect width="660" height="400" fill="#111112"/>
+  <text x="330" y="64" text-anchor="middle" font-family="Helvetica Neue, Helvetica, Arial, sans-serif" font-size="22" font-weight="600" fill="#ececea">Перетащи Nightshift в Программы</text>
+  <text x="330" y="92" text-anchor="middle" font-family="Helvetica Neue, Helvetica, Arial, sans-serif" font-size="14" fill="#8a8a86">Drag Nightshift to Applications</text>
+  <!-- icons sit at (180,190) and (480,190); the arrow runs between them -->
+  <path d="M262 190 H398" fill="none" stroke="#8a8a86" stroke-width="3" stroke-linecap="round"/>
+  <path d="M384 174 L400 190 L384 206" fill="none" stroke="#8a8a86" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

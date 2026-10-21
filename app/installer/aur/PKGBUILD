@@ -1,0 +1,42 @@
+# Maintainer: <MAINTAINER NAME> <MAINTAINER EMAIL>   (PLACEHOLDER)
+# Builds Nightshift from a release source tarball. Not yet tested on Arch: no Arch machine was available.
+pkgname=nightshift
+pkgver=0.1.0
+pkgrel=1
+pkgdesc='Hand work to coding agents and stay away until they call you'
+arch=('x86_64')
+url='<REPO_URL>'                                  # PLACEHOLDER: https://github.com/<OWNER>/<REPO>
+license=('MIT')
+depends=('webkit2gtk-4.1' 'gtk3' 'libayatana-appindicator' 'git')
+makedepends=('cargo' 'cargo-tauri' 'nodejs')
+source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz")
+# FILL IN: run `updpkgsums` after the v$pkgver tag exists and BEFORE publishing; SKIP is only a stub for local tests
+sha256sums=('SKIP')
+
+prepare() {
+  cd "$srcdir/<REPO>-$pkgver/app"                 # PLACEHOLDER: directory name inside the tarball
+  # dependencies exactly as pinned in Cargo.lock (workspace root)
+  cargo fetch --locked --target "$(rustc -vV | sed -n 's/host: //p')"
+}
+
+build() {
+  cd "$srcdir/<REPO>-$pkgver/app"                 # tauri.conf.json lives in app/
+  cargo tauri build --no-bundle -- --locked
+}
+
+package() {
+  cd "$srcdir/<REPO>-$pkgver"
+  install -Dm755 target/release/nightshift-app "$pkgdir/usr/bin/nightshift"
+  install -Dm644 app/icons/128x128.png "$pkgdir/usr/share/icons/hicolor/128x128/apps/nightshift.png"
+  install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+  install -Dm644 /dev/stdin "$pkgdir/usr/share/applications/nightshift.desktop" <<DESKTOP
+[Desktop Entry]
+Type=Application
+Name=Nightshift
+Comment=$pkgdesc
+Exec=nightshift
+Icon=nightshift
+Terminal=false
+Categories=Development;
+DESKTOP
+}
