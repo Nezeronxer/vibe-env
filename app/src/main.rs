@@ -1,21 +1,27 @@
 //! Window, tray, keys, notifications and the OS around the core: the commands are thin wrappers over `Hub`
 //! (see `hub.rs` and its neighbours, where the logic and its tests live).
+mod config;
 mod custom;
 mod envs;
+mod gitcmds;
 mod hub;
 mod kitcmds;
+mod market;
 mod notifier;
 mod open;
 mod ops;
 mod pathfix;
 mod presence;
 mod proj;
+mod ptycmds;
 mod settings_check;
 mod startup;
 mod term;
 #[cfg(test)]
 mod testkit;
 mod tray;
+mod updates;
+mod windows;
 
 use hub::{e2s, lk, Hub, Res};
 use kitcmds::KRes;
@@ -44,6 +50,8 @@ struct Tray {
     freeze: MenuItem<Wry>,
     /// Disabled first menu item: the only place the counter is visible on Linux.
     status: MenuItem<Wry>,
+    /// Disabled item "Сессии: N": the PTY sessions that live without a window (story 301).
+    sessions: MenuItem<Wry>,
 }
 
 /// Lines the window must get after it has loaded (it may load later than they happen): name -> payload.
@@ -122,6 +130,8 @@ fn refresh_tray(app: &AppHandle) {
             (false, false) => "Freeze all",
         };
         let _ = t.freeze.set_text(text);
+        let live = app.try_state::<ptycmds::Pty>().map(|p| p.live()).unwrap_or(0);
+        let _ = t.sessions.set_text(format!("{} {live}", if ru { "Сессии:" } else { "Sessions:" }));
     }
     if let Some(w) = app.get_webview_window("main") {
         let _ = w.set_title(&if waiting > 0 { format!("Nightshift ({waiting})") } else { "Nightshift".into() });
@@ -167,6 +177,9 @@ fn new_chat(app: &AppHandle) {
     let _ = app.emit("focus-input", ());
 }
 
+/// The terminals of the last run: folders and text, restored by the window (story 253).
+const TERMS_FILE: &str = "terms.json";
+
 /// "Выход": with work going on the person is asked first; then the runs are stopped, the state stays on disk (R08.2).
 fn quit(app: &AppHandle) {
     let app = app.clone();
@@ -175,12 +188,14 @@ fn quit(app: &AppHandle) {
         let st = app.state::<App>();
         let tasks = lk(st.hub.engine.store()).tasks();
         let ru = st.ru.load(Ordering::Relaxed);
-        if let Some(text) = tray::quit_prompt(tray::counts(&tasks).0, ru) {
+        let pty = app.state::<ptycmds::Pty>();
+        if let Some(text) = tray::quit_prompt(tray::counts(&tasks).0, pty.live(), ru) {
             let (yes, no) = if ru { ("Выйти", "Остаться") } else { ("Quit", "Stay") };
             if !app.dialog().message(text).title("Nightshift").buttons(MessageDialogButtons::OkCancelCustom(yes.into(), no.into())).blocking_show() {
                 return;
             }
         }
+        pty.save_and_end(&st.hub.dir.join(TERMS_FILE));
         st.hub.chats.shutdown();
         st.hub.engine.shutdown();
         st.keep.update(false);
@@ -836,6 +851,10 @@ fn build_app(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
         // the window shows its own screen; the engine of the stand-in store is never started
         return Ok(());
     }
+    let saved = ptycmds::load_saved(&dir.join(TERMS_FILE));
+    if !saved.is_empty() {
+        note_startup(&startup_list, "terms-restored", json!(saved));
+    }
     if let Some(p) = replaced {
         note_startup(&startup_list, "settings-replaced", json!({ "path": p }));
     }
@@ -851,13 +870,14 @@ fn build_app(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     let freeze_i = MenuItem::with_id(app, "freeze", t("Заморозить всё", "Freeze all"), true, None::<&str>)?;
     let quit_i = MenuItem::with_id(app, "quit", t("Выход", "Quit"), true, None::<&str>)?;
     let status = MenuItem::with_id(app, "status", t("Ничего не идёт", "Idle"), false, None::<&str>)?;
+    let sessions = MenuItem::with_id(app, "sessions", t("Сессии: 0", "Sessions: 0"), false, None::<&str>)?;
     let menu = Menu::new(app)?;
     if cfg!(target_os = "linux") {
         // Linux trays have no tooltip: the counter is the first (disabled) menu line
         menu.append(&status)?;
         menu.append(&PredefinedMenuItem::separator(app)?)?;
     }
-    menu.append_items(&[&open_i, &new_i, &freeze_i, &PredefinedMenuItem::separator(app)?, &quit_i])?;
+    menu.append_items(&[&open_i, &new_i, &freeze_i, &sessions, &PredefinedMenuItem::separator(app)?, &quit_i])?;
     let mut tb = TrayIconBuilder::with_id("main").menu(&menu).tooltip("Nightshift").on_menu_event(|app, ev| match ev.id().as_ref() {
         "open" => show_window(app),
         "new" => new_chat(app),
@@ -873,13 +893,15 @@ fn build_app(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
         tb = tb.icon(icon.clone());
     }
     let tray_icon = tb.build(app)?;
-    *lk(&app.state::<App>().tray) = Some(Tray { icon: tray_icon, freeze: freeze_i, status });
+    *lk(&app.state::<App>().tray) = Some(Tray { icon: tray_icon, freeze: freeze_i, status, sessions });
     // our own menu bar: Tauri's standard one takes ⌘W for "Close Window" before the page sees it
     #[cfg(target_os = "macos")]
     {
         app.set_menu(app_menu(&h, is_ru_now)?)?;
         app.on_menu_event(|app, ev| {
-            if ev.id().as_ref() == CLOSE_WINDOW_ID {
+            if ev.id().as_ref() == QUIT_ID {
+                quit(app); // ⌘Q: one question for the tasks and the sessions (story 303)
+            } else if ev.id().as_ref() == CLOSE_WINDOW_ID {
                 if let Some(w) = app.get_webview_window("main") {
                     let _ = w.close(); // CloseRequested: hidden or minimized as on the red button
                 }
@@ -943,6 +965,8 @@ enum MenuEntry {
 const CLOSE_WINDOW_KEY: &str = "Shift+CmdOrCtrl+W";
 #[cfg(any(target_os = "macos", test))]
 const CLOSE_WINDOW_ID: &str = "close_window";
+#[cfg(any(target_os = "macos", test))]
+const QUIT_ID: &str = "app_quit";
 
 /// The menu bar: the app, Edit (copy / paste work in the fields), View, Window.
 #[cfg(any(target_os = "macos", test))]
@@ -970,7 +994,7 @@ fn app_menu(app: &AppHandle, ru: bool) -> tauri::Result<Menu<Wry>> {
                 MenuEntry::Hide => Box::new(PredefinedMenuItem::hide(app, None)?),
                 MenuEntry::HideOthers => Box::new(PredefinedMenuItem::hide_others(app, None)?),
                 MenuEntry::ShowAll => Box::new(PredefinedMenuItem::show_all(app, None)?),
-                MenuEntry::Quit => Box::new(PredefinedMenuItem::quit(app, None)?),
+                MenuEntry::Quit => Box::new(MenuItem::with_id(app, QUIT_ID, if ru { "Выйти из Nightshift" } else { "Quit Nightshift" }, true, Some("CmdOrCtrl+Q"))?),
                 MenuEntry::Undo => Box::new(PredefinedMenuItem::undo(app, None)?),
                 MenuEntry::Redo => Box::new(PredefinedMenuItem::redo(app, None)?),
                 MenuEntry::Cut => Box::new(PredefinedMenuItem::cut(app, None)?),
@@ -1033,9 +1057,22 @@ fn main() {
                 });
             }
         })
+        .manage(ptycmds::Pty::default())
+        .manage(windows::Windows::default())
         .on_window_event(|w, ev| match ev {
-            tauri::WindowEvent::CloseRequested { api, .. } => {
+            // an extra window closes for real; its sessions go on, detached (story 301)
+            tauri::WindowEvent::Destroyed if w.label() != "main" => {
+                let app = w.app_handle();
+                app.state::<ptycmds::Pty>().window_gone(w.label());
+                app.state::<windows::Windows>().gone(w.label());
+                let _ = app.emit("windows-changed", ());
+            }
+            tauri::WindowEvent::CloseRequested { api, .. } if w.label() == "main" => {
                 api.prevent_close();
+                // a hidden page stops parsing output; detached, the sessions run on into their buffer (story 301)
+                if let Some(p) = w.app_handle().try_state::<ptycmds::Pty>() {
+                    p.window_gone(w.label());
+                }
                 let host = match w.app_handle().try_state::<App>().map(|s| s.host.load(Ordering::Relaxed)) {
                     Some(1) => Some(true),
                     Some(2) => Some(false),
@@ -1076,7 +1113,16 @@ fn main() {
             note, answer_outward, resume_failed, pick_variant, stop_swarm, nudge, switch_model, freeze,
             hand_off, take_back, start_now, not_a_task, submit_convoy, summary_since, diff_file,
             kits_inventory, kits_export, kits_preview, kits_install, kits_enable, kits_snapshots, kits_rollback, kits_check_update, set_secret,
-            data_state, open_data_folder, start_fresh
+            data_state, open_data_folder, start_fresh,
+            ptycmds::term_open, ptycmds::term_write, ptycmds::term_resize, ptycmds::term_close, ptycmds::term_attach,
+            ptycmds::term_detach, ptycmds::term_ack, ptycmds::term_list,
+            windows::window_detach, windows::window_tab, windows::window_return,
+            // v4 skeletons (tasks 19-25)
+            market::market_search, market::market_item, market::market_plan, market::market_apply, market::market_installed,
+            market::market_remove, market::market_sources, market::market_set_sources,
+            updates::cli_status, updates::cli_update, updates::updates_history,
+            gitcmds::gh_publish, gitcmds::git_log_page, gitcmds::git_revert_commit,
+            config::config_open, config::config_errors
         ])
         .build(tauri::generate_context!())
         .expect("error while building Nightshift");
@@ -1117,13 +1163,19 @@ mod tests {
     fn the_security_config_has_no_outside_source_and_the_capabilities_stay_small() {
         let conf: serde_json::Value = serde_json::from_str(include_str!("../tauri.conf.json")).unwrap();
         let csp = conf["app"]["security"]["csp"].as_str().unwrap();
-        assert!(!csp.contains("unsafe-inline") && !csp.contains("unsafe-eval") && !csp.contains('*'), "{csp}");
+        assert!(!csp.contains("unsafe-eval") && !csp.contains('*'), "{csp}");
+        // xterm writes its own <style> elements (WKWebView refuses them otherwise); scripts stay 'self' only
+        let inline: Vec<&str> = csp.split(';').filter(|d| d.contains("unsafe-inline")).map(str::trim).collect();
+        assert_eq!(inline, ["style-src 'self' 'unsafe-inline'"], "{csp}");
+        assert!(csp.split(';').any(|d| d.trim() == "script-src 'self'"), "{csp}");
         let sources: Vec<&str> = csp.split([';', ' ']).filter(|w| w.contains("://") || w.contains('.')).collect();
         assert_eq!(sources, ["http://ipc.localhost"], "the only address is Tauri's own IPC");
         assert!(conf["app"]["windows"].as_array().unwrap().iter().all(|w| w.get("url").is_none()), "the window loads the bundled ui, no remote URL");
         let caps: serde_json::Value = serde_json::from_str(include_str!("../capabilities/default.json")).unwrap();
         assert_eq!(caps["permissions"], serde_json::json!(["core:event:default", "dialog:allow-open"]));
         assert_eq!(caps["windows"], serde_json::json!(["main"]));
+        let extra: serde_json::Value = serde_json::from_str(include_str!("../capabilities/windows.json")).unwrap();
+        assert_eq!((&extra["windows"], &extra["permissions"]), (&serde_json::json!(["w-*"]), &serde_json::json!(["core:event:default"])));
         let targets: Vec<&str> = conf["bundle"]["targets"].as_array().unwrap().iter().filter_map(|t| t.as_str()).collect();
         for t in ["app", "dmg", "deb", "appimage"] {
             assert!(targets.contains(&t), "{t}");

@@ -20,6 +20,12 @@
 <link rel="stylesheet" href="css/notices.css">
 <link rel="stylesheet" href="css/live.css">
 <link rel="stylesheet" href="css/tabs.css">
+<link rel="stylesheet" href="vendor/xterm/xterm.css">
+<link rel="stylesheet" href="css/v4-shell.css">
+<link rel="stylesheet" href="css/v4-term.css">
+<link rel="stylesheet" href="css/v4-market.css">
+<link rel="stylesheet" href="css/v4-clawd.css">
+<link rel="stylesheet" href="css/v4-updates.css">
 </head>
 <body>
 <!-- Icon sprite: roles (shape + colour + a text label), interface, neutral env mark. Vendor marks are files in icons/. -->
@@ -86,6 +92,7 @@
 <script src="logic.js"></script>
 <script src="logic-v3.js"></script>
 <script src="mock-loader.js"></script>
+<script src="js/v4/mock-loader-v4.js"></script>
 <script src="js/core/dom.js"></script>
 <script src="js/core/hl.js"></script>
 <script src="js/core/md.js"></script>
@@ -114,6 +121,31 @@
 <script src="js/screens/summary.js"></script>
 <!-- v3: tabs and split panels -->
 <script src="js/screens/tabs.js"></script>
+<!-- v4: xterm 6.0.0 + addons (ui/vendor/xterm), then the shell (task 22) before the terminal (23), catalog (24), Clawd (25) -->
+<script src="vendor/xterm/xterm.js"></script>
+<script src="vendor/xterm/addon-fit.js"></script>
+<script src="vendor/xterm/addon-webgl.js"></script>
+<script src="vendor/xterm/addon-search.js"></script>
+<script src="vendor/xterm/addon-unicode11.js"></script>
+<script src="vendor/xterm/addon-web-links.js"></script>
+<script src="js/v4/i18n-shell.js"></script>
+<script src="js/v4/theme.js"></script>
+<script src="js/v4/panes.js"></script>
+<script src="js/v4/palette.js"></script>
+<script src="js/v4/settings-v4.js"></script>
+<script src="js/v4/i18n-term.js"></script>
+<script src="js/v4/term.js"></script>
+<script src="js/v4/term-settings.js"></script>
+<script src="js/v4/i18n-market.js"></script>
+<script src="js/v4/market.js"></script>
+<script src="js/v4/history.js"></script>
+<script src="js/v4/publish.js"></script>
+<script src="js/v4/i18n-clawd.js"></script>
+<script src="js/v4/clawd.js"></script>
+<script src="js/v4/updates.js"></script>
+<script src="js/v4/practices.js"></script>
 <script src="js/app.js"></script>
+<!-- task 18: temporary terminal tab for ?term=1 / ?window=<id>, replaced by task 23 -->
+<script src="js/v4/term-probe.js"></script>
 </body>
 </html>

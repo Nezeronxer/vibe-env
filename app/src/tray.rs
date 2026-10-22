@@ -25,21 +25,31 @@ pub fn counts(tasks: &[Task]) -> (usize, usize) {
     (tasks.iter().filter(|t| is_active(&t.status)).count(), tasks.iter().filter(|t| waits_for_human(t)).count())
 }
 
-/// The text of the confirmation when the person quits with work going on (R08.2). None = nothing is going.
-pub fn quit_prompt(running: usize, ru: bool) -> Option<String> {
-    if running == 0 {
-        return None;
+fn ru_plural(n: usize, one: &'static str, few: &'static str, many: &'static str) -> &'static str {
+    match (n % 10, n % 100) {
+        (_, 11..=14) => many,
+        (1, _) => one,
+        (2..=4, _) => few,
+        _ => many,
     }
-    Some(if ru {
-        let (verb, noun) = match (running % 10, running % 100) {
-            (_, 11..=14) => ("Идут", "задач"),
-            (1, _) => ("Идёт", "задача"),
-            (2..=4, _) => ("Идут", "задачи"),
-            _ => ("Идут", "задач"),
-        };
-        format!("{verb} {running} {noun}. Выйти? Продолжат при следующем запуске")
-    } else {
-        format!("{running} {} running. Quit? They will continue on the next start", if running == 1 { "task is" } else { "tasks are" })
+}
+
+/// The one confirmation when the person quits with work going on (R08.2, story 303): tasks continue on the next
+/// start, terminal sessions end. None = nothing is going.
+pub fn quit_prompt(running: usize, sessions: usize, ru: bool) -> Option<String> {
+    let verb = |n: usize| if n % 10 == 1 && n % 100 != 11 { "Идёт" } else { "Идут" };
+    let tasks_ru = |n| format!("{n} {}", ru_plural(n, "задача", "задачи", "задач"));
+    let sess_ru = |n| format!("{n} {}", ru_plural(n, "сессия", "сессии", "сессий"));
+    let tasks_en = |n: usize| format!("{n} {}", if n == 1 { "task" } else { "tasks" });
+    let sess_en = |n: usize| format!("{n} {}", if n == 1 { "session" } else { "sessions" });
+    Some(match (running, sessions, ru) {
+        (0, 0, _) => return None,
+        (t, 0, true) => format!("{} {}. Выйти? Продолжат при следующем запуске", verb(t), tasks_ru(t)),
+        (t, 0, false) => format!("{t} {} running. Quit? They will continue on the next start", if t == 1 { "task is" } else { "tasks are" }),
+        (0, s, true) => format!("{} {} - завершить?", verb(s), sess_ru(s)),
+        (0, s, false) => format!("{} running - end {}?", sess_en(s), if s == 1 { "it" } else { "them" }),
+        (t, s, true) => format!("{} {} и {}. Выйти? Задачи продолжат при следующем запуске, сессии завершатся", verb(t), tasks_ru(t), sess_ru(s)),
+        (t, s, false) => format!("{} and {} running. Quit? Tasks continue on the next start, sessions end", tasks_en(t), sess_en(s)),
     })
 }
 
@@ -119,12 +129,21 @@ mod tests {
 
     #[test]
     fn quitting_with_work_asks_in_the_persons_words_and_without_work_does_not_ask() {
-        assert_eq!(quit_prompt(0, true), None);
-        assert_eq!(quit_prompt(3, true).unwrap(), "Идут 3 задачи. Выйти? Продолжат при следующем запуске");
-        assert_eq!(quit_prompt(1, true).unwrap(), "Идёт 1 задача. Выйти? Продолжат при следующем запуске");
-        assert_eq!(quit_prompt(5, true).unwrap(), "Идут 5 задач. Выйти? Продолжат при следующем запуске");
-        assert_eq!(quit_prompt(12, true).unwrap(), "Идут 12 задач. Выйти? Продолжат при следующем запуске");
-        assert_eq!(quit_prompt(2, false).unwrap(), "2 tasks are running. Quit? They will continue on the next start");
+        assert_eq!(quit_prompt(0, 0, true), None);
+        assert_eq!(quit_prompt(3, 0, true).unwrap(), "Идут 3 задачи. Выйти? Продолжат при следующем запуске");
+        assert_eq!(quit_prompt(1, 0, true).unwrap(), "Идёт 1 задача. Выйти? Продолжат при следующем запуске");
+        assert_eq!(quit_prompt(5, 0, true).unwrap(), "Идут 5 задач. Выйти? Продолжат при следующем запуске");
+        assert_eq!(quit_prompt(12, 0, true).unwrap(), "Идут 12 задач. Выйти? Продолжат при следующем запуске");
+        assert_eq!(quit_prompt(2, 0, false).unwrap(), "2 tasks are running. Quit? They will continue on the next start");
+    }
+
+    #[test]
+    fn quitting_with_live_sessions_asks_once_for_everything() {
+        assert_eq!(quit_prompt(0, 5, true).unwrap(), "Идут 5 сессий - завершить?");
+        assert_eq!(quit_prompt(0, 1, true).unwrap(), "Идёт 1 сессия - завершить?");
+        assert_eq!(quit_prompt(0, 2, false).unwrap(), "2 sessions running - end them?");
+        assert_eq!(quit_prompt(1, 3, true).unwrap(), "Идёт 1 задача и 3 сессии. Выйти? Задачи продолжат при следующем запуске, сессии завершатся");
+        assert_eq!(quit_prompt(2, 1, false).unwrap(), "2 tasks and 1 session running. Quit? Tasks continue on the next start, sessions end");
     }
 
     #[test]

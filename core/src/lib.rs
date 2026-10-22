@@ -1,11 +1,16 @@
 pub mod agent;
 pub mod chat;
+pub mod config;
 pub mod engine;
 pub mod git;
 pub mod kits;
+pub mod market;
 pub mod models;
 pub mod model;
+pub mod net;
 pub mod notify;
 pub mod prompt;
 pub mod store;
 pub mod swarm;
+pub mod term;
+pub mod updates;
