@@ -136,7 +136,7 @@
       const more = [st2.ins != null ? `+${st2.ins} −${st2.del || 0}` : null, st2.minutes != null ? t('swarm.mins', { n: st2.minutes }) : null, L.formatCost(v.cost_usd) || null].filter(Boolean).join(' · ');
       const card = h('article', { class: 'var' + (v.best ? ' best' : ''), dataset: { variant: v.id } },
         h('div', { class: 'var-h' }, h('span', { class: 'var-l', text: v.id }), envIcon(env.custom ? 'custom' : env.id), h('b', { text: v.model || '' }), statusChip(v)),
-        v.summary ? h('p', { class: 'var-sum', text: v.summary }) : null,
+        v.summary ? h('div', { class: 'var-sum' }, NS.renderMarkdown(v.summary)) : null,
         v.state === 'failed' && v.why_failed ? h('p', { class: 'var-why', text: NS.errHuman(v.why_failed) }) : null,
         v.score != null || v.gate ? h('div', { class: 'var-nums' },
           v.score != null ? h('div', {}, h('b', { text: Number(v.score).toFixed(1) }), h('small', { text: t('swarm.score') })) : null,

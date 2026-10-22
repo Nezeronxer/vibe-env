@@ -1,5 +1,5 @@
 /* главный экран: задачи | работа | нужен ты */
-.screen { min-width: 0; min-height: 0; overflow: hidden; }
+.screen { min-width: 0; min-height: 0; }   /* overflow lives in shell.css: .screen hides, .screen-scroll scrolls (bug 8) */
 
 .composer { position: relative; background: var(--panel); border: 1px solid var(--line2); border-radius: 6px; padding: 10px; display: flex; flex-direction: column; gap: 8px; flex: none; }
 .composer textarea { background: transparent; border: 0; padding: 4px 4px 0; font-size: 14px; }
@@ -254,3 +254,7 @@ img.mono { filter: invert(1); }
 .convo-h .hint { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 @media (max-width: 899px) { .env-b .sub { display: none; } .convo-h { padding: 10px 14px; gap: 8px; } .cfeed { padding: 0 14px 24px; } .composer { width: calc(100% - 28px); } }
 .mcard b small { flex-basis: 100%; margin-left: 0; }
+/* bug 13: project and branch are never cut - the header wraps, the limits go to the next line when there is no room */
+.convo-h { flex-wrap: wrap; row-gap: 6px; }
+.convo-h .hint { flex: none; overflow: visible; text-overflow: clip; }
+.convo-h .limits { margin-left: auto; }

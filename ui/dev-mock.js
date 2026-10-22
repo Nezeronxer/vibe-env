@@ -18,7 +18,7 @@
   const DEFAULTS = { max_parallel: 5, paused: false, language: q.get('lang') || 'auto', hotkey: 'Alt+Space', custom_agents: [], default_project: null, envs: {}, stall_min: 15, autopick_min: 10, attempts: 3, review_rounds: 3, keep_awake: true,
     quality: { on: true, spec: true, plan: true, tests_first: true, e2e: false, best_of_n: 2 }, swarm_default: { mode: 'race', n: 3 },
     limits: { task_usd: 5, day_usd: 40, warn_pct: 80, night_from: '23:00', night_to: '08:00', away_min: 20 }, notify: { sound: 'soft_click', on_done: false, quiet_from: '23:00', quiet_to: '08:00' },
-    look: { theme: 'system', font_px: 13, role_labels: true }, keys: { new_chat: mac ? 'Alt+Cmd+N' : 'Ctrl+Alt+N', switch_env: mac ? 'Cmd+{n}' : 'Ctrl+{n}', send: 'Enter', freeze: mac ? 'Alt+Cmd+.' : 'Ctrl+Alt+.' },
+    look: { theme: 'system', font_px: 13, role_labels: true }, keys: { new_chat: mac ? 'Alt+Cmd+N' : 'Ctrl+Alt+N', switch_env: mac ? 'Alt+Cmd+{n}' : 'Ctrl+Alt+{n}', tab_new: mac ? 'Cmd+T' : 'Ctrl+T', tab_close: mac ? 'Cmd+W' : 'Ctrl+W', tab_split: mac ? 'Cmd+D' : 'Ctrl+D', tab_unsplit: mac ? 'Shift+Cmd+D' : 'Ctrl+Shift+D', send: 'Enter', freeze: mac ? 'Alt+Cmd+.' : 'Ctrl+Alt+.' },
     keep: { archive_days: 7, log_events: 500, chat_records: 200, summary_after_min: 30 } };
   const ENV_DEFAULTS = { default_model: null, roles: {}, fallback: null, custom_models: [], cli_path: null, extra_args: [], ask_push: true, ask_pr: true, protected_paths: true };
   const withDefaults = (st) => { const o = JSON.parse(JSON.stringify(DEFAULTS)); for (const k of Object.keys(st)) o[k] = (st[k] && typeof st[k] === 'object' && !Array.isArray(st[k]) && DEFAULTS[k] && k !== 'envs') ? Object.assign({}, DEFAULTS[k], st[k]) : st[k];
@@ -33,7 +33,8 @@
     { id: 'qwen', name: 'Qwen Code', installed: false, install_hint: 'npm install -g @qwen-code/qwen-code' },
     { id: 'custom:mine', name: 'Своя', custom: true, configured: false },
   ];
-  const F = (id, label, vendor, versions, blurb, def) => ({ id, label, vendor, versions, blurb, default: !!def });
+  const NOTE = { anthropic: 'Anthropic docs, 2026-10-21; не сверено с CLI', google: 'Google docs, 2026-10-21; не сверено с CLI' };
+  const F = (id, label, vendor, versions, blurb, def) => ({ id, label, vendor, versions, blurb: 'model.desc.' + id, source_note: NOTE[vendor] || null, default: !!def });
   const catalogs = {
     claude: [F('opus', 'Opus', 'anthropic', ['5.5', '4.8', '4.5'], 'Сильнее всех и дороже. Сложное и рискованное.'), F('sonnet', 'Sonnet', 'anthropic', ['5.5', '4.6', '4.5'], 'Баланс скорости и качества. Подходит почти всегда.', true), F('haiku', 'Haiku', 'anthropic', ['5.5', '4.5'], 'Быстро и дёшево. Мелкие правки.')],
     codex: [F('gpt-codex', 'GPT-Codex', 'openai', ['5.1', '5'], 'Заточена под код. Хороший выбор по умолчанию.', true), F('gpt', 'GPT', 'openai', ['5.1', '5'], 'Глубже рассуждает, медленнее.'), F('gpt-mini', 'GPT mini', 'openai', ['5.1', '5'], 'Быстро и дёшево.')],
@@ -49,7 +50,7 @@
     claude: { known: [W('five_hour', exhausted ? 100 : 54, nextAt(19, 0), { exhausted }), W('seven_day', 16, nextAt(10, 0, 5)), W('seven_day_opus', 31, nextAt(10, 0, 5), { model: 'opus' }), W('seven_day_sonnet', 22, nextAt(10, 0, 5), { model: 'sonnet' }), W('day', 7, nextAt(0, 0))] },
     codex: { no_data: 'Codex не сообщает лимиты в неинтерактивном режиме' },
     gemini: { known: [W('day', 85, nextAt(3, 0))] },
-    opencode: null,
+    opencode: { no_data: 'after_first_run' },
   };
   const P = (id, name, finish, check) => ({ id, name, path: '/Users/dev/code/' + name, base_branch: 'main', check_cmd: check === false ? null : 'pytest', setup_cmd: null, copy_files: ['.env*'], finish, ask_outward: true, agent: 'claude', reviewer: null, fallback_agent: null });
   let projects = scenario === 'empty' ? [] : [P('p1', 'billing-api', 'push'), P('p2', 'web-site', 'pr'), P('p3', 'docs-tool', 'local', false)];
@@ -103,7 +104,8 @@
       M('inv', 15, 14, 13, R('verifier'), 'Тесты 7 из 9, линтер и типы чистые. Вливать пока нельзя.', { model: 'pytest · ruff · mypy' }),
       M('inv', 16, 14, 14, 'human', 'Курсор пусть будет непрозрачным, id наружу не свети.', { task_id: 't-inv', delivered_at: today(14, 15) }),
       M('inv', 17, 14, 15, R('worker'), 'Подписываю курсор, чиню два теста. Задал вопрос про старый клиент - он в карточке задачи.', { model: 'Opus 5.5' })],
-    how: [M('how', 1, 13, 40, 'human', 'Как устроен биллинг? Коротко.'), M('how', 2, 13, 40, 'model', 'Три слоя: `routes` принимают запрос, `service` считает суммы и налоги, `repo` ходит в Postgres. Деньги хранятся в копейках, валюта в отдельном поле.', { model: 'Sonnet 5.5' })],
+    how: [M('how', 1, 13, 40, 'human', 'Как устроен биллинг? Коротко.'), M('how', 9, 13, 40, 'system', '', { action: { id: 'h1', name: 'Grep', input: { kind: 'search', pattern: 'class .*Service', hits: 3 }, output: 'a\nb\nc', ok: true, done: true } }),
+      M('how', 8, 13, 40, 'system', '', { action: { id: 'h2', name: 'Bash', input: { kind: 'bash', command: 'tree -L 2 src/billing' }, output: Array.from({ length: 12 }, (_, i) => 'src/billing/f' + i + '.py').join('\n') + '\n[output_truncated: 81234 bytes]', ok: true, done: true } }), M('how', 2, 13, 40, 'model', 'Три слоя: `routes` принимают запрос, `service` считает суммы и налоги, `repo` ходит в Postgres. Деньги хранятся в копейках, валюта в отдельном поле.', { model: 'Sonnet 5.5' })],
     round: [M('round', 1, 13, 50, 'human', 'Сделай: округление в итогах'), M('round', 2, 13, 50, 'system', '', { kind: 'task', task_id: 't-round' })],
     hero: [M('hero', 1, 13, 30, 'human', 'Сделай героя на странице цен'), M('hero', 2, 13, 30, 'system', '', { kind: 'task', task_id: 't-hero' })],
     pf: [M('pf', 1, 13, 10, 'human', 'Сделай поиск на Pagefind'), M('pf', 2, 13, 10, 'system', '', { kind: 'task', task_id: 't-pf' })],
@@ -144,7 +146,9 @@
       setTimeout(() => {
         if (TASK_RE.test(text)) {
           const c = chats.find((x) => x.id === id), tk = T('t-n' + Date.now(), c.project_id, c.env, id, text.slice(0, 60), 'working', { steps: steps('plan'), started_at: iso(Date.now()), runs: [], cost_usd: null });
+          tk.runs = [{ role: 'worker', model: 'Opus 5.5', state: 'running', started_at: iso(Date.now()) }];
           tasks.push(tk); changed(tk); pushMsg({ id: 'm' + Date.now(), chat_id: id, at: iso(Date.now()), who: 'system', text: '', kind: 'task', task_id: tk.id });
+          if (window.__MOCK_LIVE__) window.__MOCK_LIVE__(tk.id, id, true);
         } else pushMsg({ id: 'm' + Date.now(), chat_id: id, at: iso(Date.now()), who: 'model', text: 'Смотрю код, сейчас отвечу.', model: 'Sonnet 5.5' });
       }, 700);
       return id;
@@ -274,6 +278,7 @@
 
   Object.assign(cmds, {
     get_log: ({ id, limit }) => (LOGS[id] || []).slice(0, limit),
+    get_task_log: ({ id, before, limit }) => (LOGS[id] || []).filter((e) => !before || Date.parse(e.at) < Date.parse(before)).slice(-(limit || 500)),
     nudge: () => null, switch_model: () => null,
     pick_variant: ({ taskId, variant }) => { const tk = byId(taskId); if (tk && tk.swarm_view) { tk.swarm_view = Object.assign({}, tk.swarm_view, { picked: variant }); changed(tk); } return null; },
     stop_swarm: ({ taskId }) => { const tk = byId(taskId); if (tk) { tk.swarm_view = Object.assign({}, tk.swarm_view, { stopped: true }); changed(tk); } return null; },
@@ -318,8 +323,90 @@
   // an env whose CLI path is wrong is not found (the settings check the path by asking the core)
   const baseList = cmds.list_envs;
   cmds.list_envs = () => baseList().map((e) => ((((settings.envs || {})[e.id] || {}).cli_path || '').includes('nope') ? Object.assign({}, e, { installed: false }) : e));
+  // first run without a signed-in env (story 238): ?envs=none - nothing installed, ?envs=login - found but not signed in
+  const envMode = q.get('envs');
+  if (envMode) { const inner = cmds.list_envs; cmds.list_envs = () => inner().filter((e) => !e.custom).map((e) => (envMode === 'none' ? Object.assign({}, e, { installed: false }) : Object.assign({}, e, { installed: true, needs_login: true }))); }
   const baseRepo = cmds.repo_info;
   cmds.repo_info = ({ id }) => { const r = repos[id]; if (r === null) fail('folder not found: ' + (projects.find((p) => p.id === id) || {}).path); return baseRepo({ id }); };
+
+  // ================= v3: the live course of work (Границы v3) =================
+  // task-action {id, action} (each action twice: start with done=false, then the result), chat-delta {id, msgId, text}, chat-msg at the end.
+  // ?live=fast|slow|off - speed of the scripted runs; two chats run at once: "Кэш для отчётов" (streamed answer) and "Линтер в CI" (typed answer).
+  const liveSpeed = { fast: 0.25, slow: 2, off: 0 }[q.get('live')] ?? 1;
+  const CACHE_DIFF = ['--- a/src/reports/cache.py', '+++ b/src/reports/cache.py', '@@ -1,6 +1,9 @@', ' import time', '-from functools import lru_cache', '+from dataclasses import dataclass, field',
+    '+from threading import Lock', ' ', ' from .db import fetch_report', ' ', '@@ -14,12 +17,48 @@ class ReportCache:'].concat(
+    [' class ReportCache:', '-    """Cache without expiry."""', '+    """Report cache with a time to live (TTL) per entry."""', '+', '+    def __init__(self, ttl: float = 300.0):', '+        self.ttl = ttl', '+        self._data: dict[str, tuple[float, dict]] = {}', '+        self._lock = Lock()', '+'],
+    Array.from({ length: 30 }, (_, i) => (i % 3 ? '+' : ' ') + '        ' + ['hit = self._data.get(key)', 'if hit and time.monotonic() - hit[0] < self.ttl:', 'return hit[1]'][i % 3] + (i > 2 ? '  # ' + (i + 1) : '')),
+    ['-    def get(self, key):', '-        return fetch_report(key)', '+    def get(self, key: str) -> dict:', '+        with self._lock:', '+            return self._get_locked(key)']).join('\n');
+  const PYTEST = ['============================= test session starts ==============================', 'platform darwin -- Python 3.12.4, pytest-8.3.2', 'collected 14 items', '',
+    'tests/test_cache.py ........                                            [ 57%]', 'tests/test_cache_ttl.py ......                                          [100%]', '',
+    '---------- coverage: platform darwin, python 3.12.4 ----------', 'Name                      Stmts   Miss  Cover', 'src/reports/cache.py         41      2    95%', 'src/reports/db.py            18      0   100%',
+    'TOTAL                        59      2    97%', '', '============================== 14 passed in 0.84s =============================='].join('\n');
+  const RUFF = ['src/reports/cache.py:31:9: F841 Local variable `hit` is assigned to but never used', 'src/reports/cache.py:44:1: E302 Expected 2 blank lines, found 1', 'Found 2 errors.', '[*] 1 fixable with the `--fix` option.'].join('\n');
+  const TTL_HEAD = ['import time', '', 'from reports.cache import ReportCache', '', '', 'def test_entry_expires(monkeypatch):', '    now = [1000.0]', '    monkeypatch.setattr(time, "monotonic", lambda: now[0])',
+    '    cache = ReportCache(ttl=10)', '    cache.put("r1", {"total": 5})', '    now[0] += 11', '    assert cache.get_cached("r1") is None', '', '', 'def test_entry_alive_within_ttl(monkeypatch):', '    now = [1000.0]',
+    '    monkeypatch.setattr(time, "monotonic", lambda: now[0])', '    cache = ReportCache(ttl=10)', '    cache.put("r1", {"total": 5})', '    now[0] += 9'].join('\n');
+  const TODO = (st) => ({ kind: 'plan', items: [['Прочитать, как сейчас кэшируются отчёты', st[0]], ['Добавить TTL и блокировку в ReportCache', st[1]], ['Тесты на истечение записи', st[2]], ['Прогнать тесты и линтер', st[3]]].map(([text, state]) => ({ text, state })) });
+  const ANSWER = 'Готово. Кэш отчётов теперь **живёт 5 минут** на запись и не ходит в базу повторно:\n\n- `ReportCache(ttl=300)` - время жизни задаётся в конструкторе\n- чтение и запись под `Lock`, два потока не считают отчёт дважды\n- 2 новых теста на истечение\n\n```py\ncache = ReportCache(ttl=300)\ncache.get("monthly")  # из базы, дальше - из памяти\n```\n\nЛинтер ругался на неиспользуемую переменную - поправил. Подробнее о TTL: https://docs.python.org/3/library/time.html#time.monotonic.';
+  const SCRIPT = (st) => [
+    [600, 'a', { id: 'p1', name: 'TodoWrite', input: TODO(['active', 'pending', 'pending', 'pending']), done: true, ok: true }],
+    [300, 'a', { id: 'r1', name: 'Read', input: { kind: 'read', path: 'src/reports/cache.py' }, done: false }],
+    [700, 'a', { id: 'r1', name: 'Read', input: { kind: 'read', path: 'src/reports/cache.py' }, output: Array.from({ length: 58 }, (_, i) => 'line ' + i).join('\n'), done: true, ok: true }],
+    [300, 'a', { id: 'r2', name: 'Read', input: { kind: 'read', path: 'src/reports/db.py' }, output: Array.from({ length: 31 }, (_, i) => 'line ' + i).join('\n'), done: true, ok: true }],
+    [400, 'a', { id: 'g1', name: 'Grep', input: { kind: 'search', pattern: 'ReportCache\\(', hits: 4 }, output: 'src/a.py\nsrc/b.py\nsrc/c.py\nsrc/d.py', done: true, ok: true }],
+    [300, 'a', { id: 'p1', name: 'TodoWrite', input: TODO(['done', 'active', 'pending', 'pending']), done: true, ok: true }],
+    [900, 'a', { id: 'e1', name: 'Edit', input: { kind: 'edit', path: 'src/reports/cache.py', diff: CACHE_DIFF }, done: false }],
+    [800, 'a', { id: 'e1', name: 'Edit', input: { kind: 'edit', path: 'src/reports/cache.py', diff: CACHE_DIFF }, output: 'ok', done: true, ok: true }],
+    [400, 'a', { id: 'w1', name: 'Write', input: { kind: 'write', path: 'tests/test_cache_ttl.py', head: TTL_HEAD, lines: 34 }, done: true, ok: true }],
+    [300, 'a', { id: 'p1', name: 'TodoWrite', input: TODO(['done', 'done', 'done', 'active']), done: true, ok: true }],
+    [300, 'a', { id: 'b1', name: 'Bash', input: { kind: 'bash', command: 'pytest -q tests/test_cache.py tests/test_cache_ttl.py' }, done: false }],
+    [2400, 'a', { id: 'b1', name: 'Bash', input: { kind: 'bash', command: 'pytest -q tests/test_cache.py tests/test_cache_ttl.py' }, output: PYTEST, done: true, ok: true }],
+    [400, 'a', { id: 'b2', name: 'Bash', input: { kind: 'bash', command: 'ruff check src/reports' }, done: false }],
+    [900, 'a', { id: 'b2', name: 'Bash', input: { kind: 'bash', command: 'ruff check src/reports' }, output: 'exit code 1\n' + RUFF, done: true, ok: false }],
+    [700, 'a', { id: 'e2', name: 'Edit', input: { kind: 'edit', path: 'src/reports/cache.py', diff: '@@ -29,4 +29,3 @@ class ReportCache:\n     def _get_locked(self, key):\n-        hit = self._data.get(key)\n         entry = self._data.get(key)\n' }, done: true, ok: true }],
+    [300, 'a', { id: 'p1', name: 'TodoWrite', input: TODO(['done', 'done', 'done', 'done']), done: true, ok: true }],
+    [500, 'answer', st],
+  ];
+  function playLive(taskId, chatId, stream) {
+    if (!liveSpeed) return;
+    let wait = 0;
+    const tk = byId(taskId);
+    for (const [ms, kind, a] of SCRIPT(stream)) {
+      wait += ms * liveSpeed;
+      setTimeout(() => {
+        if (kind === 'a') { (LOGS[taskId] = LOGS[taskId] || []).push({ at: iso(Date.now()), kind: 'tool', role: 'worker', model: 'Opus 5.5', text: a.name, action: a }); emit('task-action', { id: taskId, action: a }); return; }
+        const msgId = taskId + '-answer';
+        const finish = () => {
+          pushMsg({ id: msgId, chat_id: chatId, at: iso(Date.now()), who: { role: 'worker' }, text: ANSWER, model: 'Opus 5.5', task_id: taskId });
+          setTimeout(() => { tk.status = 'done'; tk.finished_at = iso(Date.now()); tk.steps = steps('merge').map((p) => [p[0], 'done']); tk.runs = tk.runs.map((r) => Object.assign({}, r, { state: 'done' }));
+            tk.outcome = { summary: 'Влито в main: **кэш с TTL**, `ReportCache(ttl=300)`', commit: '7c1e0b2a9d', tests: { passed: true, tail: '14 passed' }, review: { approved: true, issues: [] } }; changed(tk); }, 900 * liveSpeed);
+        };
+        if (!a) return finish();
+        const words = ANSWER.match(/\S+\s*/g);
+        let i = 0;
+        const tick = () => { if (i >= words.length) return finish(); const piece = words.slice(i, i + 3).join(''); i += 3; emit('chat-delta', { id: chatId, msgId, text: piece }); setTimeout(tick, 70 * liveSpeed); };
+        tick();
+      }, wait);
+    }
+  }
+  window.__MOCK_LIVE__ = playLive;
+  if (scenario === 'full') {
+    const live = (id, chat, project, title, startedMin) => {
+      chats.push(C(chat, 'claude', project, title, '', 0));
+      const tk = T(id, project, 'claude', chat, title, 'working', { started_at: ago(startedMin), steps: steps('code'), cost_usd: 0.42, runs: [{ role: 'planner', model: 'Opus 5.5', state: 'done', started_at: ago(startedMin), finished_at: ago(startedMin - 1) }, { role: 'worker', model: 'Opus 5.5', state: 'running', started_at: iso(now) }] });
+      tasks.push(tk);
+      msgs[chat] = [M(chat, 1, 14, 30, 'human', 'Сделай: ' + title.toLowerCase()), M(chat, 2, 14, 30, 'system', '', { kind: 'task', task_id: id })];
+      msgs[chat][0].at = ago(startedMin); msgs[chat][1].at = ago(startedMin);
+    };
+    live('t-cache', 'cache', 'p1', 'Кэш для отчётов с TTL', 2);
+    live('t-lint', 'lint', 'p2', 'Линтер в CI', 1);
+    // a finished task whose actions come back from the log after a restart (story 230)
+    LOGS['t-cur'] = LOGS['t-cur'].concat([
+      { at: ago(176), kind: 'tool', role: 'worker', text: 'Read', action: { id: 'x1', name: 'Read', input: { kind: 'read', path: 'src/payments/models.py' }, output: 'a\nb\nc', done: true, ok: true } },
+      { at: ago(175), kind: 'tool', role: 'worker', text: 'Edit', action: { id: 'x2', name: 'Edit', input: { kind: 'edit', path: 'src/payments/models.py', diff: '@@ -12,3 +12,4 @@ class Payment(Base):\n     amount = Column(Integer, nullable=False)\n+    currency = Column(String(3), nullable=False, default="RUB")\n     created_at = Column(DateTime)\n' }, done: true, ok: true } },
+      { at: ago(174), kind: 'tool', role: 'worker', text: 'Bash', action: { id: 'x3', name: 'Bash', input: { kind: 'bash', command: 'alembic revision --autogenerate -m currency' }, output: 'Generating migrations/versions/4f2a_currency.py ... done', done: true, ok: true } }]);
+    window.addEventListener('ns-ready', () => setTimeout(() => { playLive('t-cache', 'cache', true); setTimeout(() => playLive('t-lint', 'lint', false), 1200 * liveSpeed); }, 400));
+  }
 
   window.__TAURI__ = {
     core: { invoke: (cmd, args) => { if (q.get('log')) { const l = JSON.parse(document.documentElement.getAttribute('data-calls') || '[]'); l.push([cmd, args || {}]); document.documentElement.setAttribute('data-calls', JSON.stringify(l)); } if (!cmds[cmd]) return Promise.reject('unknown command ' + cmd); try { return Promise.resolve(cmds[cmd](args || {})); } catch (e) { return Promise.reject(e && typeof e === 'object' ? e : String(e)); } } },
@@ -355,7 +442,7 @@
       if (open) { const b = document.querySelector('[data-task="' + open + '"] .tc-more'); if (b) b.click(); }
       if (q.get('file')) setTimeout(() => { const li = document.querySelector('.flist li[role=button]'); if (li) li.click(); }, 150);
       if (q.get('pop') === 'model') document.querySelector('.envpick').click();
-      if (q.get('pop') === 'tune') document.getElementById('tune').click();
+      if (q.get('pop') === 'tune') document.querySelector('[id^=tune]:not([id^=tunePanel])').click();
     }, 400);
   });
 })();

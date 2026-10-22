@@ -167,7 +167,7 @@
   const def = (id, o) => { SEC[id] = Object.assign({ id }, o); };
 
   // --- Модели ---
-  def('models', { env: true, live: ['catalog', 'envs'], build(env, fx) {
+  def('models', { env: true, reset: true, live: ['catalog', 'envs'], build(env, fx) {
     const cat = S.catalogs.get(env.id), es = () => envSet(env.id);
     const nodes = [];
     nodes.push(h('div', { class: 'sgrp' }, h('h2', { text: t('set.models.default') }), NS.models.picker(env.id)));
@@ -201,7 +201,7 @@
   } });
 
   // --- Права и песочница ---
-  def('perms', { env: true, build(env) {
+  def('perms', { env: true, reset: true, build(env) {
     const sb = env.sandbox, es = () => envSet(env.id), nodes = [];
     if (sb && sb.sandboxed === false) nodes.push(h('div', { class: 'warnbox' }, ic('i-warn'), h('p', {}, h('b', { text: t('perm.nosandbox', { env: env.name }) + ' ' }), t('perm.nosandbox_d'))));
     const pill = (ok, yes, no) => h('span', { class: 'pill-s ' + (ok ? 'ok' : 'no') }, ic(ok ? 'i-check' : 'i-warn'), ok ? yes : no);
@@ -219,7 +219,7 @@
   } });
 
   // --- Запуск и вход ---
-  def('run', { env: true, live: ['envs'], build(env, fx) {
+  def('run', { env: true, reset: true, live: ['envs'], build(env, fx) {
     const es = () => envSet(env.id), nodes = [];
     const recheck = async () => { try { await st.reloadEnvs(); } catch (e) { fail(e); } };
     // the path is checked by asking the core whether the env is found there: a wrong path is not kept
@@ -316,7 +316,7 @@
       const v = L.limitsView(S.limits.get(e.id));
       const body = v.kind === 'known' && v.windows.length ? h('div', { class: 'limrow' }, v.windows.map((w) => h('div', { class: 'lim ' + L.limitLevel(w, lim().warn_pct) }, h('span', { class: 'lt', text: L.formatLimit(w, now, t) }),
         h('span', { class: 'lb' }, NS.setVars(h('i'), { '--w': (w.exhausted ? 100 : Math.max(0, Math.min(100, w.used_pct || 0))) + '%' })))))
-        : h('small', { text: v.kind === 'nodata' && v.why ? v.why : t('lim.no_data') });
+        : h('small', { text: v.kind === 'nodata' && v.why ? NS.limitWhy(v.why) : t('lim.no_data') });
       rows.push(h('div', { class: 'limwin' }, h('b', {}, envIcon(e.custom ? 'custom' : e.id), e.name), body));
     }
     nodes.push(h('div', { class: 'sgrp' }, h('h2', { text: t('set.l.all') }), h('div', { class: 'srows' }, rows)));
@@ -359,16 +359,29 @@
 
   // --- Горячие клавиши ---
   def('keys', { reset: true, build() {
-    const k = () => sget('keys'), setK = (patch) => commit({ keys: Object.assign({}, k(), patch) });
-    const others = (own) => () => ['new_chat', 'send', 'freeze'].filter((x) => x !== own).map((x) => k()[x]);
-    const wayland = platform() !== 'mac';
+    // v3 (story 236): tab keys join the list; ⌘1…9 are tabs, envs moved to ⌥⌘1…7; every row is checked against all the others
+    const V = window.NSLive, plat = platform();
+    const k = () => Object.assign(V.tabKeyDefaults(plat), sget('keys'), { switch_env: V.migrateSwitchEnv(sget('keys').switch_env, plat) });
+    const setK = (patch) => commit({ keys: Object.assign({}, k(), patch) });
+    const ROWS = ['new_chat', 'send', 'freeze', 'tab_new', 'tab_close', 'tab_split', 'tab_unsplit'];
+    const others = (own) => () => ROWS.filter((x) => x !== own).map((x) => k()[x]).concat(V.fixedTabKeys(plat));
+    const wayland = plat !== 'mac';
+    const names = { new_chat: t('set.k.new'), send: t('set.k.send'), freeze: t('set.k.freeze'), switch_env: t('set.k.next'), tab_new: t('keys3.tab_new'), tab_close: t('keys3.tab_close'),
+      tab_split: t('keys3.tab_split'), tab_unsplit: t('keys3.tab_unsplit'), tab_digits: t('keys3.tab_digits') };
+    const clash = V.keyConflicts(Object.fromEntries(ROWS.concat('switch_env').map((x) => [x, k()[x]])), plat);
+    const tabRow = (id, desc) => keyRow({ title: t('keys3.' + id), desc: desc ? t(desc) : '', get: () => k()[id], needModifier: true, taken: others(id), apply: (v) => setK({ [id]: v }) });
     return [
       group('', [
         keyRow({ title: t('set.k.new'), desc: t('set.k.new_d'), get: () => k().new_chat, needModifier: true, taken: others('new_chat'), apply: (v) => setK({ new_chat: v }) }),
-        keyRow({ title: t('set.k.next'), desc: t('set.k.next_d'), get: () => k().switch_env, needModifier: true, pattern: true, taken: () => [], apply: (v) => setK({ switch_env: v }) }),
+        keyRow({ title: t('set.k.next'), desc: t('set.k.next_d'), get: () => k().switch_env, needModifier: true, pattern: true, taken: () => V.fixedTabKeys(plat), apply: (v) => setK({ switch_env: v }) }),
         keyRow({ title: t('set.k.send'), get: () => k().send, needModifier: false, taken: others('send'), apply: (v) => setK({ send: v }) }),
         keyRow({ title: t('set.k.freeze'), desc: t('set.k.freeze_d'), get: () => k().freeze, needModifier: true, taken: others('freeze'), apply: (v) => setK({ freeze: v }) }),
       ]),
+      group(t('tabs.label'), [
+        tabRow('tab_new'), tabRow('tab_close', 'keys3.tab_close_d'), tabRow('tab_split', 'keys3.tab_split_d'), tabRow('tab_unsplit'),
+        row(t('keys3.fixed'), '', h('span', { class: 'hint', text: t(plat === 'mac' ? 'keys3.fixed_mac' : 'keys3.fixed_pc') })),
+      ]),
+      ...clash.map(([a, b]) => h('div', { class: 'warnbox' }, ic('i-warn'), h('p', { text: names[a] + ': ' + t('keys3.conflict', { other: names[b] }) }))),
       wayland ? h('div', { class: 'warnbox' }, ic('i-warn'), h('p', {}, t('set.k.wayland'), ' ', h('code', { text: 'nightshift --new-chat' }), '.')) : null,
     ].filter(Boolean);
   } });

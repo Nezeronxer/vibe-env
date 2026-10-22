@@ -61,6 +61,6 @@
 .tally { display: flex; gap: 14px; flex-wrap: wrap; align-items: baseline; padding: 10px 12px; background: var(--bg); border: 1px solid var(--line2); border-radius: 6px; margin-bottom: 8px; }
 .tally b { font-size: 15px; }
 @media (max-width: 1280px) { .sw-wrap { grid-template-columns: minmax(0, 1fr) minmax(360px, 50%); } }
-@media (max-width: 1099px) { .sw-wrap, .sw-wrap.collapsed { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); } .sw-wrap .sw-panel { order: -1; max-height: 48%; border-left: 0; border-bottom: 1px solid var(--line); } }
+@media (max-width: 1099px) { .sw-wrap, .sw-wrap.collapsed { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 42%) minmax(0, 1fr); } .sw-wrap .sw-panel { order: -1; min-height: 0; overflow: auto; border-left: 0; border-bottom: 1px solid var(--line); } }   /* bug 7: the panel row is bounded, the chat keeps the rest */
 .sw-panel.collapsed .btn .ic { transform: rotate(180deg); }
 .sw-ph .btn .ic { margin: 0; }

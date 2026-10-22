@@ -35,6 +35,11 @@
       if (!e) return nav('onboarding');
       s.lastEnv = e.id; NS.storage.set('ns.lastenv', e.id);
       if (e.state !== 'ok') return mount('envstate', { env: e.id });
+      if (NS.tabs) {                                     // v3: chats live in tabs (tabs.js); a chat opens in the active tab or its own one
+        const chat0 = params.chat === null ? undefined : params.chat;
+        if (chat0 !== undefined) lastChat.set(e.id, chat0);
+        return NS.tabs.show(e.id, chat0);
+      }
       let chat = params.chat;
       if (chat === undefined) chat = lastChat.get(e.id) || firstChat(e.id) || 'new';
       lastChat.set(e.id, chat);
@@ -65,6 +70,14 @@
     renderRail(); if (layout === 'chats') renderSide();
     current.inst = def.mount(root, ctxFor(params)) || null;
     if (NS.notices) NS.notices.onRoute(s.route);
+  }
+  const defaultChat = (envId) => lastChat.get(envId) || firstChat(envId) || 'new';
+  // the tabs screen tells which env and chat are in front: the rail and the chat list follow it
+  function setRoute(envId, chat) {
+    s.route = Object.assign({}, s.route, { env: envId, chat });
+    s.lastEnv = envId; NS.storage.set('ns.lastenv', envId);
+    if (chat) lastChat.set(envId, chat);
+    renderSide(); markRail();
   }
   const forward = (evt, payload) => { if (current && current.inst && current.inst.update) current.inst.update(evt, payload); };
 
@@ -110,7 +123,7 @@
   }
   function markRail() {
     for (const [id, b] of railBtns) {
-      const on = !!current && (['chat', 'envstate', 'swarm'].includes(current.def.id) || !!current.def.keepEnv) && s.route.env === id;
+      const on = !!current && (['chat', 'envstate', 'swarm', 'tabs'].includes(current.def.id) || !!current.def.keepEnv) && s.route.env === id;
       b.classList.toggle('on', on); if (on) b.setAttribute('aria-current', 'page'); else b.removeAttribute('aria-current');
     }
   }
@@ -185,7 +198,7 @@
       forward('chatmsg', msg);
     });
     on('chats', (envId) => { if (sideNeeded(envId)) renderSide(); forward('chats', envId); });
-    for (const k of ['limits', 'catalog', 'settings', 'project', 'tasklog', 'focus-input']) on(k, (p) => { if (k === 'catalog' || k === 'settings') { if (current && current.def.layout === 'chats') renderSide(); } forward(k, p); });
+    for (const k of ['limits', 'catalog', 'settings', 'project', 'tasklog', 'focus-input', 'taskaction', 'chataction', 'chatdelta', 'taskremoved']) on(k, (p) => { if (k === 'catalog' || k === 'settings') { if (current && current.def.layout === 'chats') renderSide(); } forward(k, p); });
     on('frozen', (v) => {
       const bar = $('frozenBar'); clear(bar);
       bar.hidden = !v;
@@ -198,16 +211,21 @@
     on('envs', () => { renderRail(); if (current && current.def.layout === 'chats') renderSide(); forward('envs'); });
   }
 
+  // envs by number: ⌥⌘1…7 / Ctrl+Alt+1…7 (story 236: ⌘1…9 are tabs now); an old "Cmd+{n}" setting moves to the new one
   document.addEventListener('keydown', (e) => {
-    if ((e.metaKey || e.ctrlKey) && !e.altKey && !e.shiftKey && /^[1-7]$/.test(e.key)) {
-      const env = s.envs[+e.key - 1];
-      if (env) { e.preventDefault(); nav('env', { env: env.id }); }
-    }
+    if (e.defaultPrevented || (e.target && e.target.closest && e.target.closest('.keyfield'))) return;
+    const plat = /Mac/i.test(navigator.platform || '') ? 'mac' : 'linux';
+    const pattern = window.NSLive.migrateSwitchEnv(((s.settings || {}).keys || {}).switch_env, plat);
+    const accel = L.accelFromEvent(e, plat), d = /^Digit([1-7])$/.exec(e.code || '');
+    if (!accel || !d || accel !== pattern.replace('{n}', d[1])) return;
+    const env = s.envs[+d[1] - 1];
+    if (env) { e.preventDefault(); nav('env', { env: env.id }); }
   });
 
   function renderAll() { renderRail(); if (current && current.def.layout === 'chats') renderSide(); if (current) mount(current.def.id, current.params); }
 
-  NS.shell = { nav, toast, wire, renderAll, renderRail, renderSide, toggleSide: () => $('app').classList.toggle('side-open'), ctxFor,
+  NS.shell = { nav, toast, wire, renderAll, renderRail, renderSide, toggleSide: () => $('app').classList.toggle('side-open'), ctxFor, setRoute, defaultChat,
+    mountScreen: (id, params) => mount(id, params),
     get current() { return current; } };
   NS.nav = nav;
 })();

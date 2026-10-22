@@ -23,6 +23,15 @@
       if (!store.findChat(msg.chat_id)) { await Promise.all(s.envs.filter((e) => e.state !== 'missing').map((e) => store.loadChats(e.id))); for (const e of s.envs) store.emit('chats', e.id); }
       store.emit('chatmsg', msg);
     });
+    // v3: one action arrives twice (start, result), linked by action.id; the chat list shows the current one as the task line
+    api.listen('task-action', (pl) => {
+      const a = pl && pl.action;
+      if (!a) return;
+      if (window.NSLive.inputOf(a).kind !== 'plan') s.lastLog.set(pl.id, ('● ' + a.name + ' ' + (NS.actions ? NS.actions.argOf(window.NSLive.inputOf(a), a) : '')).slice(0, 120));
+      store.emit('taskaction', pl);
+    });
+    api.listen('chat-action', (pl) => { if (pl && pl.action) store.emit('chataction', pl); });
+    api.listen('chat-delta', (pl) => { if (pl && pl.msgId) store.emit('chatdelta', pl); });
     api.listen('limits-changed', async (envId) => { await store.loadLimits(envId); store.emit('limits', envId); });
     api.listen('catalog-changed', async (envId) => { await store.loadCatalog(envId); store.emit('catalog', envId); });
     api.listen('frozen', (v) => store.emit('frozen', !!v));

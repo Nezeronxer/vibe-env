@@ -53,7 +53,7 @@
       const places = (S.settings || {}).max_parallel;
       const cap = ((S.settings || {}).limits || {}).day_usd;
       clear(stats).append(h('div', {}, h('span', { text: t('factory.working') }), h('b', { text: places ? t('factory.of', { a: s.working, b: places }) : String(s.working) })),
-        h('div', {}, h('span', { text: t('factory.today') }), h('b', { text: s.reportsCost ? L.formatBudget(s.spent, cap) : t('factory.no_cost') })));
+        h('div', {}, h('span', { text: t('factory.today') }), h('b', { text: s.reportsCost ? L.formatBudget(s.spent, cap, t) : t('factory.no_cost') })));
       clear(freezeBtn).append(ic('i-pause'), S.frozen ? t('factory.unfreeze') : t('factory.freeze'));
       freezeBtn.title = t('factory.freeze_d');
     }

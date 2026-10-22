@@ -12,10 +12,12 @@
     const l = L.modelLabel(choiceOf(envId), NS.store.s.catalogs.get(envId));
     return l === '' ? t('model.cli_default') : l;   // null (no catalog yet) stays null
   }
+  // story 240: the core sends model.desc.<id>; "(… docs, …; не сверено с CLI)" is only a tooltip
+  const descOf = (f) => { const d = window.NSLive.modelDesc(f, t, (k) => window.NSI18n.has(k)); return { desc: d.text, note: d.note }; };
   const fmtDate = (iso) => new Date(iso).toLocaleDateString(NS.lang() === 'ru' ? 'ru-RU' : 'en-GB', { day: 'numeric', month: 'long' });
 
   function card(opts) {
-    const el = h('div', { class: 'mcard' + (opts.on ? ' on' : ''), role: 'radio', tabIndex: 0, 'aria-checked': String(!!opts.on),
+    const el = h('div', { class: 'mcard' + (opts.on ? ' on' : ''), role: 'radio', tabIndex: 0, 'aria-checked': String(!!opts.on), title: opts.note ? t('model.source', { note: opts.note }) : null,
       onclick: opts.onpick, onkeydown: (e) => { if ((e.key === 'Enter' || e.key === ' ') && e.target === el) { e.preventDefault(); opts.onpick(); } } },
     h('span', { class: 'radio' }),
     h('b', {}, opts.icon, opts.title, opts.pinned ? ic('i-lock', 'lk') : null, opts.isDefault ? ' ' : null, opts.isDefault ? h('small', { text: t('model.default') }) : null),
@@ -50,7 +52,7 @@
       const cards = [];
       const titleOf = (f) => { const v = (f.id === curFam && cur && cur.version) || (f.versions && f.versions[0]); return v ? `${f.label} ${v}` : f.label; };
       const famCard = (f) => card({ on: f.id === curFam, icon: vendorIcon(f.vendor, 'mlogo'), title: titleOf(f),
-        pinned: f.id === curFam && cur && cur.version, isDefault: f.default, desc: f.blurb,
+        pinned: f.id === curFam && cur && cur.version, isDefault: f.default, ...descOf(f),
         extra: f.id === curFam ? versions(f, cur && cur.version) : null, onpick: () => choose({ family: f.id, version: null }) });
       const grouped = L.needsGrouping(fams);
       function drawCards() {

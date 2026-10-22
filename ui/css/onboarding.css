@@ -48,3 +48,19 @@
 .onb-models .picker { max-width: 100%; }
 .onb pre.cmd { font: 12.5px var(--mono); background: var(--panel); border: 1px solid var(--line); padding: 10px 12px; border-radius: var(--r); margin-bottom: 14px; }
 .missing pre { white-space: pre-wrap; }
+
+/* v3: first run in one step */
+.onb1 { max-width: 720px; }
+.drop.big { padding: 34px 26px; gap: 20px; }
+.drop.big .ic { width: 34px; height: 34px; }
+.drop.big b { font-size: 16px; margin-bottom: 2px; }
+.onb-line { margin-top: 12px; display: flex; gap: 8px; align-items: center; color: var(--ink2); }
+.onb-line .ic { width: 16px; height: 16px; }
+.onb-env { margin-top: 18px; padding: 16px 18px; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; }
+.onb-env h2 { font-size: 15px; font-weight: 650; display: flex; gap: 8px; align-items: center; margin-bottom: 4px; }
+.onb-env > p { color: var(--ink2); margin-bottom: 12px; }
+.inst { display: grid; gap: 6px; margin-bottom: 12px; }
+.inst li { display: grid; grid-template-columns: 18px 110px minmax(0, 1fr) auto; gap: 10px; align-items: center; }
+.inst code { font: 12px var(--mono); color: var(--ink2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.onb-off { margin-top: 18px; background: var(--panel); border: 1px solid var(--line2); border-radius: 6px; padding: 10px; display: grid; gap: 8px; }
+.onb-off textarea { background: transparent; border: 0; }

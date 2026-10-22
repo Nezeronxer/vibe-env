@@ -19,3 +19,5 @@
 .prog i.w { background: var(--human); }
 .sum-row .ti.wait { color: var(--human); }
 .sum-row.wait .tx b { color: var(--human); }
+/* v3: a tab whose task waits for you */
+.tdot.wait { background: var(--human); }

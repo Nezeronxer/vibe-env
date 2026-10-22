@@ -1,0 +1,44 @@
+/* v3: tab strip over the chat, 1-4 panels. The "waits for you" dot lives in need.css (amber only there). */
+.screen > .ws { flex: 1; }
+.ws { display: flex; flex-direction: column; min-width: 0; min-height: 0; position: relative; }
+.tabstrip { display: flex; align-items: stretch; gap: 2px; padding: 6px 8px 0; border-bottom: 1px solid var(--line); background: var(--bg); flex: none; min-width: 0; }
+.tabs-scroll { display: flex; gap: 2px; overflow-x: auto; min-width: 0; scrollbar-width: thin; }
+.tab { display: flex; align-items: center; gap: 6px; height: 30px; padding: 0 4px 0 10px; border: 1px solid transparent; border-bottom: 0; border-radius: 6px 6px 0 0;
+  color: var(--ink3); cursor: pointer; flex: none; max-width: 240px; user-select: none; position: relative; top: 1px; }
+.tab:hover { background: var(--raised); color: var(--ink2); }
+.tab.on { background: var(--panel); border-color: var(--line); color: var(--ink); }
+.tab.shown:not(.on) { color: var(--ink2); }
+.tab.shown::after { content: ""; position: absolute; left: 10px; right: 10px; bottom: 3px; height: 2px; border-radius: 1px; background: var(--line2); }
+.tab.on.shown::after { background: var(--ink3); }
+.tab.drag { opacity: .5; }
+.tab.over { box-shadow: inset 2px 0 0 var(--ink); }
+.tab-ic .ic, .tab-ic img { width: 14px; height: 14px; }
+.tab-t { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; font-size: 12.5px; }
+.tdot { width: 7px; height: 7px; border-radius: 50%; flex: none; background: transparent; }
+.tdot.run { background: var(--exec); animation: lv-blink 1.2s ease-in-out infinite; }
+.tdot.done { background: var(--ok); }
+.tdot.fail { background: var(--bad); }
+.tdot.queue { background: var(--ink3); }
+.tab-x { width: 20px; height: 20px; border: 0; background: none; color: var(--ink3); border-radius: 3px; display: grid; place-items: center; font-size: 15px; line-height: 1; padding: 0; flex: none; }
+.tab-x:hover { background: var(--raised2); color: var(--ink); }
+.tab-m { opacity: 0; font-size: 13px; }
+.tab:hover .tab-m, .tab.on .tab-m, .tab-m:focus-visible { opacity: 1; }
+.tab-plus { width: 30px; height: 30px; border: 0; background: none; color: var(--ink3); border-radius: var(--r); display: grid; place-items: center; flex: none; }
+.tab-plus:hover { background: var(--raised); color: var(--ink); }
+.tab-more { align-self: center; margin-left: 4px; }
+.tabmenu { left: var(--x); top: var(--y); }
+.ws-hint { padding: 6px 16px; background: var(--raised2); color: var(--ink2); font-size: 12.5px; border-bottom: 1px solid var(--line); }
+.panes { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr); gap: 0; background: var(--line); }
+.panes.n2 { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1px; }
+.panes.n3, .panes.n4 { grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: repeat(2, minmax(0, 1fr)); gap: 1px; }
+.pane { background: var(--bg); min-width: 0; min-height: 0; display: flex; flex-direction: column; position: relative; container-type: inline-size; overflow: hidden; }
+.pane > .convo, .pane > * { flex: 1; min-height: 0; }
+.pane.on::after { content: ""; position: absolute; inset: 0; border: 1px solid var(--ink3); pointer-events: none; z-index: 4; }
+/* a narrow panel: tighter header, the input row wraps */
+@container (max-width: 620px) {
+  .convo-h { padding: 10px 14px; flex-wrap: wrap; row-gap: 4px; }
+  .cfeed { padding: 0 14px 18px; }
+  .composer { width: calc(100% - 24px); margin-bottom: 10px; }
+  .comp-row { flex-wrap: wrap; row-gap: 6px; gap: 10px; }
+  .act, .livebar { margin-left: 0; }
+}

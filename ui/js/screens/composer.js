@@ -18,21 +18,26 @@
   }
   const modeOf = (sw) => (sw && L.variant(sw.mode)[0]) || 'race';
 
+  // ids stay unique when several panels each have an input field (tabs.js): the first one keeps the plain ids
+  const usedN = new Set();
   function create(opts) {
+    let n = 1; while (usedN.has(n)) n++;
+    usedN.add(n);
+    const sfx = n === 1 ? '' : '-' + n;
     const { envId, chat, hooks } = opts;
     const st = NS.store, key = L.draftKey(envId, chat === 'new' ? null : chat);
     const gate = L.createSendGate(() => (crypto.randomUUID ? crypto.randomUUID() : 'm-' + Date.now() + '-' + Math.random().toString(16).slice(2)));
     let mode = { kind: 'message', task: null };
     const form = h('form', { class: 'composer', onsubmit: (e) => { e.preventDefault(); send(); } });
-    const ta = h('textarea', { id: 'taskText', rows: 2, 'aria-label': t('composer.label') });
+    const ta = h('textarea', { id: 'taskText' + sfx, rows: 2, 'aria-label': t('composer.label') });
     const modebar = h('div', { class: 'modebar', hidden: true });
     const hint = h('p', { class: 'cmp-hint', role: 'alert', hidden: true });
     const swhint = h('small', { class: 'swhint', hidden: true });
-    const envText = h('span'), pickBtn = h('button', { type: 'button', class: 'envpick', 'aria-expanded': 'false', 'aria-controls': 'modelPop' }, h('span', { class: 'icw' }, envIcon(envId)), envText, ic('i-chev', 'chev'));
-    const sendBtn = h('button', { type: 'submit', class: 'btn primary', id: 'sendBtn' }, t('composer.send'), h('kbd', { text: '↵' }));
-    const tuneBtn = h('button', { type: 'button', class: 'linkb', id: 'tune', 'aria-expanded': 'false', 'aria-controls': 'tunePanel', text: t('composer.tune') });
-    const modelPop = h('div', { class: 'pop', id: 'modelPop', hidden: true, role: 'dialog' });
-    const tunePanel = h('div', { class: 'pop', id: 'tunePanel', hidden: true, role: 'dialog' });
+    const envText = h('span'), pickBtn = h('button', { type: 'button', class: 'envpick', 'aria-expanded': 'false', 'aria-controls': 'modelPop' + sfx }, h('span', { class: 'icw' }, envIcon(envId)), envText, ic('i-chev', 'chev'));
+    const sendBtn = h('button', { type: 'submit', class: 'btn primary', id: 'sendBtn' + sfx }, t('composer.send'), h('kbd', { text: '↵' }));
+    const tuneBtn = h('button', { type: 'button', class: 'linkb', id: 'tune' + sfx, 'aria-expanded': 'false', 'aria-controls': 'tunePanel' + sfx, text: t('composer.tune') });
+    const modelPop = h('div', { class: 'pop', id: 'modelPop' + sfx, hidden: true, role: 'dialog' });
+    const tunePanel = h('div', { class: 'pop', id: 'tunePanel' + sfx, hidden: true, role: 'dialog' });
     let quality, swarm, qSw, sSw;
 
     const settings = () => st.envSettings(envId);
@@ -125,10 +130,10 @@
     }
     pickBtn.onclick = (e) => { e.stopPropagation(); togglePop(pickBtn, modelPop, drawModelPop); };
     tuneBtn.onclick = (e) => { e.stopPropagation(); togglePop(tuneBtn, tunePanel, drawTune); };
-    const onDoc = (e) => { if (!form.contains(e.target)) closePops(); };
+    const onDoc = (e) => { if (e.target.isConnected && !form.contains(e.target)) closePops(); };
     const onKey = (e) => { if (e.key === 'Escape' && closePops()) e.preventDefault(); };
     document.addEventListener('click', onDoc); document.addEventListener('keydown', onKey);
-    form.addEventListener('click', (e) => { if (!e.target.closest('.pop') && !e.target.closest('#envPick, .envpick, #tune')) closePops(); });
+    form.addEventListener('click', (e) => { if (e.target.isConnected && !e.target.closest('.pop') && !e.target.closest('.envpick') && e.target !== tuneBtn) closePops(); });
 
     function drawModelPop() {
       const e = st.env(envId);
@@ -168,8 +173,10 @@
       h('div', { class: 'comp-row' }, pickBtn, h('span', { class: 'vsep' }), qSw, sSw, tuneBtn, h('span', { class: 'grow' }), sendBtn),
       swhint, modelPop, tunePanel);
     refresh();
-    return { el: form, ta, refresh, setMode, drawHint, focus: () => ta.focus(), closePops,
-      destroy() { document.removeEventListener('click', onDoc); document.removeEventListener('keydown', onKey); } };
+    // an example from the empty chat goes into the field, it is not sent (story 239)
+    function insert(text) { ta.value = text; ta.dispatchEvent(new Event('input')); ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); }
+    return { el: form, ta, refresh, setMode, drawHint, focus: () => ta.focus(), closePops, insert,
+      destroy() { usedN.delete(n); document.removeEventListener('click', onDoc); document.removeEventListener('keydown', onKey); } };
   }
 
   NS.composer = { create };

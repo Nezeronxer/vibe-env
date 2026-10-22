@@ -219,6 +219,8 @@
     const who = win.model ? ' ' + win.model.charAt(0).toUpperCase() + win.model.slice(1) : '';   // a per-model window: "Неделя Opus"
     if (/five|5\s*h|5\s*ч/.test(n)) return t('lim.w5h') + who;
     if (/seven|7\s*d|week|недел/.test(n)) return t('lim.wweek') + who;
+    if (/^(day|daily|one_day|1d|24h)$/.test(n)) return t('lim.wday') + who;
+    if (/^(month|monthly|30d)$/.test(n)) return t('lim.wmonth') + who;
     return (win.name || '') + who;
   }
   // same day -> "сброс в 19:00"; another day -> "пн 10:00" (as in the spec)
@@ -402,7 +404,7 @@
     const v = Number(usd);
     return v > 0 && v < 0.01 ? '<$0.01' : '$' + v.toFixed(2);
   }
-  const formatBudget = (spent, cap) => `${formatCost(spent)} ${cap == null ? '' : 'из $' + (Number.isInteger(Number(cap)) ? Number(cap) : Number(cap).toFixed(2))}`.trim();
+  const formatBudget = (spent, cap, t) => `${formatCost(spent)} ${cap == null ? '' : (t ? t('fmt.of') : 'из') + ' $' + (Number.isInteger(Number(cap)) ? Number(cap) : Number(cap).toFixed(2))}`.trim();
   // whole minutes left until the reviewer's choice is taken automatically; null when there is no timer or it is due
   function autopickLeft(atIso, now) {
     if (!atIso) return null;

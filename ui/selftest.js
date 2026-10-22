@@ -351,6 +351,118 @@ const need = [].concat(L.SETTINGS_SECTIONS.map((x) => 'set.nav.' + x.id), L.KIT_
 eq('labels exist in ru and en', need.filter((k) => !(k in NSI18n.dicts.ru) || !(k in NSI18n.dicts.en)), []);
 eq('the wrong-env refusal reads as in the spec (story 210)', t('kit.err.wrong_env', { detail: 'Codex', env: 'Claude Code' }), 'Это набор Codex. В Claude Code он не ставится: у каждой среды свои скиллы и правила.');
 
+// ================= v3: live feed, markdown, diff, tabs, keys, first run (stories 225-242) =================
+{   // own block: names of the v3 checks do not clash with the ones above
+const V = NSLive;
+// --- markdown (story 228): bold, italic, headings, lists, `code`, fenced blocks, only http(s) links ---
+eq('md: bold and italic inside a paragraph', V.parseMarkdown('**жирный** и *курсив*'),
+  [{ type: 'p', inline: [{ t: 'b', c: [{ t: 'text', s: 'жирный' }] }, { t: 'text', s: ' и ' }, { t: 'i', c: [{ t: 'text', s: 'курсив' }] }] }]);
+eq('md: a fenced block keeps its language and text as is, ** inside is not bold', V.parseMarkdown('До:\n```py\nx = 2 ** 3\n```'),
+  [{ type: 'p', inline: [{ t: 'text', s: 'До:' }] }, { type: 'code', lang: 'py', text: 'x = 2 ** 3' }]);
+eq('md: "- " and "1." lists, heading levels # to ###', V.parseMarkdown('## План\n- один\n- `два`\n\n1. первый\n2. второй').map((b) => [b.type, b.level || b.start || null, (b.items || []).length]),
+  [['h', 2, 0], ['ul', null, 2], ['ol', 1, 2]]);
+eq('md: inline code is one node, its stars stay', V.parseInline('см. `a**b`'), [{ t: 'text', s: 'см. ' }, { t: 'code', s: 'a**b' }]);
+eq('md: a javascript: link is not a link, only its text stays', V.parseInline('[жми](javascript:alert(1))').filter((n) => n.t === 'a'), []);
+eq('md: https link and a bare https address become links, trailing dot is not part of it', V.parseInline('[доки](https://a.dev/x) и https://b.dev/y.').filter((n) => n.t === 'a').map((n) => n.href),
+  ['https://a.dev/x', 'https://b.dev/y']);
+eq('md: safeHref accepts only http and https', ['https://x.io', 'http://x.io', 'javascript:alert(1)', 'file:///etc/passwd', ' data:text/html,x'].map(V.safeHref), ['https://x.io', 'http://x.io', null, null, null]);
+eq('md: a table stays as text', V.parseMarkdown('| a | b |\n|---|---|\n| 1 | 2 |').map((b) => b.type), ['table']);
+
+// --- highlight (story 226): by extension, own light tokens ---
+eq('hl: language from the file extension', ['src/a.rs', 'x.tsx', 'b.py', 'Cargo.toml', 'run.sh', 'Makefile', 'README.md'].map(V.langOf), ['rs', 'js', 'py', 'toml', 'sh', '', 'md']);
+eq('hl: js keyword, string, comment', V.tokenize('let x = "a" // c', 'js'), [{ k: 'kw', s: 'let' }, { k: '', s: ' x = ' }, { k: 'str', s: '"a"' }, { k: '', s: ' ' }, { k: 'com', s: '// c' }]);
+eq('hl: a keyword inside a longer word is not a keyword', V.tokenize('outlet', 'js'), [{ k: '', s: 'outlet' }]);
+eq('hl: unknown language is plain text', V.tokenize('fn x', ''), [{ k: '', s: 'fn x' }]);
+
+// --- unified diff -> rows with line numbers (story 226) ---
+eq('diff: hunk header sets the numbers, - takes the old one, + the new one', V.parseDiff('--- a/x.py\n+++ b/x.py\n@@ -10,3 +10,4 @@ def f\n ctx\n-old\n+new1\n+new2\n ctx2'),
+  [{ kind: 'hunk', old: null, new: null, text: '@@ -10,3 +10,4 @@ def f' }, { kind: 'ctx', old: 10, new: 10, text: 'ctx' }, { kind: 'del', old: 11, new: null, text: 'old' },
+    { kind: 'add', old: null, new: 11, text: 'new1' }, { kind: 'add', old: null, new: 12, text: 'new2' }, { kind: 'ctx', old: 12, new: 13, text: 'ctx2' }]);
+eq('diff: counts of added and removed lines', V.diffStat(V.parseDiff('@@ -1 +1,2 @@\n-a\n+b\n+c')), { add: 2, del: 1 });
+
+// --- folding long output (stories 225, 229) ---
+const lines10 = Array.from({ length: 10 }, (_, i) => 'l' + (i + 1)).join('\n') + '\n';
+eq('fold: 10 lines of output -> 8 shown, 2 hidden, nothing cut', (({ lines, hidden, cut }) => [lines.length, lines[7], hidden, cut])(V.foldLines(lines10, 8, 2000)), [8, 'l8', 2, 0]);
+const lines2500 = Array.from({ length: 2500 }, (_, i) => String(i)).join('\n');
+eq('fold: opened 2500 lines -> 2000 shown, 500 cut ("full - in the task log")', (({ lines, hidden, cut }) => [lines.length, hidden, cut])(V.foldLines(lines2500, 2000, 2000)), [2000, 0, 500]);
+eq('fold: empty output -> nothing', V.foldLines('', 8, 2000), { lines: [], hidden: 0, cut: 0, total: 0 });
+
+// --- gluing reads of one role (story 229) ---
+const A = (key, role, kind, extra) => ({ key, role, action: { id: key, name: { read: 'Read', search: 'Grep', edit: 'Edit' }[kind], input: Object.assign({ kind }, extra), done: true, ok: true } });
+const glued = V.groupActions([A('1', 'exec', 'read', { path: 'a' }), A('2', 'exec', 'read', { path: 'b' }), A('3', 'exec', 'search', { pattern: 'x' }), A('4', 'exec', 'edit', { path: 'c' }), A('5', 'exec', 'read', { path: 'd' }), A('6', 'rev', 'read', { path: 'e' })]);
+eq('glue: three reads/searches in a row of one role -> one row; a lone read stays a line; another role breaks the run', glued.map((g) => (g.type === 'group' ? 'G' + g.items.length : g.item.key)), ['G3', '4', '5', '6']);
+eq('glue: the row counts files and searches', V.readSummary(glued[0].items), { files: 2, searches: 1 });
+
+// --- ToolAction shapes: serde kind tag in any case, the legacy ChatMsg.tool -> a line too ---
+eq('action input: {kind:"Read"} and {"Read":{..}} read the same', [V.inputOf({ input: { kind: 'Read', path: 'a' } }), V.inputOf({ input: { Read: { path: 'a' } } })], [{ kind: 'read', path: 'a' }, { kind: 'read', path: 'a' }]);
+eq('legacy tool row -> an action: run -> bash with its result as output', V.toolToAction({ name: 'run', arg: 'pytest', result: '9 failed', ok: false }, 'm1'),
+  { id: 'm1', name: 'Bash', input: { kind: 'bash', command: 'pytest' }, output: '9 failed', ok: false, done: true });
+
+// --- the live line: verb by the last action (story 227), the plan window (story 242), typing (story 227) ---
+const act = (kind, done) => ({ input: { kind }, done });
+eq('verb: during Bash - running, after Edit - writing code, after Read - thinking, while Read - reading, streaming text - answering, nothing - thinking',
+  [V.actionVerb(act('bash', false)), V.actionVerb(act('edit', true)), V.actionVerb(act('read', true)), V.actionVerb(act('read', false)), V.actionVerb(null, true), V.actionVerb(null)],
+  ['live.running', 'live.writing', 'live.thinking', 'live.reading', 'live.answering', 'live.thinking']);
+const plan10 = Array.from({ length: 10 }, (_, i) => ({ text: 'p' + i, state: i < 5 ? 'done' : i === 5 ? 'active' : 'pending' }));
+eq('plan: more than 7 items -> the current one ±2, the rest counted', (({ items, before, after }) => [items.map((x) => x.text), before, after])(V.planView(plan10)), [['p3', 'p4', 'p5', 'p6', 'p7'], 3, 2]);
+eq('plan: 7 or fewer items are all shown', V.planView(plan10.slice(0, 4)).items.length, 4);
+const tp3 = V.typePlan('один два три'), tp200 = V.typePlan(Array.from({ length: 200 }, () => 'w').join(' '));
+eq('typing: 3 words -> one word per 60 ms; 200 words -> 30 ms ticks, all within 1.5 s; the pieces add up to the text',
+  [tp3.ms, tp3.chunks.length, tp3.chunks.join(''), tp200.ms, tp200.chunks.length * tp200.ms <= 1500, tp200.chunks.join('').split(' ').length], [60, 3, 'один два три', 30, true, 200]);
+
+// --- tabs: open, split, close, save and restore (stories 232-235) ---
+const tab = (id, chat, env) => ({ id, env: env || 'claude', chat });
+let ts0 = V.tabsOpen(V.tabsOpen(V.tabsEmpty(), tab('a', 'c1')), tab('b', 'c2'));
+eq('tabs: a new tab goes after the active one and becomes active and shown', [ts0.tabs.map((x) => x.id), ts0.active, ts0.panels], [['a', 'b'], 'b', ['b']]);
+const tsSplit = V.tabsSplit(ts0, 'b');
+eq('tabs: ⌘D on the shown tab puts the previous one on the left, the current stays on the right and active', [tsSplit.panels, tsSplit.active], [['a', 'b'], 'b']);
+eq('tabs: ⌘⇧D takes the panel out of the split, the tab stays in the strip', (({ tabs, panels, active }) => [tabs.length, panels, active])(V.tabsUnsplit(tsSplit, 'b')), [2, ['a'], 'a']);
+const ts4 = ['c', 'd', 'e'].reduce((s, id) => V.tabsSplit(V.tabsOpen(s, tab(id, 'x' + id)), id), tsSplit);
+eq('tabs: no more than 4 panels', ts4.panels.length, 4);
+const tsClosed = V.tabsClose(tsSplit, 'b');
+eq('tabs: closing a shown tab leaves its neighbour shown and active', [tsClosed.tabs.map((x) => x.id), tsClosed.panels, tsClosed.active], [['a'], ['a'], 'a']);
+eq('tabs: activating a hidden tab in a split replaces the focused panel', V.tabsActivate(V.tabsOpen(tsSplit, tab('c', 'c3')), 'a').panels, ['a', 'c']);
+eq('tabs: moving changes the order', V.tabsMove(ts0, 'b', 0).tabs.map((x) => x.id), ['b', 'a']);
+const saved = V.tabsSerialize({ tabs: [tab('a', 'c1'), tab('b', 'gone'), tab('c', 'new', 'codex')], active: 'b', panels: ['a', 'b'], prev: null });
+const restored = V.tabsRestore(saved, (envId, chatId) => chatId === 'c1');
+eq('tabs restore: a deleted chat does not come back, an empty new chat does, active and split are repaired',
+  [restored.tabs.map((x) => x.id), restored.active, restored.panels], [['a', 'c'], 'a', ['a']]);
+eq('tabs restore: broken or empty data -> nothing', [V.tabsRestore('{oops', () => true), V.tabsRestore(null, () => true)], [null, null]);
+
+// --- keys of tabs (story 232, 236): the window handler and the busy check ---
+const K = (code, mods) => Object.assign({ code, key: code }, mods);
+eq('tab keys mac: ⌘T new, ⌘3 third, ⌘9 last, ⌥⌘3 is the env (not a tab), ⌘⇧] next, ⌘⌥← panel left, ⌘W close, ⌘D split, ⌘⇧D unsplit',
+  [K('KeyT', { metaKey: true }), K('Digit3', { metaKey: true }), K('Digit9', { metaKey: true }), K('Digit3', { metaKey: true, altKey: true }), K('BracketRight', { metaKey: true, shiftKey: true }),
+    K('ArrowLeft', { metaKey: true, altKey: true }), K('KeyW', { metaKey: true }), K('KeyD', { metaKey: true }), K('KeyD', { metaKey: true, shiftKey: true })].map((e) => V.tabKeyAction(e, 'mac', null)),
+  [{ type: 'new' }, { type: 'goto', n: 3 }, { type: 'last' }, null, { type: 'next' }, { type: 'panel', dir: -1 }, { type: 'close' }, { type: 'split' }, { type: 'unsplit' }]);
+eq('tab keys linux: Ctrl+Tab next, Ctrl+Shift+Tab previous, Ctrl+1 first', [K('Tab', { ctrlKey: true }), K('Tab', { ctrlKey: true, shiftKey: true }), K('Digit1', { ctrlKey: true })].map((e) => V.tabKeyAction(e, 'linux', null)),
+  [{ type: 'next' }, { type: 'prev' }, { type: 'goto', n: 1 }]);
+eq('keys: the defaults of v3 do not collide', V.keyConflicts(Object.assign({ new_chat: 'Alt+Cmd+N', send: 'Enter', freeze: 'Alt+Cmd+.', switch_env: 'Alt+Cmd+{n}' }, V.tabKeyDefaults('mac')), 'mac'), []);
+eq('keys: the old ⌘1…7 for envs collides with the tab numbers; two rows with one key collide', V.keyConflicts({ switch_env: 'Cmd+{n}', tab_new: 'Cmd+T', tab_close: 'Cmd+T' }, 'mac'),
+  [['switch_env', 'tab_digits'], ['tab_new', 'tab_close']]);
+eq('keys: env switching moves from ⌘1…7 to ⌥⌘1…7 (Ctrl+Alt on Linux)', [V.migrateSwitchEnv('Cmd+{n}', 'mac'), V.migrateSwitchEnv('Ctrl+{n}', 'linux'), V.migrateSwitchEnv('Alt+Cmd+{n}', 'mac')], ['Alt+Cmd+{n}', 'Ctrl+Alt+{n}', 'Alt+Cmd+{n}']);
+
+// --- queue line (story 234), first run env pick (story 237), model words (story 240) ---
+const qt = (id, status, created, extra) => Object.assign({ id, status, agent: 'claude', title: id, created_at: new Date(NOW - created * 60000).toISOString(), started_at: status === 'working' ? new Date(NOW - created * 60000).toISOString() : null }, extra);
+const qtasks = [qt('r1', 'working', 30), qt('r2', 'reviewing', 20), qt('q1', 'queued', 10), qt('q2', 'queued', 5), qt('o', 'queued', 1, { agent: 'codex' })];
+eq('queue: over the env limit -> "2nd, frees after" the oldest running task', V.queueInfo(qtasks, 'q2', 2), { pos: 2, after: 'r1' });
+eq('queue: under the limit -> no queue line', V.queueInfo(qtasks, 'q2', 3), null);
+const envs6 = (states) => ['cursor', 'qwen', 'gemini', 'opencode', 'codex', 'claude'].map((id, i) => ({ id, name: id, state: states[i] }));
+eq('first run: the env is picked in the order Claude Code, Codex, opencode, Gemini, Qwen, Cursor - the first signed in',
+  [V.pickEnv(envs6(['ok', 'ok', 'ok', 'ok', 'missing', 'missing'])), V.pickEnv(envs6(['missing', 'missing', 'missing', 'login', 'missing', 'missing'])), V.pickEnv(envs6(['missing', 'missing', 'missing', 'missing', 'missing', 'missing']))].map((x) => [x.why, x.env && x.env.id]),
+  [['ok', 'opencode'], ['login', 'opencode'], ['none', null]]);
+const has = (k) => k in NSI18n.dicts.ru;
+eq('model words: the core key model.desc.<id> is translated, the source note goes to the tooltip only',
+  [V.modelDesc({ id: 'opus', blurb: 'model.desc.opus' }, t, has).text, V.modelDesc({ id: 'zz', blurb: 'Fast. (Google docs, 2026-10-21; не сверено с CLI)' }, t, has)],
+  ['Долгая агентная работа с кодом и знаниями.', { text: 'Fast.', note: 'Google docs, 2026-10-21; не сверено с CLI' }]);
+eq('limit reasons from the core are words, not keys', t('lim.why.after_first_run'), 'данные появятся после первого запуска');
+eq('v3 words exist in ru and en', Object.keys(NSI18n.dicts.ru).filter((k) => /^(live|act3|md|tabs|onb3|model\.desc|lim\.why|keys3)\./.test(k)).filter((k) => !(k in NSI18n.dicts.en)), []);
+
+// bugs of the Playwright walk (ticket 17, criteria 10 and 12)
+const tEn = (k, p) => { NSI18n.setLang('en'); const r = NSI18n.t(k, p); NSI18n.setLang('ru'); return r; };
+eq('budget in en reads "of", in ru "из" (bug 10)', [L.formatBudget(14.89, 40, tEn), L.formatBudget(14.89, 40, t)], ['$14.89 of $40', '$14.89 из $40']);
+eq('the "day" limit window is a word in ru and en, not the raw name (bug 12)', [L.windowName({ name: 'day' }, t), L.windowName({ name: 'day' }, tEn)], ['День', 'Day']);
+}
 const total = out.length;
 if (typeof document !== 'undefined') {
   document.getElementById('out').textContent = out.join('\n') + `\n\n${bad ? 'FAILED ' + bad : 'ALL PASSED'}: ${total - bad} of ${total}`;

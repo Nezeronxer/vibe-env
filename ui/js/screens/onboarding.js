@@ -1,42 +1,54 @@
-// First run: "Опиши задачу и ложись спать" - three steps (Среда, Модель, Проект); and "Нужен git". Both are bare screens (no rail).
+// First run in one step (v3) and "Нужен git". Both are bare screens (no rail).
 (function () {
   const NS = window.NS;
   const { h, ic, envIcon, clear } = NS;
   const t = (k, p) => NS.t(k, p);
 
+  // First run in one step (stories 237-239): the folder; the env and the model are picked by themselves
+  // (first signed-in env in the order Claude Code, Codex, opencode, Gemini, Qwen, Cursor; model "as in the CLI").
+  // No env signed in: the install list or "Войди в …"; the folder can still be chosen, "Отправить" stays off.
   function mountOnboarding(root) {
-    const st = NS.store;
-    let sel = (st.s.envs.find((e) => e.state === 'ok') || st.s.envs[0] || {}).id;
-    const envsBox = h('div', { class: 'envcards', role: 'radiogroup', 'aria-label': t('onb.env') }), found = h('p', { class: 'onb-found' });
-    const modelsBox = h('div', { class: 'onb-models' }), envName = h('span', { class: 'hint' });
-    const stateText = (e) => (e.custom ? t('onb.any_cli') : e.state === 'ok' ? t('onb.found_ok') : e.state === 'missing' ? t('onb.not_found') : e.state === 'login' ? t('onb.found_login') : t('onb.unavailable'));
-    function draw() {
-      clear(envsBox).append(...st.s.envs.map((e) => h('button', { type: 'button', class: 'envcard' + (e.id === sel ? ' on' : '') + (e.state === 'missing' ? ' off' : ''), role: 'radio', 'aria-checked': String(e.id === sel),
-        onclick: () => { sel = e.id; draw(); } }, envIcon(e.custom ? 'custom' : e.id), h('b', { text: e.name }), h('small', { class: e.state === 'ok' && !e.custom ? 'ok' : '', text: stateText(e) }))));
-      const e = st.env(sel);
-      clear(found);
-      if (e && e.kitDir && e.state === 'ok') found.append(ic('i-check'), t('onb.kit_found', { dir: e.kitDir }));
-      envName.textContent = e ? e.name : '';
-      clear(modelsBox);
-      if (e && e.state !== 'missing') { modelsBox.append(NS.models.picker(sel)); st.loadCatalog(sel).then(() => { if (root.isConnected && st.env(sel)) { clear(modelsBox).append(NS.models.picker(sel)); } }); }
-      else modelsBox.append(h('p', { class: 'hint', text: t('onb.model_after_install') }));
-    }
-    async function addAndGo(project) {
+    const st = NS.store, V = window.NSLive;
+    const box = h('div', { class: 'onb onb1' });
+    root.append(box);
+    let folder = null;
+    async function chosen(project) {
       if (!project) return;
-      const e = st.env(sel);
-      NS.nav('env', { env: e && e.state === 'ok' ? e.id : (st.s.envs.find((x) => x.state === 'ok') || {}).id, chat: 'new' });
+      const pick = V.pickEnv(st.s.envs);
+      if (pick.why === 'ok') {
+        const env = pick.env;
+        if (!st.envSettings(env.id).default_model) { try { await st.saveEnvSettings(env.id, { default_model: { family: NS.models.CLI_DEFAULT, version: null } }); } catch (e) { /* the composer shows the CLI default anyway */ } }
+        st.s.lastProject = project.id;
+        return NS.nav('env', { env: env.id, chat: 'new' });
+      }
+      folder = project; draw();
     }
-    NS.onboardingAdded = addAndGo;
+    NS.onboardingAdded = chosen;
+    function envBlock(pick) {
+      const call = NS.api.call, fail = (e) => NS.shell.toast(NS.errHuman(NS.api.errText(e)), true);
+      const recheck = h('button', { type: 'button', class: 'btn', text: t('onb3.recheck'), onclick: async () => { try { await st.reloadEnvs(); } catch (e) { fail(e); } draw(); } });
+      if (pick.why === 'login') {
+        return h('section', { class: 'onb-env' }, h('h2', {}, envIcon(pick.env.id), t('onb3.login_title', { env: pick.env.name })), h('p', { text: t('onb3.login_d') }),
+          h('div', { class: 'acts-row' }, h('button', { type: 'button', class: 'btn primary', text: t('onb3.login_btn'), onclick: () => call('login_env', { env: pick.env.id }).catch(fail) }), recheck));
+      }
+      const list = st.s.envs.filter((e) => !e.custom).sort((a, b) => V.ENV_ORDER.indexOf(a.id) - V.ENV_ORDER.indexOf(b.id));
+      return h('section', { class: 'onb-env' }, h('h2', { text: t('onb3.none_title') }), h('p', { text: t('onb3.none_d') }),
+        h('ul', { class: 'inst' }, list.map((e) => h('li', {}, envIcon(e.id), h('b', { text: e.name }), e.hint ? h('code', { text: e.hint }) : h('span'),
+          h('button', { type: 'button', class: 'btn sm', text: t('onb3.install'), onclick: () => call('install_env', { env: e.id }).catch(fail) })))),
+        h('div', { class: 'acts-row' }, recheck));
+    }
+    function draw() {
+      const pick = V.pickEnv(st.s.envs);
+      const pickBtn = h('button', { type: 'button', class: 'btn primary', text: t('onb3.pick'), onclick: async () => chosen(await NS.projects.addByDialog()) });
+      const drop = h('div', { class: 'drop big', role: 'group', 'aria-label': t('onb3.drop') }, ic('i-folder'),
+        h('div', {}, h('b', { text: folder ? t('onb3.folder', { path: folder.path || folder.name }) : t('onb3.drop') }), h('span', { text: t('onb3.drop_d') })), pickBtn);
+      const line = pick.why === 'ok' ? h('p', { class: 'onb-line' }, envIcon(pick.env.id), t('onb3.line', { env: pick.env.name })) : null;
+      const off = pick.why !== 'ok' && folder ? h('div', { class: 'onb-off' }, h('textarea', { rows: 2, disabled: true, placeholder: t('onb3.ph'), 'aria-label': t('onb3.ph') }),
+        h('div', { class: 'comp-row' }, h('span', { class: 'hint', text: t('onb3.send_off') }), h('span', { class: 'grow' }), h('button', { type: 'button', class: 'btn primary', disabled: true, title: t('onb3.send_off') }, t('composer.send')))) : null;
+      NS.append(clear(box), [h('div', { class: 'onb-brand' }, ic('i-moon'), 'Nightshift'), h('h1', { text: t('onb3.title') }), h('p', { class: 'lead', text: t('onb3.lead') }),
+        drop, line, pick.why === 'ok' ? null : envBlock(pick), off, h('p', { class: 'onb-note' }, ic('i-ask', 'amber'), t('onb.three_cases'))]);
+    }
     draw();
-    root.append(h('div', { class: 'onb' },
-      h('div', { class: 'onb-brand' }, ic('i-moon'), 'Nightshift'), h('h1', { text: t('onb.title') }), h('p', { class: 'lead', text: t('onb.lead') }),
-      h('ol', { class: 'onb-steps' },
-        h('li', {}, h('h2', {}, h('span', { class: 'num', text: '1' }), t('onb.step_env')), h('p', { class: 'hint', text: t('onb.env_d') }), envsBox, found),
-        h('li', {}, h('h2', {}, h('span', { class: 'num', text: '2' }), t('onb.step_model'), ' ', envName), modelsBox),
-        h('li', {}, h('h2', {}, h('span', { class: 'num', text: '3' }), t('onb.step_project')),
-          h('div', { class: 'drop' }, ic('i-folder'), h('div', {}, h('b', { text: t('onb.drop') }), h('span', { text: t('onb.drop_d') })),
-            h('button', { type: 'button', class: 'btn primary', text: t('onb.pick'), onclick: async () => addAndGo(await NS.projects.addByDialog()) })))),
-      h('p', { class: 'onb-note' }, ic('i-ask', 'amber'), t('onb.three_cases'))));
     return { destroy() { NS.onboardingAdded = null; }, update(evt) { if (evt === 'envs') draw(); } };
   }
 

@@ -94,6 +94,12 @@
     const m = /^([a-z_]+):\s*(.*)$/.exec(s);
     return m && I.has('err.' + m[1]) ? NS.t('err.' + m[1], { detail: m[2] }) : s;
   };
+  // a limit reason of the core: a key (after_first_run) -> lim.why.<key>; a sentence is shown as is; an unknown key never raw
+  NS.limitWhy = (why) => {
+    const w = String(why || '').trim(), I = window.NSI18n;
+    if (I.has('lim.why.' + w)) return NS.t('lim.why.' + w);
+    return /^[a-z][a-z0-9]*(_[a-z0-9]+)+$/.test(w) ? NS.t('lim.no_data') : w;
+  };
   const p2 = (n) => String(n).padStart(2, '0');
   NS.hhmm = (v) => { const d = new Date(v); return isNaN(d) ? '' : `${p2(d.getHours())}:${p2(d.getMinutes())}`; };
   NS.isNotGit = (e) => /not a git/i.test(NS.api.errText(e));

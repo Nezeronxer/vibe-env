@@ -16,12 +16,16 @@
     'open_chat_terminal',
     // data that cannot be read at start (G16.4): ask, show the folder, start clean after a confirmation
     'data_state', 'open_data_folder', 'start_fresh',
+    // v3 ("Границы v3"): the task log with actions, page by page
+    'get_task_log',
   ]);
   const EVENTS = new Set(['task-changed', 'task-log', 'task-removed', 'project-changed', 'chat-msg', 'limits-changed', 'catalog-changed', 'frozen',
     'focus-input', 'open-task', 'tauri://drag-enter', 'tauri://drag-leave', 'tauri://drag-drop',
     // app -> window notices named in task 13 without a fixed name: settings file replaced (G16.4), system notifications blocked (R15i.7),
     // tray host missing (R10.2), kit install rolled back at start (G25.9). Names chosen by task 15, see its report.
-    'settings-replaced', 'notify-blocked', 'tray-state', 'kits-recovered']);
+    'settings-replaced', 'notify-blocked', 'tray-state', 'kits-recovered',
+    // v3: actions of agents with output and diff, the answer while it is written
+    'task-action', 'chat-action', 'chat-delta']);
 
   const tauri = () => window.__TAURI__;
   function call(cmd, args) {
