@@ -5,6 +5,7 @@
     // data that cannot be read (G16.4)
     'data.title': 'Данные приложения не читаются', 'data.lead': 'Файл с задачами и настройками повреждён. Он не тронут, рядом лежит его копия: {copy}', 'data.open': 'Открыть папку', 'data.fresh': 'Начать с чистого листа (копия останется)', 'data.fresh_title': 'Начать с чистого листа?', 'data.fresh_text': 'Старый файл будет отложен в сторону, приложение начнёт с пустого. Копия останется, ничего не удаляется.', 'data.fresh_ok': 'Начать с чистого листа',
     'err.terminal_edits_lost': 'правки там не сохранятся - поручи задачей', 'err.waiting_folder': 'папка проекта не найдена: {detail}. Задача ждёт',
+    'err.protected_file_committed': 'В ветке задачи ключ или .env ({detail}) - «Защищённые пути» не дают его влить, запушить или отправить в PR', 'err.protected_paths_not_committed': 'не закоммичено - «Защищённые пути»: {detail}',
     // chat: continue in the terminal (A07.2)
     'chat.terminal': 'Продолжить в терминале', 'chat.terminal_warn': 'правки там не сохранятся - поручи задачей',
     // edge of the window
@@ -125,7 +126,7 @@
     'kit.err.interrupted': 'Установка прервана, изменения откатены.', 'kit.err.io': 'Ошибка диска: {detail}.', 'kit.err.not_applied': 'Эта CLI перезаписала файл поверх набора: закрой {detail} и повтори.',
     'kit.err.wrong_env': 'Это набор {detail}. В {env} он не ставится: у каждой среды свои скиллы и правила.',
     'kit.skip.inline_form': 'записан внутри общего файла, не перенесён', 'kit.skip.secret_file': 'файл с секретом', 'kit.skip.too_large': 'слишком большой', 'kit.skip.binary_with_secret': 'двоичный файл с секретом',
-    'kit.skip.not_in_layout': 'вне раскладки среды', 'kit.skip.layout_unverified': 'раскладка не сверена', 'import.skipped': 'Не перенесено', 'import.held_command': 'Настройки, которые что-то запускают',
+    'kit.skip.not_in_layout': 'вне раскладки среды', 'kit.skip.layout_unverified': 'раскладка не сверена', 'import.skipped': 'Не перенесено', 'import.held_command': 'Настройки, которые что-то запускают или меняют провайдера',
     'kits.kept': 'Откат оставил то, что изменилось после установки: {list}', 'kits.not_applied': 'CLI перезаписала файл поверх набора: закрой {env} и повтори установку или откати.', 'kits.dangerous': 'Выключены при импорте, включаются по одному: {list}',
     'kits.exported_n': 'Выгружено: {path}. Секретов заменено: {n}.',
     // import screen
@@ -136,7 +137,7 @@
     'chg.add_1': 'добавится', 'chg.add_n': 'добавятся', 'chg.rep_1': 'заменится, старый уйдёт в снимок', 'chg.rep_n': 'заменятся, старые уйдут в снимок', 'chg.same': 'уже есть, без изменений', 'chg.diff': 'разница',
     'chg.sign_add': 'добавится', 'chg.sign_replace': 'заменится', 'chg.sign_same': 'уже есть',
     'import.vars': 'Недостающие переменные', 'import.value': 'значение', 'import.var_d': 'Нужен {who}. Значение вводишь ты, в наборе его нет.',
-    'import.hooks': 'Хуки', 'import.hooks_d': 'выключены, пока ты не включишь каждый', 'import.mcp': 'MCP-серверы', 'import.scripts': 'Скиллы со скриптами', 'import.has_scripts': 'содержит скрипты',
+    'import.hooks': 'Хуки', 'import.hooks_d': 'выключены, пока ты не включишь каждый', 'import.mcp': 'MCP-серверы', 'import.scripts': 'Скиллы и субагенты, которые что-то запускают', 'import.has_scripts': 'содержит скрипты',
     'import.script': 'Текст скрипта', 'import.runs_alone': 'запускается сам - включай, только если доверяешь',
     'import.install': 'Установить', 'import.installed': 'Готово: к наборам', 'import.installed_d': 'Набор установлен. Что не включилось, включается из списка наборов.', 'import.secret_file': '{name} сохранён в файл {path}: {warning}', 'import.choose_where': 'Выбери, куда ставить - до этого «Установить» не работает.', 'import.snapshot': 'Перед установкой будет снимок - откат одной кнопкой.',
     'import.done': 'Набор «{name}» установлен. Откатить можно в «Наборах».',
@@ -145,6 +146,7 @@
     // data that cannot be read (G16.4)
     'data.title': 'The app data cannot be read', 'data.lead': 'The file with tasks and settings is damaged. It is untouched, a copy is next to it: {copy}', 'data.open': 'Open the folder', 'data.fresh': 'Start clean (the copy stays)', 'data.fresh_title': 'Start clean?', 'data.fresh_text': 'The old file is put aside and the app starts empty. The copy stays, nothing is deleted.', 'data.fresh_ok': 'Start clean',
     'err.terminal_edits_lost': 'edits made there are not kept - give it to an agent as a task', 'err.waiting_folder': 'the project folder is not found: {detail}. The task waits',
+    'err.protected_file_committed': 'The task branch has a key or a .env ({detail}): "Protected paths" keep it from being merged, pushed or sent in a PR', 'err.protected_paths_not_committed': 'not committed - "Protected paths": {detail}',
     'chat.terminal': 'Continue in terminal', 'chat.terminal_warn': 'edits made there are not kept - hand them over as a task',
     'frozen.edge': 'Frozen', 'role.queue': 'Queue',
     'hint.empty': 'This field cannot be empty.', 'hint.key_busy': 'This combination is already taken.', 'hint.key_digit': 'A digit with a modifier is needed, for example ⌘1.',
@@ -251,7 +253,7 @@
     'kit.err.interrupted': 'The install was interrupted, changes rolled back.', 'kit.err.io': 'Disk error: {detail}.', 'kit.err.not_applied': 'The CLI saved its own file over the kit: close {detail} and try again.',
     'kit.err.wrong_env': 'This is a {detail} kit. It is not installed into {env}: every env has its own skills and rules.',
     'kit.skip.inline_form': 'written inside a shared file, not carried over', 'kit.skip.secret_file': 'a file with a secret', 'kit.skip.too_large': 'too large', 'kit.skip.binary_with_secret': 'a binary file with a secret',
-    'kit.skip.not_in_layout': 'outside the env layout', 'kit.skip.layout_unverified': 'layout not verified', 'import.skipped': 'Not carried over', 'import.held_command': 'Settings that run something',
+    'kit.skip.not_in_layout': 'outside the env layout', 'kit.skip.layout_unverified': 'layout not verified', 'import.skipped': 'Not carried over', 'import.held_command': 'Settings that run something or change the provider',
     'kits.kept': 'The rollback kept what changed after the install: {list}', 'kits.not_applied': 'The CLI saved its file over the kit: close {env} and install again, or roll back.', 'kits.dangerous': 'Held on import, turned on one by one: {list}',
     'kits.exported_n': 'Exported: {path}. Secrets replaced: {n}.',
     'import.title': 'Import: {name}', 'import.update': 'Update: {name}', 'import.lead': 'A kit for {env} from {source}. Nothing is installed until you press "Install".',
@@ -261,7 +263,7 @@
     'chg.add_1': 'will be added', 'chg.add_n': 'will be added', 'chg.rep_1': 'will be replaced, the old one goes to a snapshot', 'chg.rep_n': 'will be replaced, the old ones go to a snapshot', 'chg.same': 'already there, unchanged', 'chg.diff': 'difference',
     'chg.sign_add': 'added', 'chg.sign_replace': 'replaced', 'chg.sign_same': 'already there',
     'import.vars': 'Missing variables', 'import.value': 'value', 'import.var_d': 'Needed by {who}. You type the value, it is not in the kit.',
-    'import.hooks': 'Hooks', 'import.hooks_d': 'off until you turn each one on', 'import.mcp': 'MCP servers', 'import.scripts': 'Skills with scripts', 'import.has_scripts': 'contains scripts',
+    'import.hooks': 'Hooks', 'import.hooks_d': 'off until you turn each one on', 'import.mcp': 'MCP servers', 'import.scripts': 'Skills and subagents that run something', 'import.has_scripts': 'contains scripts',
     'import.script': 'Script text', 'import.runs_alone': 'runs by itself - turn on only if you trust it',
     'import.install': 'Install', 'import.installed': 'Done: to kits', 'import.installed_d': 'The kit is installed. Anything not switched on is switched on from the kits list.', 'import.secret_file': '{name} saved to the file {path}: {warning}', 'import.choose_where': 'Choose where to install - until then "Install" does nothing.', 'import.snapshot': 'A snapshot is taken before installing - one button rolls it back.',
     'import.done': 'Kit "{name}" installed. You can roll it back in "Kits".',

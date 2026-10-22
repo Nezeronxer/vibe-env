@@ -219,6 +219,9 @@ impl Engine {
             self.rm_wt(&p.path, &wt, true).map_err(gerr)?;
         }
         let wt = self.add_wt(&p.path, &self.worktrees_dir, &t.id, &t.branch, &p.base_branch).map_err(gerr)?;
+        if !super::lk(&self.store).settings().envs.get(&t.agent).cloned().unwrap_or_default().protected_paths {
+            git::set_protected(&wt, false).map_err(gerr)?; // on by default in every copy (R17i.2)
+        }
         t.worktree = Some(wt.clone());
         self.save(t)?;
         self.log(&t.id, LogKind::Git, &format!("worktree {} on {}", wt.display(), t.branch));
@@ -360,7 +363,11 @@ impl Engine {
             t.outcome.summary = Some(sig.body.chars().take(500).collect());
         }
         if self.g_uncommit(&wt, &p.base_branch).map_err(gerr)? {
-            self.log(&t.id, LogKind::Git, "agent committed a copied local file; its commits were folded back without it");
+            self.log(&t.id, LogKind::Git, "agent committed a copied local file or a key; its commits were folded back without it");
+        }
+        let kept_out = git::protected_pending(&wt);
+        if !kept_out.is_empty() {
+            self.log(&t.id, LogKind::Git, &format!("protected_paths_not_committed: {}", kept_out.join(", ")));
         }
         self.g_commit(&wt, &t.title).map_err(gerr)?;
         if let Some(reason) = sig.deferred {
@@ -648,6 +655,11 @@ impl Engine {
                 let leaked = git::try_hidden_committed(&wt, &p.base_branch).map_err(gerr)?;
                 if !leaked.is_empty() {
                     return Err(format!("hidden_file_committed: {}", leaked.join(", ")));
+                }
+                // a key or a .env some commit of the branch added (R17i.2): nothing is merged, pushed or put in a PR
+                let keys = git::protected_committed(&wt, &p.base_branch).map_err(gerr)?;
+                if !keys.is_empty() {
+                    return Err(format!("protected_file_committed: {}", keys.join(", ")));
                 }
                 let stats = git::diffstat(&wt, &p.base_branch);
                 t.outcome.files_changed = stats.len() as u32;

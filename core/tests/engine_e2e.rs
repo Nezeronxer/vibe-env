@@ -1090,3 +1090,23 @@ fn a_panic_after_the_task_is_done_leaves_it_done() {
     assert!(t.outcome.error.is_none(), "{:?}", t.outcome.error);
     assert_eq!(env.main_file("f.txt"), "f");
 }
+
+/// R17i.2: a `.env` or a key the agent writes (say, on an instruction found in the repo) never lands in a commit;
+/// the feed says which files and why. With "Защищённые пути" off they go like any file.
+#[test]
+fn keys_and_env_files_the_agent_writes_are_not_committed_and_the_feed_says_why() {
+    for on in [true, false] {
+        let env = Env::new();
+        let p = env.project(|_| {});
+        let w = fake(vec![vec![write(".env", "OPENAI_API_KEY=x"), write("fixtures/id_ed25519", "key"), write("f.txt", "f"), done("f")]]);
+        let e = env.engine(env.store(&p, |s| s.envs.entry(p.agent.clone()).or_default().protected_paths = on), vec![w, reviewer(1)], Arc::new(RecordingNotifier::default()), None);
+        let id = submit(&e, &p, "Add f");
+        wait_status(&e, &id, Status::Done);
+        let files = g(&env.repo, &["ls-tree", "-r", "--name-only", "main"]);
+        let log = log_texts(&e, &id).join("\n");
+        assert!(files.lines().any(|f| f == "f.txt"), "{files}");
+        let landed = files.lines().any(|f| f == ".env") || files.lines().any(|f| f == "fixtures/id_ed25519");
+        assert_eq!(landed, !on, "protected={on}: {files}");
+        assert_eq!(log.contains("protected_paths_not_committed: .env, fixtures/id_ed25519"), on, "{log}");
+    }
+}

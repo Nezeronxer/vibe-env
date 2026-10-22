@@ -622,3 +622,48 @@ fn diff_file_also_stops_at_a_byte_limit() {
     assert!(df.truncated);
     assert!(df.text.len() <= 256 * 1024, "{}", df.text.len());
 }
+
+fn tree_of(dir: &Path, rev: &str) -> Vec<String> {
+    g(dir, &["ls-tree", "-r", "--name-only", rev]).lines().map(str::to_string).collect()
+}
+
+/// R17i.2: a key or a `.env` the agent wrote never goes into a commit of the app; `.env.example` and code still do.
+#[test]
+fn protected_paths_stay_out_of_every_commit_and_the_branch() {
+    let (d, repo) = new_repo();
+    let wt = wt_for(&d, &repo, "t1", "ns/abc12345-keys");
+    fs::create_dir_all(wt.join("fixtures")).unwrap();
+    for f in [".env", ".env.local", "fixtures/id_ed25519", "fixtures/server.pem", ".netrc", "code.rs", ".env.example"] {
+        fs::write(wt.join(f), "x\n").unwrap();
+    }
+    let mut pending = protected_pending(&wt);
+    pending.sort();
+    assert_eq!(pending, [".env", ".env.local", ".netrc", "fixtures/id_ed25519", "fixtures/server.pem"]);
+    assert!(commit_all(&wt, "work").unwrap().is_some());
+    let mut files = tree_of(&wt, "HEAD");
+    files.sort();
+    assert_eq!(files, [".env.example", "a.txt", "code.rs"]);
+    assert!(wt.join(".env").exists(), "the file stays in the copy, only out of git");
+
+    // the agent commits a key itself: the branch says so, and folding it back leaves it out of the next commit
+    fs::write(wt.join("id_rsa"), "k\n").unwrap();
+    g(&wt, &["add", "-f", "id_rsa"]);
+    g(&wt, &["commit", "-q", "-m", "oops"]);
+    assert_eq!(protected_committed(&wt, "main").unwrap(), ["id_rsa"]);
+    assert!(uncommit_hidden(&wt, "main").unwrap());
+    commit_all(&wt, "again").unwrap();
+    assert!(!tree_of(&wt, "HEAD").contains(&"id_rsa".to_string()));
+    assert!(protected_committed(&wt, "main").unwrap().is_empty());
+}
+
+#[test]
+fn protected_paths_off_commits_them_as_any_file() {
+    let (d, repo) = new_repo();
+    let wt = wt_for(&d, &repo, "t1", "ns/abc12345-off");
+    set_protected(&wt, false).unwrap();
+    fs::write(wt.join(".env"), "x\n").unwrap();
+    assert!(protected_pending(&wt).is_empty());
+    commit_all(&wt, "work").unwrap();
+    assert!(tree_of(&wt, "HEAD").contains(&".env".to_string()));
+    assert!(protected_committed(&wt, "main").unwrap().is_empty());
+}

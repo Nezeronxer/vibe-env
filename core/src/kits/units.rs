@@ -188,14 +188,38 @@ pub(crate) fn is_script(rel: &str, bytes: Option<&[u8]>) -> bool {
     ext.is_some_and(|e| SCRIPT_EXT.contains(&e.as_str())) || bytes.is_some_and(|b| b.starts_with(b"#!")) || (!name.contains('.') && bytes.is_some_and(|b| std::str::from_utf8(b).is_err()))
 }
 
-/// Settings that run a program or change what runs (status line, key helpers, env, notify…)
-/// are held like hooks.
+/// A setting goes in without a tick only when its key is on the environment's list of safe keys (`safe_settings`) and
+/// nothing in it runs a program (status line, key helpers, env, notify…); the rest is held like a hook.
+fn held_setting(l: &Layout, key: &str, text: &str) -> Option<HeldKind> {
+    let top = key.split('.').next().unwrap_or(key);
+    (!l.safe_settings.contains(&top) || runs_something(key, text)).then_some(HeldKind::Command)
+}
+
 fn runs_something(key: &str, text: &str) -> bool {
     static R: OnceLock<Regex> = OnceLock::new();
     let r = R.get_or_init(|| {
         Regex::new(r#"(?i)(command|helper|statusline|refresh|hook|plugin|mcp|^env$|shell|script|exec|notify|"cmd"|"args"|\bargs\s*=|\bcommand\s*=|permission|allow|sandbox|approval|trust|bypass|yolo|danger|^tools$|autoaccept)"#).unwrap()
     });
     r.is_match(key) || r.is_match(text)
+}
+
+/// A skill or subagent file that runs something by itself: frontmatter with hooks, MCP servers, tools or permissions
+/// (`hooks`, `mcpServers`, `permissionMode`, `allowed-tools`, `tools`, opencode `permission`), a `!`command`` line in
+/// the text, or frontmatter that does not close (it cannot be read reliably, so it is held too). Keys are looked for
+/// anywhere in the frontmatter (flow style `{hooks: …}` too): a false hit only means one more tick.
+pub(crate) fn runs_in_markdown(b: &[u8]) -> bool {
+    static FM: OnceLock<Regex> = OnceLock::new();
+    let s = String::from_utf8_lossy(b);
+    if s.contains("!`") {
+        return true;
+    }
+    let s = s.trim_start_matches('\u{feff}');
+    let Some(rest) = s.strip_prefix("---") else { return false };
+    let Some(end) = rest.find("\n---") else { return true };
+    let fm = FM.get_or_init(|| {
+        Regex::new(r#"(?i)(?:^|[\s{,?])["']?(hooks|mcp_?servers|permission_?mode|permissions?|allowed[-_]?tools|tools)["']?\s*:"#).unwrap()
+    });
+    fm.is_match(&rest[..end])
 }
 
 /// Script files a hook command points to, as kit paths (`~/.claude/hooks/x.py` → `hooks/x.py`).
@@ -274,7 +298,7 @@ pub(crate) fn cut(l: &Layout, home: &str, t: &dyn Tree, all_files: Option<&[Stri
             let scripts: Vec<String> = files.iter().filter(|f| is_script(f, t.read(f).as_deref())).cloned().collect();
             taken.extend(files.iter().cloned());
             let mut u = Unit::file(Group::Skills, format!("skill:{name}"), name, files);
-            if !scripts.is_empty() {
+            if !scripts.is_empty() || u.files.iter().any(|f| !scripts.contains(f) && t.read(f).is_some_and(|b| runs_in_markdown(&b))) {
                 u.held = Some(HeldKind::ScriptedSkill);
                 u.scripts = scripts;
             }
@@ -285,7 +309,11 @@ pub(crate) fn cut(l: &Layout, home: &str, t: &dyn Tree, all_files: Option<&[Stri
         for f in t.list(dir) {
             taken.insert(f.clone());
             let label = f[dir.len() + 1..].to_string();
-            units.push(Unit::file(Group::Agents, format!("agent:{label}"), label, vec![f]));
+            let mut u = Unit::file(Group::Agents, format!("agent:{label}"), label, vec![f.clone()]);
+            if t.read(&f).is_some_and(|b| is_script(&f, Some(&b)) || runs_in_markdown(&b)) {
+                u.held = Some(HeldKind::ScriptedSkill);
+            }
+            units.push(u);
         }
     }
     if let (true, Some(hf)) = (l.available(Group::Hooks), l.hooks_file) {
@@ -436,7 +464,7 @@ fn json_units(l: &Layout, home: &str, cf: &str, m: &Map<String, Value>, exists: 
                 });
             }
         } else if l.available(Group::Settings) {
-            let held = runs_something(k, &v.to_string()).then_some(HeldKind::Command);
+            let held = held_setting(l, k, &v.to_string());
             units.push(Unit {
                 key: format!("setting:{k}"),
                 group: Group::Settings,
@@ -483,7 +511,7 @@ fn toml_units(l: &Layout, home: &str, cf: &str, s: &str, exists: &dyn Fn(&str) -
                         key: format!("setting:{key}"),
                         group: Group::Settings,
                         label: key.clone(),
-                        held: runs_something(key, text).then_some(HeldKind::Command),
+                        held: held_setting(l, key, text),
                         files: vec![],
                         conf: Some(ConfOp::TomlKey { file: cf.into(), key: key.clone(), text: text.clone() }),
                         scripts: vec![],
@@ -533,7 +561,7 @@ fn toml_units(l: &Layout, home: &str, cf: &str, s: &str, exists: &dyn Fn(&str) -
                         key: format!("setting:[{header}]"),
                         group: Group::Settings,
                         label: format!("[{header}]"),
-                        held: runs_something(header, &text).then_some(HeldKind::Command),
+                        held: held_setting(l, header, &text),
                         files: vec![],
                         conf: Some(ConfOp::TomlTables { file: cf.into(), sel, text }),
                         scripts: vec![],

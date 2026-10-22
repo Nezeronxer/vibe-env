@@ -57,6 +57,9 @@ pub(crate) struct Layout {
     /// user scope, `.mcp.json` at the project root). The kit carries it as `.mcp.json`.
     pub mcp_file: Option<McpFile>,
     pub settings: bool,
+    /// Top-level settings keys (TOML: keys and table names) a kit sets without a tick: model, theme, interface. Any
+    /// other key may move the provider, its address or its key, or run something, and is held like a hook.
+    pub safe_settings: &'static [&'static str],
     pub unverified: &'static [Group],
 }
 
@@ -82,6 +85,7 @@ pub(crate) static LAYOUTS: &[Layout] = &[
         mcp_key: Some("mcpServers"),
         mcp_file: Some(McpFile { global: ".claude.json", project: ".mcp.json" }),
         settings: true,
+        safe_settings: &["model", "theme", "outputStyle", "alwaysThinkingEnabled", "includeCoAuthoredBy", "cleanupPeriodDays", "spinnerTipsEnabled"],
         unverified: &[],
     },
     Layout {
@@ -101,6 +105,7 @@ pub(crate) static LAYOUTS: &[Layout] = &[
         mcp_key: Some("mcp_servers"),
         mcp_file: None,
         settings: true,
+        safe_settings: &["model", "model_reasoning_effort", "model_reasoning_summary", "model_verbosity", "hide_agent_reasoning", "show_raw_agent_reasoning", "tui"],
         unverified: &[Group::Skills, Group::Agents],
     },
     Layout {
@@ -120,6 +125,7 @@ pub(crate) static LAYOUTS: &[Layout] = &[
         mcp_key: Some("mcpServers"),
         mcp_file: None,
         settings: true,
+        safe_settings: &["theme", "ui"],
         unverified: &[Group::Skills],
     },
     Layout {
@@ -140,6 +146,7 @@ pub(crate) static LAYOUTS: &[Layout] = &[
         mcp_key: Some("mcp"),
         mcp_file: None,
         settings: true,
+        safe_settings: &["$schema", "theme", "model", "small_model", "keybinds", "tui", "username"],
         unverified: &[],
     },
     Layout {
@@ -159,6 +166,7 @@ pub(crate) static LAYOUTS: &[Layout] = &[
         mcp_key: None,
         mcp_file: None,
         settings: false,
+        safe_settings: &[],
         unverified: ALL,
     },
     Layout {
@@ -178,6 +186,7 @@ pub(crate) static LAYOUTS: &[Layout] = &[
         mcp_key: Some("mcpServers"),
         mcp_file: None,
         settings: true,
+        safe_settings: &["theme", "ui"],
         unverified: &[Group::Skills],
     },
 ];

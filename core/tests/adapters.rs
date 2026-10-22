@@ -181,7 +181,7 @@ fn arg_after(v: &[String], flag: &str) -> String {
 }
 
 #[test]
-fn claude_worker_bans_push_remote_sudo_and_never_denies_read() {
+fn claude_worker_bans_push_remote_sudo_and_reads_of_ssh_only() {
     let v = args(&Claude::new(), &run(Role::Worker));
     assert_eq!(arg_after(&v, "--permission-mode"), "bypassPermissions");
     let settings: serde_json::Value = serde_json::from_str(&arg_after(&v, "--settings")).unwrap();
@@ -189,9 +189,10 @@ fn claude_worker_bans_push_remote_sudo_and_never_denies_read() {
     for d in ["Bash(git push:*)", "Bash(git remote:*)", "Bash(sudo:*)"] {
         assert!(deny.contains(&d), "{d} missing in {deny:?}");
     }
-    // Read(...) denies become OS-level bans in the sandbox and break TLS (.pem) for all subprocesses
-    assert!(deny.iter().all(|d| !d.starts_with("Read")), "{deny:?}");
-    assert!(!arg_after(&v, "--settings").contains("Read("));
+    // R17i.2: ~/.ssh is not read; no other Read(...) deny: they become OS-level bans in the sandbox and a `*.pem` one
+    // breaks TLS for all subprocesses
+    assert!(deny.contains(&"Read(~/.ssh/**)"), "{deny:?}");
+    assert_eq!(deny.iter().filter(|d| d.starts_with("Read")).count(), 1, "{deny:?}");
     assert_eq!(settings["sandbox"]["enabled"], true);
     assert_eq!(arg_after(&v, "--append-system-prompt"), "no push");
     assert_eq!(v.last().unwrap(), "do it");

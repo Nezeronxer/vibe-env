@@ -61,10 +61,17 @@ const FORBIDDEN_NAMES: [&str; 15] = ["PATH", "HOME", "SHELL", "ZDOTDIR", "ENV", 
 const FORBIDDEN_PREFIXES: [&str; 16] = ["BASH_", "ZSH", "XDG_", "LD_", "DYLD_", "GIT_", "SSH_", "PYTHON", "PERL", "RUBY", "NODE_", "NPM_CONFIG_", "JAVA_", "_JAVA_", "SSL_", "CURL_"];
 const FORBIDDEN_SUFFIXES: [&str; 12] = ["_HOME", "_CONFIG_DIR", "ASKPASS", "_PATH", "_OPTIONS", "_OPTS", "LIB", "_BASE_URL", "_API_BASE", "_PROXY", "_CA_CERTS", "_CA_BUNDLE"];
 
-/// Whether a kit may set the variable `name` at all (see `FORBIDDEN_NAMES`).
+/// The only names a kit may set: ones that look like a secret, the same signs the export looks for (§26). A list of
+/// what is safe, not of what is dangerous: CLI variables like `CLAUDE_ENV_FILE`, `OPENCODE_CONFIG` or
+/// `CODE_ASSIST_ENDPOINT` run a file or move the key elsewhere and no list of classes names all of them.
+const SECRET_SUFFIXES: [&str; 4] = ["_KEY", "_TOKEN", "_SECRET", "_PASSWORD"];
+
+/// Whether a kit may set the variable `name` at all: a secret-like name (`SECRET_SUFFIXES`) outside every forbidden
+/// class (`FORBIDDEN_NAMES`).
 pub fn env_name_allowed(name: &str) -> bool {
     let n = name.to_ascii_uppercase();
     valid_name(name)
+        && SECRET_SUFFIXES.iter().any(|x| n.ends_with(x))
         && !FORBIDDEN_NAMES.contains(&n.as_str())
         && !FORBIDDEN_PREFIXES.iter().any(|p| n.starts_with(p))
         && !FORBIDDEN_SUFFIXES.iter().any(|x| n.ends_with(x))

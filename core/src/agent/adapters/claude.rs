@@ -33,10 +33,10 @@ impl Default for Claude {
     }
 }
 
-/// `--settings` JSON. No `Read(...)` deny on purpose: in the sandbox those become OS-level
-/// denials, and blocking `*.pem` breaks TLS for every subprocess.
+/// `--settings` JSON. The only `Read(...)` deny is `~/.ssh` (R17i.2): in the sandbox those become OS-level
+/// denials, and blocking `*.pem` would break TLS for every subprocess.
 fn settings_json(open_network: bool) -> String {
-    let mut permissions = json!({ "deny": ["Bash(git push:*)", "Bash(git remote:*)", "Bash(sudo:*)"] });
+    let mut permissions = json!({ "deny": ["Bash(git push:*)", "Bash(git remote:*)", "Bash(sudo:*)", "Read(~/.ssh/**)"] });
     if open_network {
         // Why: sandboxed commands get no network unless the host is allowed, and `claude -p` cannot ask, so
         // npm/pip/cargo would fail. Risk: the agent can then send any file of the working copy (including

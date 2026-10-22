@@ -14,6 +14,7 @@ mod source;
 mod toml_lite;
 mod units;
 
+pub(crate) use scrub::is_secret_file;
 pub use secrets::{env_name_allowed, env_value_ok, SecretSaved, SecretStore, SystemKeyring};
 pub use snap::SnapshotState;
 
