@@ -347,6 +347,7 @@ pub struct Settings {
     pub notify: NotifySettings,
     pub look: LookSettings,
     pub keys: KeySettings,
+    pub ui: UiSettings,
     pub keep: KeepSettings,
     /// Silence on the log for this long = stalled.
     pub stall_min: u32,
@@ -421,6 +422,10 @@ pub struct KeySettings {
     pub switch_env: String,
     pub send: String,
     pub freeze: String,
+    pub tab_new: String,
+    pub tab_close: String,
+    pub tab_split: String,
+    pub tab_unsplit: String,
 }
 impl Default for KeySettings {
     fn default() -> Self {
@@ -431,8 +436,21 @@ impl Default for KeySettings {
             switch_env: pick("Cmd+{n}", "Ctrl+{n}"),
             send: "Enter".into(),
             freeze: pick("Alt+Cmd+.", "Ctrl+Alt+."),
+            // the same as tabKeyDefaults in ui/logic-v3.js
+            tab_new: pick("Cmd+T", "Ctrl+T"),
+            tab_close: pick("Cmd+W", "Ctrl+W"),
+            tab_split: pick("Cmd+D", "Ctrl+D"),
+            tab_unsplit: pick("Shift+Cmd+D", "Ctrl+Shift+D"),
         }
     }
+}
+
+/// What the window keeps for itself; the core stores it and gives it back as is.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Default)]
+#[serde(default)]
+pub struct UiSettings {
+    /// Open tabs and split panes (ui/js/screens/tabs.js); None until the window saves them.
+    pub tabs: Option<serde_json::Value>,
 }
 
 /// Retention (spec 29, "Хранение").
@@ -468,6 +486,7 @@ impl Default for Settings {
             notify: NotifySettings::default(),
             look: LookSettings::default(),
             keys: KeySettings::default(),
+            ui: UiSettings::default(),
             keep: KeepSettings::default(),
             stall_min: 15,
             autopick_min: 10,

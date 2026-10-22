@@ -256,3 +256,27 @@ fn unreadable_settings_fall_back_to_defaults_and_unreadable_state_is_never_repla
     assert_eq!(std::fs::read(&copy).unwrap(), b"{ not json");
     assert_eq!(std::fs::read(&path).unwrap(), b"{ not json", "nothing was overwritten with an empty state");
 }
+
+#[test]
+fn tab_state_and_tab_keys_from_the_ui_survive_a_save_and_a_reopen_and_old_files_get_defaults() {
+    // old settings without them: the defaults the UI has (ui/logic-v3.js tabKeyDefaults)
+    let (_d, s) = open_fixture("state-v1.json");
+    let st = serde_json::to_value(s.settings()).unwrap();
+    let (m, sh) = if cfg!(target_os = "macos") { ("Cmd", "Shift+Cmd") } else { ("Ctrl", "Ctrl+Shift") };
+    for (k, v) in [("tab_new", format!("{m}+T")), ("tab_close", format!("{m}+W")), ("tab_split", format!("{m}+D")), ("tab_unsplit", format!("{sh}+D"))] {
+        assert_eq!(st["keys"][k], v.as_str(), "{k}");
+    }
+    assert!(st["ui"]["tabs"].is_null());
+
+    // what the UI sends to set_settings (tabs.js persist, settings.js setK)
+    let d = tempfile::tempdir().unwrap();
+    let tabs = serde_json::json!({ "v": 1, "tabs": [{ "env": "claude", "chat": "c1" }], "active": 0, "split": null });
+    let mut v = serde_json::to_value(Settings::default()).unwrap();
+    v["ui"] = serde_json::json!({ "tabs": tabs });
+    v["keys"]["tab_new"] = "Alt+Cmd+T".into();
+    v["keys"]["tab_unsplit"] = "Ctrl+Alt+U".into();
+    Store::open(d.path()).unwrap().set_settings(serde_json::from_value(v).unwrap()).unwrap();
+    let back = serde_json::to_value(Store::open(d.path()).unwrap().settings()).unwrap();
+    assert_eq!(back["ui"]["tabs"], tabs);
+    assert_eq!((back["keys"]["tab_new"].as_str(), back["keys"]["tab_unsplit"].as_str()), (Some("Alt+Cmd+T"), Some("Ctrl+Alt+U")));
+}

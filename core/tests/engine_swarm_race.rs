@@ -370,9 +370,9 @@ fn notes_reach_the_next_run_of_their_addressee_only_and_the_feed_of_the_swarm_na
         |m| vec![vec![write("feature.txt", &format!("ok from {m}\n")), done(&format!("{m} built it"))]],
         vec![vec![done(&compare("A", &[("A", [9, 9, 9, 9]), ("B", [5, 5, 5, 5]), ("C", [4, 4, 4, 4])]))]],
     ));
-    let e = env.engine(env.store_v2(&p, settings_for("fa", 3)), vec![w.clone()], Arc::new(RecordingNotifier::default()), None);
-    let gate = env.d.path().join("gate");
-    std::fs::create_dir(&gate).unwrap();
+    // midday: on the wall clock a run at night (23:00-08:00) starts the night task before start_now
+    let (clock, _now) = clock_at(12, 0);
+    let e = env.engine(env.store_v2(&p, settings_for("fa", 3)), vec![w.clone()], Arc::new(RecordingNotifier::default()), Some(clock));
     // queued first, so the notes are there before any run of the swarm starts
     let id = e.submit(NewTask { project_id: p.id.clone(), prompt: "Add the feature file".into(), swarm: race_spec(3), start: Some(StartWhen::Night), ..NewTask::default() }).unwrap();
     for (to, text) in [(Some("A"), "ONLY-A-NOTE"), (None, "EVERYONE-NOTE"), (Some("reviewer"), "REVIEWER-NOTE")] {
@@ -401,7 +401,6 @@ fn notes_reach_the_next_run_of_their_addressee_only_and_the_feed_of_the_swarm_na
     // every line of a variant's agent carries the role, the model and the variant
     let said = log.iter().find(|l| l.text == "m2 built it").expect("B's last words are in the feed");
     assert_eq!((said.role, said.model.is_some(), said.variant.as_deref()), (Some(RoleKind::Worker), true, Some("B")));
-    let _ = gate;
 }
 
 #[test]
