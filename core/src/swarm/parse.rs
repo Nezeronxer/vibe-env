@@ -25,11 +25,8 @@ fn id_ok(id: &str) -> bool {
 /// A path of the project the way a part may name it: relative, inside the project, no globs.
 fn path_ok(p: &str) -> bool {
     let p = p.trim();
-    !p.is_empty()
-        && !p.starts_with('/')
-        && !p.contains(['\\', '*', '?', '[', ']', '\0', '\n'])
-        && !p.split('/').any(|c| c == "..")
-        && !(p.len() > 1 && p.as_bytes()[1] == b':')
+    let drive = p.len() > 1 && p.as_bytes()[1] == b':'; // C:...
+    !(p.is_empty() || p.starts_with('/') || p.contains(['\\', '*', '?', '[', ']', '\0', '\n']) || p.split('/').any(|c| c == "..") || drive)
 }
 
 /// A part of the Coordinator's split.

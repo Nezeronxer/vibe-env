@@ -49,6 +49,11 @@ pub type Clock = Arc<dyn Fn() -> DateTime<Local> + Send + Sync>;
 /// Variables for the runs of an env (kit secrets): env id -> pairs. Bound to `Kits::env_vars` by the app.
 pub type EnvVars = Arc<dyn Fn(&str) -> Vec<(String, String)> + Send + Sync>;
 
+/// When an env was checked and what `Adapter::available` said.
+type Availability = (Instant, Result<(), String>);
+
+// a task travels whole to the window; boxing it would change every listener for no gain
+#[allow(clippy::large_enum_variant)]
 #[derive(Clone, Debug)]
 pub enum EngineEvent {
     TaskChanged(Task),
@@ -175,7 +180,7 @@ pub struct Engine {
     env_vars: Mutex<Option<EnvVars>>,
     auth: Mutex<HashMap<EnvId, AuthWait>>,
     /// env -> (when checked, answer of `Adapter::available`)
-    avail: Mutex<HashMap<EnvId, (Instant, Result<(), String>)>>,
+    avail: Mutex<HashMap<EnvId, Availability>>,
     /// Tasks whose project folder is gone and that said so on their feed (R11.10); cleared when the folder is back.
     folder_wait: Mutex<std::collections::HashSet<TaskId>>,
 }
@@ -233,9 +238,24 @@ impl Engine {
         *lk(&self.env_vars) = Some(f);
     }
 
-    /// The variables of an env's runs (kit secrets); empty until `set_env_vars`.
-    pub(crate) fn env_vars_of(&self, env: &str) -> Vec<(String, String)> {
-        lk(&self.env_vars).as_ref().map(|f| f(env)).unwrap_or_default()
+    /// The variables of an env's runs (kit secrets); empty until `set_env_vars`. A value out of its variable's shape
+    /// (`kits::env_value_ok`) or under a name no kit may set (`kits::env_name_allowed`) stays off the run; the feed of
+    /// `task` (or the app's log) gets its name, never the value.
+    pub(crate) fn env_vars_of(&self, env: &str, task: Option<&str>) -> Vec<(String, String)> {
+        let all = lk(&self.env_vars).as_ref().map(|f| f(env)).unwrap_or_default();
+        all.into_iter()
+            .filter(|(n, v)| {
+                let ok = crate::kits::env_name_allowed(n) && crate::kits::env_value_ok(n, v);
+                if !ok {
+                    let line = format!("env_value_rejected: {n}");
+                    match task {
+                        Some(id) => self.log(id, LogKind::Stage, &line),
+                        None => eprintln!("{line}"),
+                    }
+                }
+                ok
+            })
+            .collect()
     }
 
     /// Where the app keeps its copies of projects (the chat's go to `.chats` in it).
@@ -292,12 +312,12 @@ impl Engine {
     }
 
     pub fn submit(&self, t: NewTask) -> Result<TaskId, String> {
-        self.submit_full(t, None, None, vec![], None)
+        self.submit_full(t, None, None, vec![], None, None)
     }
 
     /// `submit` with what a convoy adds: the id the task must have (its dependents name it), the convoy,
-    /// and the tasks that must land first.
-    pub(super) fn submit_full(&self, t: NewTask, id: Option<TaskId>, convoy_id: Option<String>, depends_on: Vec<TaskId>, steps: Option<Vec<(Step, StepState)>>) -> Result<TaskId, String> {
+    /// the tasks that must land first, and the title the Coordinator gave it (else the first line of the prompt).
+    pub(super) fn submit_full(&self, t: NewTask, id: Option<TaskId>, convoy_id: Option<String>, depends_on: Vec<TaskId>, steps: Option<Vec<(Step, StepState)>>, title: Option<String>) -> Result<TaskId, String> {
         let prompt = t.prompt.trim().to_string();
         if prompt.is_empty() {
             return Err("empty_prompt".into());
@@ -316,7 +336,7 @@ impl Engine {
         let settings = lk(&self.store).settings();
         let env = settings.envs.get(&agent).cloned().unwrap_or_default();
         let id = id.unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
-        let title = util::title_of(&prompt);
+        let title = title.unwrap_or_else(|| util::title_of(&prompt));
         // the models of the roles are a snapshot of the env's settings now (spec 16)
         let mut models = env.roles.clone();
         if let Some(m) = t.model.clone().or(env.default_model.clone()) {

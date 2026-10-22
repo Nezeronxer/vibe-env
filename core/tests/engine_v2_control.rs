@@ -312,7 +312,7 @@ fn deferred_puts_the_task_back_in_the_queue_with_its_copy_and_session_at_most_tw
     assert_eq!(t.outcome.error.as_deref(), Some("deferred_too_often: once more?"));
     assert!(has_log(&e, &id, "deferred: needs the login work first"));
     // the two put-offs were silent: the only call is the failure
-    assert_eq!(kinds_of(&n), vec![NoticeKind::Failed]);
+    assert_eq!(kinds(&n), vec![NoticeKind::Failed]);
 }
 
 #[test]
@@ -684,4 +684,54 @@ fn a_freeze_between_two_conflicting_commits_holds_the_next_integrator_and_unfree
     wait_status(&e, &b, Status::Done);
     assert_eq!(calls_of(&w.inner, RoleKind::Integrator).len(), 2);
     assert_eq!(env.main_file("a.txt"), "A\nB2");
+}
+
+/// An env whose CLI cannot be started while `broken` is on: no process, so no run of it is recorded either.
+struct CannotStart {
+    inner: Arc<FakeAdapter>,
+    broken: std::sync::atomic::AtomicBool,
+}
+
+impl Adapter for CannotStart {
+    fn id(&self) -> &str {
+        self.inner.id()
+    }
+    fn name(&self) -> &str {
+        self.inner.name()
+    }
+    fn available(&self) -> Result<(), String> {
+        Ok(())
+    }
+    fn command(&self, run: &nightshift_core::agent::Run) -> std::process::Command {
+        if self.broken.load(std::sync::atomic::Ordering::SeqCst) {
+            return std::process::Command::new("/nonexistent/nightshift-cli");
+        }
+        self.inner.command(run)
+    }
+    fn parse(&self, line: &str) -> Vec<nightshift_core::agent::AgentEvent> {
+        self.inner.parse(line)
+    }
+    fn finish(&self, ok: bool, all: &str) -> Vec<nightshift_core::agent::AgentEvent> {
+        self.inner.finish(ok, all)
+    }
+}
+
+#[test]
+fn a_note_whose_run_never_started_is_not_marked_delivered_and_reaches_the_next_run() {
+    let env = Env::new();
+    let p = env.project(|_| {});
+    let w = Arc::new(CannotStart { inner: fake(vec![vec![write("f.txt", "x"), done("ok")]]), broken: true.into() });
+    let e = env.engine(env.store(&p, |_| {}), vec![w.clone(), reviewer(1)], Arc::new(RecordingNotifier::default()), None);
+
+    let id = submit(&e, &p, "Add f");
+    assert_eq!(e.note(&id, None, "use tabs").unwrap(), NoteResult::Queued);
+    wait_status(&e, &id, Status::Failed);
+    assert!(!has_log(&e, &id, "note delivered: use tabs"), "no process got it");
+
+    w.broken.store(false, std::sync::atomic::Ordering::SeqCst);
+    e.resume_failed(&id, None, None).unwrap();
+    wait_status(&e, &id, Status::Done);
+    let worker = w.inner.calls().into_iter().find(|c| c.role == RoleKind::Worker).expect("the executor ran");
+    assert!(worker.prompt.contains("use tabs"), "{}", worker.prompt);
+    assert_eq!(log_texts(&e, &id).iter().filter(|l| *l == "note delivered: use tabs").count(), 1);
 }

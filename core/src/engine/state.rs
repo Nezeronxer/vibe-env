@@ -236,17 +236,34 @@ impl Engine {
         let _g = lk(&self.state_lock);
         let mut s = self.read_state(id);
         let r = f(&mut s);
+        self.write_state(id, &s)?;
+        Ok(r)
+    }
+
+    /// Under `state_lock` only.
+    fn write_state(&self, id: &str, s: &TaskState) -> Result<(), String> {
         let path = self.state_path(id);
         let tmp = path.with_extension("tmp");
         let err = |e: std::io::Error| format!("pending_write_failed: {e}");
         std::fs::create_dir_all(path.parent().unwrap_or(&self.worktrees_dir)).map_err(err)?;
-        std::fs::write(&tmp, serde_json::to_vec(&s).map_err(|e| e.to_string())?).map_err(err)?;
-        std::fs::rename(&tmp, &path).map_err(err)?;
-        Ok(r)
+        std::fs::write(&tmp, serde_json::to_vec(s).map_err(|e| e.to_string())?).map_err(err)?;
+        std::fs::rename(&tmp, &path).map_err(err)
     }
 
     pub(super) fn clear_state(&self, id: &str) {
         let _g = lk(&self.state_lock);
         let _ = std::fs::remove_file(self.state_path(id));
+    }
+
+    /// A finished task keeps only the record of its swarm (its copies live until the task is removed, G11.5), in one
+    /// critical section: a reader never sees an empty state between a clear and a rewrite.
+    pub(super) fn keep_only_swarm(&self, id: &str) {
+        let _g = lk(&self.state_lock);
+        let sw = self.read_state(id).swarm;
+        if sw.variants.is_empty() && sw.parts.is_empty() && sw.council.proposals.is_empty() {
+            let _ = std::fs::remove_file(self.state_path(id));
+        } else {
+            let _ = self.write_state(id, &TaskState { swarm: sw, ..TaskState::default() });
+        }
     }
 }

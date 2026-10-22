@@ -597,7 +597,9 @@ fn cancel_racing_the_scheduler_stays_cancelled_and_never_starts() {
     let env = Env::new();
     let p = env.project(|_| {});
     let (clock, now) = manual_clock();
-    let w = fake((0..6).map(|_| vec![FakeStep::Sleep(3000), done("late")]).collect());
+    // the executors wait at a gate that never opens: a task that started is still going when its cancel comes, however
+    // long the cancels before it took (each waits for its own task's git step to end)
+    let w = HoldRole::wrap(FakeAdapter::new((0..6).map(|_| vec![done("late")]).collect()), RoleKind::Worker, env.d.path());
     let lim = fake_as("lim", vec![vec![FakeStep::Limit]]);
     let e = env.engine(env.store(&p, |s| s.max_parallel = 8), vec![w.clone(), lim.clone(), reviewer(1)], Arc::new(RecordingNotifier::default()), Some(clock));
 
@@ -606,14 +608,14 @@ fn cancel_racing_the_scheduler_stays_cancelled_and_never_starts() {
     for id in &ids {
         e.cancel(id).unwrap();
     }
-    let calls = w.calls().len();
+    let calls = w.inner.calls().len();
     std::thread::sleep(Duration::from_millis(300));
     for id in &ids {
         let t = task(&e, id);
         assert_eq!(t.status, Status::Cancelled);
         assert!(t.worktree.is_none());
     }
-    assert_eq!(w.calls().len(), calls, "nothing starts after cancel returned");
+    assert_eq!(w.inner.calls().len(), calls, "nothing starts after cancel returned");
 
     // a paused task cancelled exactly when its reset time arrives
     let id = submit_with(&e, &p, "Limited", "lim");

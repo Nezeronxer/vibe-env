@@ -108,6 +108,7 @@ pub struct ChatSummary {
 }
 
 /// What the window listens to.
+#[allow(clippy::large_enum_variant)] // a message travels whole to the window, like a task in `EngineEvent`
 #[derive(Clone, Debug, PartialEq)]
 pub enum ChatEvent {
     /// A message was added to a feed.

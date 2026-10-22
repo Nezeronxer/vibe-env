@@ -696,3 +696,34 @@ fn a_broken_git_step_fails_the_task_with_the_command_and_what_git_said() {
     assert!(why.contains("git worktree add"), "the command: {why}");
     assert!(why.to_lowercase().contains("no-such-branch") || why.contains("invalid reference"), "what git said: {why}");
 }
+
+#[test]
+fn a_kit_variable_with_a_value_out_of_its_shape_is_not_put_on_the_run_and_the_feed_names_it_without_the_value() {
+    let env = Env::new();
+    let p = env.project(|p| {
+        p.agent = "fa".into();
+        p.check_cmd = Some("test -f feature.txt".into());
+    });
+    let fa = Arc::new(pipeline_fake("fa"));
+    let e = env.engine(env.store_v2(&p, |_| {}), vec![fa.clone()], Arc::new(RecordingNotifier::default()), None);
+    e.set_env_vars(Arc::new(|_| {
+        vec![
+            ("PATH".into(), "./evil-bin:/usr/bin".into()),
+            ("HOME".into(), "/tmp/x\nEVIL=1".into()),
+            ("LANG".into(), "C;evil".into()),
+            ("API_TOKEN".into(), "tok-kept".into()),
+        ]
+    }));
+
+    let id = submit(&e, &p, "Add the feature file");
+    wait_status(&e, &id, Status::Done);
+
+    for run in fa.calls() {
+        assert_eq!(run.extra_env, vec![("API_TOKEN".to_string(), "tok-kept".to_string())], "{:?}", run.role);
+    }
+    let log = log_texts(&e, &id).join("\n");
+    for name in ["PATH", "HOME", "LANG"] {
+        assert!(log.contains(&format!("env_value_rejected: {name}")), "{log}");
+    }
+    assert!(!log.contains("evil"), "the rejected value is not written: {log}");
+}

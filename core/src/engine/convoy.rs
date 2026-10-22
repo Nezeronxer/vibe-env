@@ -67,7 +67,7 @@ impl Engine {
         }
         let new = NewTask { project_id: p.id.clone(), prompt: text.to_string(), agent: Some(env.to_string()), chat_id: Some(chat_id.clone()), ..NewTask::default() };
         // the holder of the split has one step and no coding: that is how it is told from the tasks it makes
-        self.submit_full(new, None, Some(uuid::Uuid::new_v4().to_string()), vec![], Some(vec![(Step::Plan, StepState::Pending)]))?;
+        self.submit_full(new, None, Some(uuid::Uuid::new_v4().to_string()), vec![], Some(vec![(Step::Plan, StepState::Pending)]), None)?;
         Ok(chat_id)
     }
 
@@ -92,11 +92,12 @@ impl Engine {
         for (x, (_, tid)) in tasks.iter().zip(&ids) {
             let deps: Vec<TaskId> = x.depends_on.iter().filter_map(|d| real(d)).collect();
             let new = NewTask { project_id: p.id.clone(), prompt: x.text.clone(), agent: Some(t.agent.clone()), chat_id: chat.clone(), ..NewTask::default() };
-            self.submit_full(new, Some(tid.clone()), Some(convoy.clone()), deps, None)?;
+            // the task is made with the Coordinator's title: once it is in the store the scheduler may start it, and a
+            // later read-change-write of it here would put back a stale copy over the running task
+            let title: String = x.title.chars().take(80).collect();
+            self.submit_full(new, Some(tid.clone()), Some(convoy.clone()), deps, None, Some(title))?;
             // the card names the task by the Coordinator's title
-            if let (Some(c), Some(mut made)) = (&chat, self.task(tid)) {
-                made.title = x.title.chars().take(80).collect();
-                self.save(&made)?;
+            if let Some(c) = &chat {
                 let st = lk(&self.store);
                 let _ = st.append_chat_msg(&ChatMsg {
                     id: uuid::Uuid::new_v4().to_string(),

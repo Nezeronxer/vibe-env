@@ -64,6 +64,7 @@ impl Engine {
     }
 
     /// A read-only role whose answer is JSON: one repeat if it cannot be used. Questions of the role are passed on.
+    #[allow(clippy::too_many_arguments)]
     pub(super) fn structured<T>(
         &self,
         t: &mut Task,
@@ -182,7 +183,7 @@ impl Engine {
                 } else {
                     self.set_step(t, Step::Plan, StepState::Done)?;
                 }
-                if step_is(t, Step::Spec, |st| matches!(st, StepState::Pending)) && !(vague && !trivial) {
+                if (trivial || !vague) && step_is(t, Step::Spec, |st| matches!(st, StepState::Pending)) {
                     self.set_step(t, Step::Spec, StepState::Skipped(if trivial { "one_phrase_edit" } else { "not_vague" }.into()))?;
                 }
                 Ok(Flow::Next)

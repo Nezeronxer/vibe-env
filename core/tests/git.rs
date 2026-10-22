@@ -328,7 +328,8 @@ fn init_repo_makes_a_repo_with_one_commit_and_skips_env_files() {
 
 #[test]
 fn detect_commands_by_project_type() {
-    let cases: Vec<(&str, Vec<(&str, &str)>, Option<&str>, Option<&str>)> = vec![
+    type Case<'a> = (&'a str, Vec<(&'a str, &'a str)>, Option<&'a str>, Option<&'a str>);
+    let cases: Vec<Case> = vec![
         ("npm with lock", vec![("package.json", r#"{"scripts":{"test":"jest"}}"#), ("package-lock.json", "{}")], Some("npm test"), Some("npm ci")),
         ("npm no lock", vec![("package.json", r#"{"scripts":{"test":"jest"}}"#)], Some("npm test"), Some("npm install")),
         ("npm without test script", vec![("package.json", r#"{"scripts":{"build":"x"}}"#)], None, None),

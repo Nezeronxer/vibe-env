@@ -194,9 +194,20 @@ pub fn run_blocking(
     on_event: &mut dyn FnMut(&AgentEvent),
     cancel: &AtomicBool,
 ) -> std::io::Result<Vec<AgentEvent>> {
+    run_blocking_with(a, run, on_event, &mut || {}, cancel)
+}
+
+/// `run_blocking` that also says when the agent's process is started (`on_spawn`, once, before any event).
+pub fn run_blocking_with(
+    a: &dyn Adapter,
+    run: &Run,
+    on_event: &mut dyn FnMut(&AgentEvent),
+    on_spawn: &mut dyn FnMut(),
+    cancel: &AtomicBool,
+) -> std::io::Result<Vec<AgentEvent>> {
     let mut events = Vec::new();
     let mut all_text = String::new();
-    let r = run_lines(a.command(run), cancel, &mut |line| {
+    let r = run_lines_with(a.command(run), cancel, on_spawn, &mut |line| {
         all_text.push_str(&line);
         all_text.push('\n');
         for e in a.parse(&line) {
@@ -220,15 +231,22 @@ pub fn run_blocking(
 /// `cancel` kills the whole group (-> `Ok(None)`); when the main process exits, whatever it
 /// left in its group is killed too, so leftovers cannot hold the pipes open.
 /// Returns (exit ok, stderr). Shared by agents and the engine's check / setup commands.
-pub fn run_lines(
+pub fn run_lines(cmd: Command, cancel: &AtomicBool, on_line: &mut dyn FnMut(String)) -> std::io::Result<Option<(bool, String)>> {
+    run_lines_with(cmd, cancel, &mut || {}, on_line)
+}
+
+/// `run_lines` that calls `on_spawn` once the process is started.
+pub fn run_lines_with(
     mut cmd: Command,
     cancel: &AtomicBool,
+    on_spawn: &mut dyn FnMut(),
     on_line: &mut dyn FnMut(String),
 ) -> std::io::Result<Option<(bool, String)>> {
     #[cfg(unix)]
     std::os::unix::process::CommandExt::process_group(&mut cmd, 0); // own group so cancel reaches grandchildren
     cmd.stdout(Stdio::piped()).stderr(Stdio::piped()).stdin(Stdio::null());
     let mut child = Group(cmd.spawn()?);
+    on_spawn();
     let stdout = child.0.stdout.take().expect("stdout piped");
     let mut stderr = child.0.stderr.take().expect("stderr piped");
 

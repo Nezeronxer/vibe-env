@@ -283,12 +283,12 @@ fn start_timers(app: &AppHandle, hub: &Arc<Hub>) {
     std::thread::spawn(move || {
         let mut tick = 0u64;
         loop {
-            if tick % 10 == 0 {
+            if tick.is_multiple_of(10) {
                 // every 5 minutes (tick = 30 s)
                 hb.recheck_envs();
                 check_tray_host(&h);
             }
-            if tick % 2880 == 0 {
+            if tick.is_multiple_of(2880) {
                 // at start and then once a day; the CLIs answer slowly, so not on this thread
                 let hc = hb.clone();
                 std::thread::spawn(move || {
@@ -743,27 +743,6 @@ async fn set_secret(s: State<'_, App>, env: String, name: String, value: String)
     s.hub.set_secret(&env, &name, &value)
 }
 
-#[cfg(test)]
-mod tests {
-    /// The window: no remote sources, no inline code; the capabilities name only what the window itself calls (R13).
-    #[test]
-    fn the_security_config_has_no_outside_source_and_the_capabilities_stay_small() {
-        let conf: serde_json::Value = serde_json::from_str(include_str!("../tauri.conf.json")).unwrap();
-        let csp = conf["app"]["security"]["csp"].as_str().unwrap();
-        assert!(!csp.contains("unsafe-inline") && !csp.contains("unsafe-eval") && !csp.contains('*'), "{csp}");
-        let sources: Vec<&str> = csp.split([';', ' ']).filter(|w| w.contains("://") || w.contains('.')).collect();
-        assert_eq!(sources, ["http://ipc.localhost"], "the only address is Tauri's own IPC");
-        assert!(conf["app"]["windows"].as_array().unwrap().iter().all(|w| w.get("url").is_none()), "the window loads the bundled ui, no remote URL");
-        let caps: serde_json::Value = serde_json::from_str(include_str!("../capabilities/default.json")).unwrap();
-        assert_eq!(caps["permissions"], serde_json::json!(["core:event:default", "dialog:allow-open"]));
-        assert_eq!(caps["windows"], serde_json::json!(["main"]));
-        let targets: Vec<&str> = conf["bundle"]["targets"].as_array().unwrap().iter().filter_map(|t| t.as_str()).collect();
-        for t in ["app", "dmg", "deb", "appimage"] {
-            assert!(targets.contains(&t), "{t}");
-        }
-    }
-}
-
 // ---------- start ----------
 
 fn build_app(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
@@ -984,4 +963,25 @@ fn main() {
             api.prevent_exit();
         }
     });
+}
+
+#[cfg(test)]
+mod tests {
+    /// The window: no remote sources, no inline code; the capabilities name only what the window itself calls (R13).
+    #[test]
+    fn the_security_config_has_no_outside_source_and_the_capabilities_stay_small() {
+        let conf: serde_json::Value = serde_json::from_str(include_str!("../tauri.conf.json")).unwrap();
+        let csp = conf["app"]["security"]["csp"].as_str().unwrap();
+        assert!(!csp.contains("unsafe-inline") && !csp.contains("unsafe-eval") && !csp.contains('*'), "{csp}");
+        let sources: Vec<&str> = csp.split([';', ' ']).filter(|w| w.contains("://") || w.contains('.')).collect();
+        assert_eq!(sources, ["http://ipc.localhost"], "the only address is Tauri's own IPC");
+        assert!(conf["app"]["windows"].as_array().unwrap().iter().all(|w| w.get("url").is_none()), "the window loads the bundled ui, no remote URL");
+        let caps: serde_json::Value = serde_json::from_str(include_str!("../capabilities/default.json")).unwrap();
+        assert_eq!(caps["permissions"], serde_json::json!(["core:event:default", "dialog:allow-open"]));
+        assert_eq!(caps["windows"], serde_json::json!(["main"]));
+        let targets: Vec<&str> = conf["bundle"]["targets"].as_array().unwrap().iter().filter_map(|t| t.as_str()).collect();
+        for t in ["app", "dmg", "deb", "appimage"] {
+            assert!(targets.contains(&t), "{t}");
+        }
+    }
 }

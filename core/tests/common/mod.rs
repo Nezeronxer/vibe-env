@@ -108,6 +108,7 @@ pub fn task(e: &Engine, id: &str) -> Task {
     e.store().lock().unwrap().task(id).unwrap()
 }
 
+
 pub fn wait(e: &Engine, id: &str, what: &str, pred: impl Fn(&Task) -> bool) -> Task {
     let start = Instant::now();
     loop {
@@ -117,6 +118,15 @@ pub fn wait(e: &Engine, id: &str, what: &str, pred: impl Fn(&Task) -> bool) -> T
         }
         assert!(start.elapsed() < Duration::from_secs(90), "timeout waiting for {what}; task is {:?}: {:?}", t.status, t.outcome);
         std::thread::sleep(Duration::from_millis(20));
+    }
+}
+
+/// Waits for `f` (the bound the tests' own copies of it had).
+pub fn until(what: &str, mut f: impl FnMut() -> bool) {
+    let start = Instant::now();
+    while !f() {
+        assert!(start.elapsed() < Duration::from_secs(60), "timeout: {what}");
+        std::thread::sleep(Duration::from_millis(10));
     }
 }
 
@@ -213,6 +223,61 @@ impl Adapter for Gated {
     }
     fn finish(&self, ok: bool, all: &str) -> Vec<nightshift_core::agent::AgentEvent> {
         self.inner.finish(ok, all)
+    }
+}
+
+/// Wraps a fake: every run of `role` waits until the test calls `open()`. A state the test looks at (two runs going
+/// at once, a third waiting for a seat) then holds still until the test has seen it, instead of lasting only as long
+/// as a sleep of the fake, which a machine under load may not give the test a turn to see.
+pub struct HoldRole {
+    pub inner: FakeAdapter,
+    role: RoleKind,
+    gate: PathBuf,
+}
+
+impl HoldRole {
+    pub fn wrap(inner: FakeAdapter, role: RoleKind, dir: &Path) -> Arc<HoldRole> {
+        Arc::new(HoldRole { inner, role, gate: dir.join("hold-role-gate") })
+    }
+    pub fn open(&self) {
+        fs::write(&self.gate, "").unwrap();
+    }
+}
+
+impl Adapter for HoldRole {
+    fn id(&self) -> &str {
+        self.inner.id()
+    }
+    fn name(&self) -> &str {
+        self.inner.name()
+    }
+    fn available(&self) -> Result<(), String> {
+        self.inner.available()
+    }
+    fn command(&self, run: &nightshift_core::agent::Run) -> Command {
+        let inner = self.inner.command(run);
+        if run.role != self.role {
+            return inner;
+        }
+        let script = inner.get_args().nth(1).unwrap().to_string_lossy().to_string();
+        let mut c = Command::new("sh");
+        c.arg("-c").arg(format!("while [ ! -e '{}' ]; do sleep 0.02; done\n{script}", self.gate.display())).current_dir(&run.cwd).stdout(std::process::Stdio::piped());
+        c
+    }
+    fn parse(&self, line: &str) -> Vec<nightshift_core::agent::AgentEvent> {
+        self.inner.parse(line)
+    }
+    fn finish(&self, ok: bool, all: &str) -> Vec<nightshift_core::agent::AgentEvent> {
+        self.inner.finish(ok, all)
+    }
+    fn models(&self) -> Result<Vec<nightshift_core::model::ModelFamily>, String> {
+        self.inner.models()
+    }
+    fn read_only_native(&self) -> bool {
+        self.inner.read_only_native()
+    }
+    fn reports_cost(&self) -> bool {
+        self.inner.reports_cost()
     }
 }
 

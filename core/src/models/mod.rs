@@ -143,10 +143,10 @@ pub fn next_on_reject(cat: &Catalog, c: &ModelChoice) -> Option<ModelChoice> {
     let fam = cat.families.iter().find(|f| f.id == c.family);
     let latest_differs = match (&c.version, fam) {
         (None, _) => false,
-        (Some(v), Some(f)) => !f.versions.first().is_some_and(|l| l == v),
+        (Some(v), Some(f)) => f.versions.first().is_none_or(|l| l != v),
         (Some(_), None) => true,
     };
-    if latest_differs && !fam.is_some_and(|f| f.vendor == VENDOR_CUSTOM) {
+    if latest_differs && fam.is_none_or(|f| f.vendor != VENDOR_CUSTOM) {
         return Some(ModelChoice { family: c.family.clone(), version: None });
     }
     default()

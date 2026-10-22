@@ -36,7 +36,7 @@ fn a_limit_with_the_spare_model_also_used_up_pauses_until_the_reset_the_run_repo
     assert_eq!(t.resume_at, Some(resets), "the time the env reported");
     assert_eq!(calls_of(&fa, RoleKind::Worker).len(), 2, "main model, then the spare, then the wait");
     assert!(has_log(&e, &id, "switched_to: spare"));
-    assert_eq!(kinds_of(&n), vec![NoticeKind::Limit], "a quiet notice, no call");
+    assert_eq!(kinds(&n), vec![NoticeKind::Limit], "a quiet notice, no call");
 
     std::thread::sleep(Duration::from_millis(300));
     assert_eq!(calls_of(&fa, RoleKind::Worker).len(), 2, "nothing before the reset");
@@ -404,21 +404,27 @@ fn two_tasks_of_one_env_asking_for_a_login_make_one_call_between_them() {
     let env = Env::new();
     let p = env.project(|p| p.agent = "fa".into());
     let (clock, now) = manual_clock();
-    let wait_a_bit = |f: FakeStep| vec![FakeStep::Sleep(300), f];
-    let fa = Arc::new(quiet_pipeline("fa").with_role(
+    // both executors wait at a gate: both tasks have started before either hears it is not logged in
+    let fa = HoldRole::wrap(
+        quiet_pipeline("fa").with_role(
+            RoleKind::Worker,
+            vec![
+                vec![FakeStep::Auth("Not logged in".into())],
+                vec![FakeStep::Auth("Not logged in".into())],
+                vec![write("one.txt", "1"), done("1")],
+                vec![write("two.txt", "2"), done("2")],
+            ],
+        ),
         RoleKind::Worker,
-        vec![
-            wait_a_bit(FakeStep::Auth("Not logged in".into())),
-            wait_a_bit(FakeStep::Auth("Not logged in".into())),
-            vec![write("one.txt", "1"), done("1")],
-            vec![write("two.txt", "2"), done("2")],
-        ],
-    ));
+        env.d.path(),
+    );
     let n = Arc::new(RecordingNotifier::default());
     let e = env.engine(env.store(&p, |s| s.max_parallel = 2), vec![fa.clone()], n.clone(), Some(clock));
 
     let a = submit(&e, &p, "One");
     let b = submit(&e, &p, "Two");
+    until("both executors started", || calls_of(&fa.inner, RoleKind::Worker).len() == 2);
+    fa.open();
     wait_status(&e, &a, Status::NeedsHuman);
     wait_status(&e, &b, Status::NeedsHuman);
     std::thread::sleep(Duration::from_millis(200));

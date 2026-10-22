@@ -74,6 +74,23 @@ pub fn is_snoozed(t: &Task, now: DateTime<Local>) -> bool {
     call && !auth && t.resume_at.is_some_and(|r| r > now)
 }
 
+/// Whom a note reached: `role/label`.
+fn note_key(role: RoleKind, label: Option<&str>) -> String {
+    format!("{role:?}/{}", label.unwrap_or(""))
+}
+
+/// Whether note `n` goes to the run of `role` (`label` = a lane of a swarm) and has not reached it yet.
+fn note_for(n: &Note, role: RoleKind, label: Option<&str>, key: &str) -> bool {
+    let writes = matches!(role, RoleKind::Worker | RoleKind::TestAuthor | RoleKind::Integrator);
+    if let Some(v) = &n.variant {
+        !n.delivered && label == Some(v.as_str())
+    } else if n.all {
+        !n.delivered_to.iter().any(|k| k == key)
+    } else {
+        !n.delivered && (n.to == Some(role) || (n.to.is_none() && writes && label.is_none()))
+    }
+}
+
 fn role_of(name: &str) -> Option<RoleKind> {
     serde_json::from_value(serde_json::Value::String(name.trim().to_ascii_lowercase())).ok()
 }
@@ -126,41 +143,39 @@ impl Engine {
         Ok((NoteResult::Queued, Some(note_id)))
     }
 
-    /// Notes for the run of `role` that starts now: marks them delivered (and says so in the feed).
-    pub(super) fn take_notes(&self, id: &str, role: RoleKind) -> Vec<(String, String)> {
-        self.take_lane_notes(id, role, None)
+    /// Notes for the run of `role` that is about to start. Nothing is marked yet: `deliver_notes` does that once the
+    /// run's process has started, so a start that fails leaves them for the next run.
+    pub(super) fn pending_notes(&self, id: &str, role: RoleKind) -> Vec<(String, String)> {
+        self.pending_lane_notes(id, role, None)
     }
 
     /// Same for a lane of a swarm (`label` = the variant, part or voter): its own notes, the ones to
     /// everyone (once per agent) and those for its role.
-    pub(super) fn take_lane_notes(&self, id: &str, role: RoleKind, label: Option<&str>) -> Vec<(String, String)> {
-        let writes = matches!(role, RoleKind::Worker | RoleKind::TestAuthor | RoleKind::Integrator);
-        let key = format!("{role:?}/{}", label.unwrap_or(""));
-        let mut texts = vec![];
+    pub(super) fn pending_lane_notes(&self, id: &str, role: RoleKind, label: Option<&str>) -> Vec<(String, String)> {
+        let key = note_key(role, label);
+        self.state(id).notes.iter().filter(|n| note_for(n, role, label, &key)).map(|n| (n.id.clone(), n.text.clone())).collect()
+    }
+
+    /// The run that carries `texts` has started: marks those still undelivered to it and says so in the feed.
+    /// Called again for a retry of the run, it marks and says nothing twice.
+    pub(super) fn deliver_notes(&self, id: &str, role: RoleKind, label: Option<&str>, texts: &[(String, String)]) {
+        if texts.is_empty() {
+            return;
+        }
+        let key = note_key(role, label);
+        let mut fresh = vec![];
         let _ = self.update_state(id, |s| {
-            for n in s.notes.iter_mut() {
-                let hit = if let Some(v) = &n.variant {
-                    !n.delivered && label == Some(v.as_str())
-                } else if n.all {
-                    !n.delivered_to.contains(&key)
-                } else {
-                    !n.delivered && (n.to == Some(role) || (n.to.is_none() && writes && label.is_none()))
-                };
-                if hit {
+            for n in s.notes.iter_mut().filter(|n| texts.iter().any(|(nid, _)| *nid == n.id)) {
+                if note_for(n, role, label, &key) {
                     n.delivered = true;
                     n.delivered_to.push(key.clone());
-                    texts.push((n.id.clone(), n.text.clone()));
+                    fresh.push((n.id.clone(), n.text.clone()));
                 }
             }
         });
-        texts
-    }
-
-    /// Says in the feed that the notes went to the run that starts now (just before it starts).
-    pub(super) fn announce_notes(&self, id: &str, role: RoleKind, label: Option<&str>, texts: &[(String, String)]) {
-        for (note_id, t) in texts {
+        for (note_id, t) in fresh {
             let mut ev = LogEvent::new(self.now(), LogKind::Human, &format!("note delivered: {t}"));
-            ev.note_id = Some(note_id.clone());
+            ev.note_id = Some(note_id);
             ev.role = Some(role);
             ev.variant = label.map(str::to_string);
             self.log_ev(id, ev);

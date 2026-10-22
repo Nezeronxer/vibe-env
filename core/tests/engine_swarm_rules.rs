@@ -94,7 +94,8 @@ fn vote(who: &str, choice: &str) -> swarm::Vote {
 #[test]
 fn the_most_votes_win_and_a_shared_top_is_a_tie() {
     // table by hand: (votes, winner, tied, counts)
-    let cases: Vec<(Vec<swarm::Vote>, Option<&str>, Vec<&str>, Vec<(&str, u32)>)> = vec![
+    type Case<'a> = (Vec<swarm::Vote>, Option<&'a str>, Vec<&'a str>, Vec<(&'a str, u32)>);
+    let cases: Vec<Case> = vec![
         (vec![vote("A", "B"), vote("B", "B"), vote("C", "A")], Some("B"), vec![], vec![("A", 1), ("B", 2)]),
         // 2 of 5 is not the majority of the voters, but nobody has more: it wins
         (vec![vote("A", "A"), vote("B", "A"), vote("C", "B"), vote("D", "C"), vote("E", "D")], Some("A"), vec![], vec![("A", 2), ("B", 1), ("C", 1), ("D", 1)]),

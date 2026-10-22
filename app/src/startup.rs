@@ -3,6 +3,7 @@
 use nightshift_core::store::{Store, StoreError};
 use std::path::{Path, PathBuf};
 
+#[allow(clippy::large_enum_variant)] // made once at start and opened at once
 pub enum Opened {
     Ready {
         store: Store,

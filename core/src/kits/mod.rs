@@ -14,7 +14,7 @@ mod source;
 mod toml_lite;
 mod units;
 
-pub use secrets::{SecretSaved, SecretStore, SystemKeyring};
+pub use secrets::{env_name_allowed, env_value_ok, SecretSaved, SecretStore, SystemKeyring};
 pub use snap::SnapshotState;
 
 use chrono::{DateTime, Local};
@@ -324,6 +324,9 @@ pub enum KitError {
     Changed,
     #[error("bad name: {0}")]
     BadName(String),
+    /// `set_secret`: the value does not fit the variable it is for (`env_value_ok`); carries the name only.
+    #[error("bad value for {0}")]
+    BadValue(String),
     #[error("install interrupted")]
     Interrupted,
     /// The CLI saved its config over the kit's keys right after the install wrote them (it
@@ -354,6 +357,7 @@ impl KitError {
             NotFound(_) => "not_found",
             Changed => "changed",
             BadName(_) => "bad_name",
+            BadValue(_) => "bad_value",
             Interrupted => "interrupted",
             NotApplied { .. } => "not_applied",
             Io(_) => "io",
@@ -367,7 +371,7 @@ impl Serialize for KitError {
         let mut v = serde_json::json!({ "kind": self.kind() });
         let o = v.as_object_mut().expect("object");
         match self {
-            NotAKit(d) | BadZip(d) | UnsafePath(d) | Symlink(d) | Corrupt(d) | CloneFailed(d) | UnknownEnv(d) | DestNotEmpty(d) | NotFound(d) | BadName(d) | Io(d) => {
+            NotAKit(d) | BadZip(d) | UnsafePath(d) | Symlink(d) | Corrupt(d) | CloneFailed(d) | UnknownEnv(d) | DestNotEmpty(d) | NotFound(d) | BadName(d) | BadValue(d) | Io(d) => {
                 o.insert("detail".into(), d.clone().into());
             }
             TooManyFiles(n) => {
@@ -446,7 +450,7 @@ impl Manifest {
                 return Err(KitError::UnsafePath(f.path.clone()));
             }
         }
-        let env_vars = k.env_vars.into_iter().filter(|v| secrets::valid_name(&v.name)).collect();
+        let env_vars = k.env_vars.into_iter().filter(|v| env_name_allowed(&v.name)).collect();
         Ok(Manifest { name, env: k.env, files: k.files, env_vars })
     }
 }
@@ -1225,8 +1229,11 @@ impl Kits {
         if layout::layout(env).is_none() && !env.starts_with("custom:") {
             return Err(KitError::UnknownEnv(env.into()));
         }
-        if !secrets::valid_name(name) {
+        if !env_name_allowed(name) {
             return Err(KitError::BadName(name.into()));
+        }
+        if !env_value_ok(name, value) {
+            return Err(KitError::BadValue(name.into()));
         }
         self.secrets().set(self.store.as_ref(), env, name, value)
     }
@@ -1239,6 +1246,13 @@ impl Kits {
             .into_iter()
             .flatten()
             .filter_map(|n| s.get(self.store.as_ref(), env, n).map(|v| (n.clone(), v)))
+            .filter(|(n, v)| {
+                let ok = env_name_allowed(n) && env_value_ok(n, v);
+                if !ok {
+                    eprintln!("env_value_rejected: {n}"); // the name only: the value may be a secret
+                }
+                ok
+            })
             .collect()
     }
 }

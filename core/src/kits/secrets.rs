@@ -45,6 +45,52 @@ pub(crate) fn valid_name(n: &str) -> bool {
         && n.chars().all(|ch| ch.is_ascii_alphanumeric() || ch == '_')
 }
 
+/// Families of variables a kit may never set (the spec names none; these are classes, not single names). Each one
+/// either makes a program the run starts load or run other code, or sends the run and its keys somewhere else:
+/// - where programs and their start files are found: PATH, HOME, SHELL, ZDOTDIR, ENV, IFS, PS4, PROMPT_COMMAND,
+///   SHELLOPTS, BASHOPTS, `BASH_*`, `ZSH*`, `XDG_*`, `*_HOME`, `*_CONFIG_DIR`;
+/// - the dynamic loader: `LD_*`, `DYLD_*`;
+/// - git and ssh (config by variables, ssh / askpass commands, exec and template folders): `GIT_*`, `SSH_*`, `*ASKPASS`;
+/// - interpreters' search paths and options: `PYTHON*`, `PERL*`, `RUBY*`, `NODE_*`, `NPM_CONFIG_*`, `JAVA_*`, `_JAVA_*`,
+///   CLASSPATH, `*_PATH`, `*_OPTIONS`, `*_OPTS`, `*LIB`;
+/// - programs a CLI starts by name: EDITOR, VISUAL, PAGER, BROWSER;
+/// - endpoints, proxies and TLS: `*_BASE_URL`, `*_API_BASE`, `*_PROXY`, `SSL_*`, `*_CA_CERTS`, `*_CA_BUNDLE`, `*_TLS_*`.
+///
+/// Names are compared in upper case (`http_proxy` is read too).
+const FORBIDDEN_NAMES: [&str; 15] = ["PATH", "HOME", "SHELL", "ZDOTDIR", "ENV", "IFS", "PS4", "PROMPT_COMMAND", "SHELLOPTS", "BASHOPTS", "CLASSPATH", "EDITOR", "VISUAL", "PAGER", "BROWSER"];
+const FORBIDDEN_PREFIXES: [&str; 16] = ["BASH_", "ZSH", "XDG_", "LD_", "DYLD_", "GIT_", "SSH_", "PYTHON", "PERL", "RUBY", "NODE_", "NPM_CONFIG_", "JAVA_", "_JAVA_", "SSL_", "CURL_"];
+const FORBIDDEN_SUFFIXES: [&str; 12] = ["_HOME", "_CONFIG_DIR", "ASKPASS", "_PATH", "_OPTIONS", "_OPTS", "LIB", "_BASE_URL", "_API_BASE", "_PROXY", "_CA_CERTS", "_CA_BUNDLE"];
+
+/// Whether a kit may set the variable `name` at all (see `FORBIDDEN_NAMES`).
+pub fn env_name_allowed(name: &str) -> bool {
+    let n = name.to_ascii_uppercase();
+    valid_name(name)
+        && !FORBIDDEN_NAMES.contains(&n.as_str())
+        && !FORBIDDEN_PREFIXES.iter().any(|p| n.starts_with(p))
+        && !FORBIDDEN_SUFFIXES.iter().any(|x| n.ends_with(x))
+        && !n.contains("_TLS_")
+}
+
+/// Whether `value` keeps the shape of the variable `name` in a run or a terminal (the name itself: `env_name_allowed`;
+/// the terminal also carries variables the app set, like the CLI homes). HOME, TMPDIR, the CLI homes and the XDG
+/// folders an absolute path, PATH and XDG_*_DIRS a list of them, LANG / LC_ALL a locale name.
+/// No value may hold a NUL (the process would not start at all) or a line break (it reads as one more variable).
+pub fn env_value_ok(name: &str, value: &str) -> bool {
+    if value.contains(['\0', '\n', '\r']) {
+        return false;
+    }
+    let path = |p: &str| std::path::Path::new(p).is_absolute() && !p.contains(['=', ':']);
+    match name {
+        "PATH" => value.split(':').all(path),
+        "HOME" | "TMPDIR" | "CODEX_HOME" | "CLAUDE_CONFIG_DIR" | "XDG_RUNTIME_DIR" => path(value),
+        // XDG_DATA_DIRS / XDG_CONFIG_DIRS are lists like PATH; XDG_*_HOME one folder
+        n if n.starts_with("XDG_") && n.ends_with("_DIRS") => value.split(':').all(path),
+        n if n.starts_with("XDG_") && n.ends_with("_HOME") => path(value),
+        "LANG" | "LC_ALL" => !value.is_empty() && value.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '.' | '@' | '-')),
+        _ => true,
+    }
+}
+
 pub(crate) struct Secrets {
     pub dir: PathBuf,
 }

@@ -698,7 +698,7 @@
   const enableKeys = (plan, ticked) => { const on = ticked instanceof Set ? ticked : new Set(ticked || []); return heldEntries(plan).map((x) => x.key).filter((k) => on.has(k)); };
   // KitError (serde tag "kind") as an object or its JSON text -> {key, detail, ...}; old "key: detail" text and anything else is kept whole
   const KIT_REFUSALS = ['not_a_kit', 'bad_zip', 'unsafe_path', 'symlink', 'file_too_large', 'kit_too_large', 'too_many_files', 'corrupt', 'wrong_env', 'clone_failed', 'unknown_env', 'dest_not_empty',
-    'not_found', 'changed', 'bad_name', 'interrupted', 'io', 'not_applied'];
+    'not_found', 'changed', 'bad_name', 'bad_value', 'interrupted', 'io', 'not_applied'];
   function kitRefusal(raw) {
     let e = raw;
     if (typeof e === 'string') { try { e = JSON.parse(e); } catch (x) { e = null; } }

@@ -7,15 +7,7 @@ use nightshift_core::engine::NewTask;
 use nightshift_core::model::*;
 use nightshift_core::notify::RecordingNotifier;
 use std::sync::Arc;
-use std::time::{Duration, Instant};
 
-fn until(what: &str, mut f: impl FnMut() -> bool) {
-    let t0 = Instant::now();
-    while !f() {
-        assert!(t0.elapsed() < Duration::from_secs(60), "timeout: {what}");
-        std::thread::sleep(Duration::from_millis(10));
-    }
-}
 
 fn split(parts: &[(&str, &[&str])]) -> String {
     let ps: Vec<_> = parts.iter().map(|(id, files)| serde_json::json!({"id": id, "title": format!("part {id}"), "files": files, "brief": format!("do {id}")})).collect();
@@ -72,16 +64,14 @@ fn parts_without_overlap_land_in_the_task_branch_one_by_one_then_the_whole_task_
     let _ = FakeStep::Fail;
 }
 
-fn crew_fake(splits: Vec<String>, sleep_ms: u64) -> Arc<FakeAdapter> {
+fn crew_fake(splits: Vec<String>, sleep_ms: u64) -> FakeAdapter {
     let part = |f: &str| vec![vec![FakeStep::Sleep(sleep_ms), write(f, "x\n"), done("did it")]];
-    Arc::new(
-        FakeAdapter::new(vec![])
-            .with_id("fa")
-            .with_role(RoleKind::Coordinator, splits.iter().map(|s| vec![done(s)]).collect())
-            .with_role(RoleKind::Reviewer, vec![approve()])
-            .with_variant(RoleKind::Worker, "A", part("one.txt"))
-            .with_variant(RoleKind::Worker, "B", part("two.txt")),
-    )
+    FakeAdapter::new(vec![])
+        .with_id("fa")
+        .with_role(RoleKind::Coordinator, splits.iter().map(|s| vec![done(s)]).collect())
+        .with_role(RoleKind::Reviewer, vec![approve()])
+        .with_variant(RoleKind::Worker, "A", part("one.txt"))
+        .with_variant(RoleKind::Worker, "B", part("two.txt"))
 }
 
 #[test]
@@ -90,16 +80,18 @@ fn a_split_that_overlaps_is_made_again_once_and_a_good_second_split_runs_side_by
     let p = env.project(|p| p.agent = "fa".into());
     let bad = split(&[("p1", &["one.txt", "src"]), ("p2", &["two.txt", "src/a.rs"])]);
     let good = split(&[("p1", &["one.txt"]), ("p2", &["two.txt"])]);
-    let w = crew_fake(vec![bad, good], 500);
-    let e = env.engine(env.store(&p, |s| s.max_parallel = 3), vec![w.clone()], Arc::new(RecordingNotifier::default()), None);
+    // the parts wait at a gate: both running at once is a state that holds until the test has seen it
+    let h = HoldRole::wrap(crew_fake(vec![bad, good], 0), RoleKind::Worker, env.d.path());
+    let e = env.engine(env.store(&p, |s| s.max_parallel = 3), vec![h.clone()], Arc::new(RecordingNotifier::default()), None);
     let id = run(&e, &p, 2);
     until("both parts run at once", || {
         let t = task(&e, &id);
         t.runs.iter().filter(|r| r.role == RoleKind::Worker && r.state == StepState::Running).count() == 2
     });
+    h.open();
     wait_status(&e, &id, Status::Done);
 
-    let coord = calls_of(&w, RoleKind::Coordinator);
+    let coord = calls_of(&h.inner, RoleKind::Coordinator);
     assert_eq!(coord.len(), 2, "the split was asked for once more");
     assert!(coord[1].prompt.contains("both touch"), "and the Coordinator was told where it overlapped");
     assert!(has_log(&e, &id, "split_overlap: p1 and p2"));
@@ -112,7 +104,7 @@ fn a_split_that_overlaps_twice_runs_its_parts_one_after_the_other() {
     let env = Env::new();
     let p = env.project(|p| p.agent = "fa".into());
     let bad = split(&[("p1", &["one.txt", "src"]), ("p2", &["two.txt", "src/a.rs"])]);
-    let w = crew_fake(vec![bad.clone(), bad], 300);
+    let w = Arc::new(crew_fake(vec![bad.clone(), bad], 300));
     let e = env.engine(env.store(&p, |s| s.max_parallel = 3), vec![w.clone()], Arc::new(RecordingNotifier::default()), None);
     let id = run(&e, &p, 2);
     let t = wait_status(&e, &id, Status::Done);

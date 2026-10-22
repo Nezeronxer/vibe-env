@@ -156,6 +156,8 @@ mod tests {
         let answer = r.hub.set_secret("custom:f", "FAKE_TOKEN", SECRET).unwrap();
         assert_eq!(answer, json!({ "kind": "keyring" }), "the answer says where it went, not what it is");
         assert_eq!(r.hub.set_secret("custom:f", "bad name", SECRET).unwrap_err()["kind"], "bad_name");
+        assert_eq!(r.hub.set_secret("custom:f", "HOME", "/home/x").unwrap_err(), json!({"kind": "bad_name", "detail": "HOME"}));
+        assert_eq!(r.hub.set_secret("custom:f", "LANG", "C;x").unwrap_err(), json!({"kind": "bad_value", "detail": "LANG"}));
         assert_eq!(r.hub.set_secret("nope", "X", SECRET).unwrap_err()["kind"], "unknown_env");
 
         let id = r.hub.submit_task(&r.project.id, "Add f", None).unwrap();

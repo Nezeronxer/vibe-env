@@ -9,13 +9,6 @@ use nightshift_core::notify::{NoticeKind, RecordingNotifier};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-pub fn until(what: &str, mut f: impl FnMut() -> bool) {
-    let t0 = Instant::now();
-    while !f() {
-        assert!(t0.elapsed() < Duration::from_secs(60), "timeout: {what}");
-        std::thread::sleep(Duration::from_millis(10));
-    }
-}
 
 /// An env that does one small task end to end, for a task that only tells that the scheduler went round.
 pub fn barrier_env() -> Arc<FakeAdapter> {
@@ -251,7 +244,7 @@ fn when_every_variant_fails_the_task_fails_with_the_best_attempt_and_resume_goes
 
     let t = wait_status(&e, &id, Status::Failed);
     assert_eq!(t.outcome.error.as_deref(), Some("swarm_failed: best attempt B, 4 of 5 tests green"));
-    assert_eq!(kinds_of(&n), vec![NoticeKind::Failed], "one call: «Не вышло»");
+    assert_eq!(kinds(&n), vec![NoticeKind::Failed], "one call: «Не вышло»");
     assert_eq!(calls_of(&w, RoleKind::Reviewer).len(), 0, "nothing to compare");
     // the copy of the task holds the best attempt
     assert_eq!(std::fs::read_to_string(t.worktree.as_ref().unwrap().join("results.txt")).unwrap(), "4 passed, 1 failed\n");
@@ -270,29 +263,42 @@ fn variants_wait_for_seats_when_the_env_has_fewer_than_n_and_a_swarm_of_one_or_s
         p.check_cmd = Some(CHECK.into());
         p.agent = "fa".into();
     });
-    let w = Arc::new(race_fake(
-        "fa",
-        |m| vec![vec![FakeStep::Sleep(400), write("feature.txt", &format!("ok from {m}\n")), done("built")]],
-        vec![vec![done(&compare("A", &[("A", [9, 9, 9, 9]), ("B", [5, 5, 5, 5]), ("C", [4, 4, 4, 4])]))]],
-    ));
+    // the executors wait at a gate: two running and the third waiting for a seat holds until the test has seen it
+    let w = HoldRole::wrap(
+        race_fake(
+            "fa",
+            |m| vec![vec![write("feature.txt", &format!("ok from {m}\n")), done("built")]],
+            vec![vec![done(&compare("A", &[("A", [9, 9, 9, 9]), ("B", [5, 5, 5, 5]), ("C", [4, 4, 4, 4])]))]],
+        ),
+        RoleKind::Worker,
+        env.d.path(),
+    );
     // two seats for a swarm of three
-    let e = env.engine(env.store_v2(&p, settings_for("fa", 2)), vec![w], Arc::new(RecordingNotifier::default()), None);
+    let e = env.engine(env.store_v2(&p, settings_for("fa", 2)), vec![w.clone()], Arc::new(RecordingNotifier::default()), None);
     for n in [1, 6] {
         let err = e.submit(NewTask { project_id: p.id.clone(), prompt: "x".into(), swarm: race_spec(n), ..NewTask::default() }).unwrap_err();
         assert!(err.starts_with("swarm_size"), "{n}: {err}");
     }
     let id = submit_swarm(&e, &p, "Add the feature file", race_spec(3));
-    let (mut most_running, mut saw_waiting) = (0, false);
+    let most_running = std::cell::Cell::new(0);
+    let running_now = |t: &Task| {
+        let n = t.runs.iter().filter(|r| r.role == RoleKind::Worker && r.variant.is_some() && r.state == StepState::Running).count();
+        most_running.set(most_running.get().max(n));
+        n
+    };
+    until("two variants running and the third waiting for a seat", || {
+        let t = task(&e, &id);
+        running_now(&t) == 2 && t.runs.iter().any(|r| r.role == RoleKind::Worker && r.variant.is_some() && r.state == StepState::Pending)
+    });
+    std::thread::sleep(std::time::Duration::from_millis(200));
+    assert_eq!(running_now(&task(&e, &id)), 2, "the third does not start while both seats are taken");
+    w.open();
     until("the advice", || {
         let t = task(&e, &id);
-        let workers = t.runs.iter().filter(|r| r.role == RoleKind::Worker && r.variant.is_some());
-        let running = workers.clone().filter(|r| r.state == StepState::Running).count();
-        most_running = most_running.max(running);
-        saw_waiting |= workers.filter(|r| r.state == StepState::Pending).count() > 0 && running == 2;
+        running_now(&t);
         t.status == Status::Reviewing && e.swarm_view(&id).is_some_and(|v| v.advice.is_some())
     });
-    assert_eq!(most_running, 2, "never more runs than seats");
-    assert!(saw_waiting, "the third variant was seen waiting for a seat while two ran");
+    assert_eq!(most_running.get(), 2, "never more runs than seats");
     let v = e.swarm_view(&id).unwrap();
     assert!(v.variants.iter().all(|x| x.state == "passed"), "and it ran when a seat freed up");
 }

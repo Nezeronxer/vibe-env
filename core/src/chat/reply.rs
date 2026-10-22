@@ -133,7 +133,7 @@ impl Chats {
             run.model = model.cli_arg.clone();
             run.read_only = true;
             run.extra_args = env_set.extra_args.clone();
-            run.extra_env = self.engine.env_vars_of(&c.env);
+            run.extra_env = self.engine.env_vars_of(&c.env, None);
             let events = match agent::run_blocking(&*a, &run, &mut |_| {}, &self.stop) {
                 Ok(_) if self.stop.load(Ordering::SeqCst) => return,
                 Ok(e) => e,

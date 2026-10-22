@@ -273,8 +273,7 @@ fn missing_engine_reports_an_install_hint() {
 
 #[test]
 fn adapters_lists_six_builtin_engines_then_the_custom_ones() {
-    let mut s = Settings::default();
-    s.custom_agents = vec![CustomAgent { id: "mine".into(), name: "Mine".into(), run: "echo {prompt}".into(), resume: None }];
+    let s = Settings { custom_agents: vec![CustomAgent { id: "mine".into(), name: "Mine".into(), run: "echo {prompt}".into(), resume: None }], ..Settings::default() };
     let ids: Vec<String> = adapters(&s).iter().map(|a| a.id().to_string()).collect();
     assert_eq!(ids, ["claude", "codex", "gemini", "opencode", "cursor", "qwen", "mine"]);
     assert_eq!(adapters(&Settings::default()).len(), 6);
@@ -293,8 +292,7 @@ fn custom_command_cannot_shadow_a_builtin_engine() {
 
 #[test]
 fn only_claude_is_guarded() {
-    let mut s = Settings::default();
-    s.custom_agents = vec![CustomAgent { id: "mine".into(), name: "Mine".into(), run: "true".into(), resume: None }];
+    let s = Settings { custom_agents: vec![CustomAgent { id: "mine".into(), name: "Mine".into(), run: "true".into(), resume: None }], ..Settings::default() };
     let guarded: Vec<String> = adapters(&s).iter().filter(|a| a.guarded()).map(|a| a.id().to_string()).collect();
     assert_eq!(guarded, ["claude"]);
 }
@@ -582,8 +580,7 @@ fn extra_args_are_separate_arguments_and_extra_env_reaches_the_process() {
 #[test]
 fn cli_path_from_the_env_settings_replaces_the_binary() {
     let mut s = Settings::default();
-    let mut e = nightshift_core::model::EnvSettings::default();
-    e.cli_path = Some("/opt/special/codex".into());
+    let e = nightshift_core::model::EnvSettings { cli_path: Some("/opt/special/codex".into()), ..Default::default() };
     s.envs.insert("codex".into(), e);
     let list = adapters(&s);
     let codex = list.iter().find(|a| a.id() == "codex").unwrap();

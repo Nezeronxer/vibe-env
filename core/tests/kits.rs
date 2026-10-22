@@ -963,6 +963,7 @@ fn every_kit_error_serializes_with_its_kind_and_fields() {
         (s(NotFound("a".into())), "not_found", "detail"),
         (s(Changed), "changed", "kind"),
         (s(BadName("a b".into())), "bad_name", "detail"),
+        (s(BadValue("HOME".into())), "bad_value", "detail"),
         (s(Interrupted), "interrupted", "kind"),
         (s(NotApplied { snapshot: "s".into(), cli: "claude".into(), keys: vec!["k".into()] }), "not_applied", "cli"),
         (s(Io("a".into())), "io", "detail"),
@@ -972,4 +973,71 @@ fn every_kit_error_serializes_with_its_kind_and_fields() {
         assert!(v.get(field).is_some(), "{kind} has {field}: {v}");
     }
     assert_eq!(s(BadName("a b".into()))["detail"], "a b");
+}
+
+/// Every name of a family no kit may set is refused when it is typed and never reaches a run, in any case of letters.
+fn refused(family: &str, names: &[&str]) {
+    let e = env();
+    let k = kits(&e);
+    for name in names.iter().flat_map(|n| [n.to_string(), n.to_ascii_lowercase()]) {
+        let err = k.set_secret("gemini", &name, "/tmp/x").expect_err(&format!("{family}: {name} is refused"));
+        let v = serde_json::to_value(&err).unwrap();
+        assert_eq!((v["kind"].as_str(), v["detail"].as_str()), (Some("bad_name"), Some(name.as_str())), "{family}: {name}");
+        assert!(!nightshift_core::kits::env_name_allowed(&name), "{family}: {name} put there before is dropped on the way to a run too");
+    }
+    assert!(k.env_vars("gemini").is_empty(), "{family}");
+}
+
+#[test]
+fn names_that_choose_the_programs_and_their_start_files_are_refused() {
+    refused("shell and folders", &["PATH", "HOME", "SHELL", "ZDOTDIR", "ENV", "BASH_ENV", "IFS", "PROMPT_COMMAND", "PS4", "XDG_CONFIG_HOME", "XDG_DATA_DIRS", "CODEX_HOME", "CLAUDE_CONFIG_DIR", "ZSH_CUSTOM"]);
+}
+
+#[test]
+fn names_of_the_dynamic_loader_are_refused() {
+    refused("loader", &["LD_PRELOAD", "LD_LIBRARY_PATH", "LD_AUDIT", "DYLD_INSERT_LIBRARIES", "DYLD_LIBRARY_PATH"]);
+}
+
+#[test]
+fn names_that_steer_git_and_ssh_are_refused() {
+    refused("git and ssh", &["GIT_CONFIG_COUNT", "GIT_CONFIG_KEY_0", "GIT_CONFIG_VALUE_0", "GIT_CONFIG_GLOBAL", "GIT_SSH_COMMAND", "GIT_SSH", "GIT_EXEC_PATH", "GIT_ASKPASS", "GIT_TEMPLATE_DIR", "SSH_ASKPASS", "SUDO_ASKPASS", "SSH_AUTH_SOCK"]);
+}
+
+#[test]
+fn search_paths_and_options_of_interpreters_are_refused() {
+    refused("interpreters", &["PYTHONPATH", "PYTHONSTARTUP", "PERL5OPT", "PERL5LIB", "RUBYOPT", "RUBYLIB", "NODE_OPTIONS", "NODE_PATH", "NPM_CONFIG_PREFIX", "JAVA_TOOL_OPTIONS", "_JAVA_OPTIONS", "CLASSPATH", "LUA_PATH", "MAVEN_OPTS"]);
+}
+
+#[test]
+fn programs_a_cli_starts_by_name_are_refused() {
+    refused("programs by name", &["EDITOR", "VISUAL", "PAGER", "BROWSER"]);
+}
+
+#[test]
+fn endpoints_proxies_and_tls_that_would_take_the_keys_elsewhere_are_refused() {
+    refused("endpoints and tls", &["ANTHROPIC_BASE_URL", "OPENAI_BASE_URL", "OPENAI_API_BASE", "HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "NO_PROXY", "NODE_EXTRA_CA_CERTS", "SSL_CERT_FILE", "SSL_CERT_DIR", "REQUESTS_CA_BUNDLE", "CURL_CA_BUNDLE", "NODE_TLS_REJECT_UNAUTHORIZED", "GIT_SSL_NO_VERIFY"]);
+}
+
+/// Keys, tokens and the plain words a kit needs still go; a value with a line break or a NUL, or one out of the shape
+/// of TMPDIR / LANG / LC_ALL, does not.
+#[test]
+fn keys_go_to_the_runs_and_values_out_of_their_shape_do_not() {
+    let e = env();
+    let k = kits(&e);
+    for (name, value) in [("API_TOKEN", "tok\nEVIL=1"), ("API_TOKEN", "tok\r"), ("API_TOKEN", "a\0b"), ("TMPDIR", "relative/tmp"), ("TMPDIR", "/tmp/a=b"), ("LANG", "en_US.UTF-8;touch x"), ("LC_ALL", "C UTF")] {
+        let err = k.set_secret("gemini", name, value).expect_err(&format!("{name}={value:?} is refused"));
+        let v = serde_json::to_value(&err).unwrap();
+        // the refusal names the variable, never the value (it may be a secret)
+        assert_eq!((v["kind"].as_str(), v["detail"].as_str()), (Some("bad_value"), Some(name)), "{name}={value:?}");
+        assert!(k.env_vars("gemini").is_empty(), "{name}={value:?} must not reach a run");
+    }
+    let good = [("ANTHROPIC_API_KEY", "sk-test"), ("OPENAI_API_KEY", "k"), ("GITHUB_TOKEN", "tok with spaces=and;signs"), ("TMPDIR", "/tmp/x"), ("LANG", "ru_RU.UTF-8"), ("LC_ALL", "C")];
+    for (name, value) in good {
+        k.set_secret("gemini", name, value).unwrap();
+    }
+    let mut got = k.env_vars("gemini");
+    got.sort();
+    let mut want: Vec<(String, String)> = good.iter().map(|(n, v)| (n.to_string(), v.to_string())).collect();
+    want.sort();
+    assert_eq!(got, want);
 }

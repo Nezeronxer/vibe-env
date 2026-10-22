@@ -20,6 +20,9 @@ pub fn e2s<E: std::fmt::Display>(e: E) -> String {
     e.to_string()
 }
 
+/// What the app does after settings were saved.
+pub(crate) type SettingsHook = Box<dyn Fn(&nightshift_core::model::Settings) + Send + Sync>;
+
 pub struct Hub {
     pub engine: Arc<Engine>,
     pub chats: Arc<Chats>,
@@ -34,7 +37,7 @@ pub struct Hub {
     /// Ids of the convoy cards the window already has.
     pub(crate) cards: Mutex<std::collections::HashSet<String>>,
     /// What the app does after settings were saved (the notifier's copy, the language, the tray): set by `main`.
-    pub(crate) settings_hooks: Mutex<Vec<Box<dyn Fn(&nightshift_core::model::Settings) + Send + Sync>>>,
+    pub(crate) settings_hooks: Mutex<Vec<SettingsHook>>,
 }
 
 impl Hub {

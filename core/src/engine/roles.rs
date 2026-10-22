@@ -128,7 +128,7 @@ impl Engine {
         let settings = lk(&self.store).settings();
         let env_set = settings.envs.get(&env).cloned().unwrap_or_default();
         let cat = models::catalog(&env, &*a, &lk(&self.store));
-        let notes = self.take_notes(&t.id, role);
+        let notes = self.pending_notes(&t.id, role);
         let state = self.state(&t.id);
 
         let mut resume = call.resume.clone();
@@ -150,7 +150,6 @@ impl Engine {
         // the Watcher's nudge: the next run continues the session with this text (G08.2)
         let mut nudge_text: Option<String> = None;
         let mut nudged = false;
-        let mut announced_notes = false;
         for _ in 0..runs::MAX_RUN_TRIES {
             let (cli_arg, label, vendor, note) = match &pinned {
                 Some(p) => (p.cli_arg.clone(), p.label.clone(), Vendor::from_name(&p.vendor), None),
@@ -193,7 +192,7 @@ impl Engine {
             run.resume = resume.clone();
             run.model = cli_arg.clone();
             run.read_only = ro;
-            run.extra_env = lk(&self.env_vars).as_ref().map(|f| f(&env)).unwrap_or_default();
+            run.extra_env = self.env_vars_of(&env, Some(&t.id));
             run.json_schema = call.schema.clone();
             run.extra_args = env_set.extra_args.clone();
             if a.reports_cost() {
@@ -204,10 +203,6 @@ impl Engine {
                 run.max_budget_usd = Some(task_left.map_or(day_left, |x| x.min(day_left)));
             }
 
-            if !announced_notes {
-                announced_notes = true;
-                self.announce_notes(&t.id, role, None, &notes);
-            }
             let idx = t.runs.len();
             t.runs.push(RoleRun {
                 role,
@@ -221,7 +216,7 @@ impl Engine {
             });
             self.save(t)?;
             let silence = self.silence_limit(role, nudged);
-            let ran = self.run_agent(t, &*a, &run, &label, None, silence, cancel);
+            let ran = self.run_agent(t, &*a, &run, (&label, None), &notes, silence, cancel);
             if let Some(dir) = copy {
                 self.drop_ro(&t.id, p, &dir);
             }
@@ -355,14 +350,16 @@ impl Engine {
     }
 
     /// Runs an agent, logging every event tagged with its role, model and variant. With `silence` set,
-    /// a run that prints nothing for that long (by the engine's clock) is killed: `Stalled`.
+    /// a run that prints nothing for that long (by the engine's clock) is killed: `Stalled`. `notes` (in its prompt) are marked
+    /// delivered once the agent's process has started; a start that fails leaves them for the next run.
+    #[allow(clippy::too_many_arguments)]
     pub(super) fn run_agent(
         &self,
         t: &Task,
         a: &dyn agent::Adapter,
         run: &Run,
-        model: &str,
-        variant: Option<&str>,
+        (model, variant): (&str, Option<&str>),
+        notes: &[(String, String)],
         silence: Option<CDuration>,
         cancel: &AtomicBool,
     ) -> Ran {
@@ -405,7 +402,7 @@ impl Engine {
                             std::thread::sleep(Duration::from_millis(15));
                         }
                     });
-                    &local
+                    local
                 }
                 None => cancel,
             };
@@ -417,7 +414,7 @@ impl Engine {
                 }
             }
             let _end = EndOnDrop(&done);
-            agent::run_blocking(a, run, &mut on, flag)
+            agent::run_blocking_with(a, run, &mut on, &mut || self.deliver_notes(&id, role, variant, notes), flag)
         });
         if cancel.load(Ordering::SeqCst) {
             return Ran::Cancelled;
@@ -551,11 +548,13 @@ impl Engine {
         t.status = Status::NeedsHuman;
         // no fixed login detection: a timer asks again every minute (the engine learns of a login by trying)
         t.resume_at = Some(self.now() + CDuration::seconds(ENV_RETRY_SECS));
-        self.save(t)?;
+        // what the question rests on is written before the status that shows it: whoever sees NeedsHuman (the
+        // scheduler closing the env's queue, an answer, a note) finds the stage and the login mark already there
         let mut pend = self.pending(&t.id);
         pend.stage = Some(stage);
         self.set_pending(&t.id, &pend)?;
         self.update_state(&t.id, |s| s.special = Some(SPECIAL_AUTH.to_string()))?;
+        self.save(t)?;
         self.log(&t.id, LogKind::Stage, &format!("{text} ({msg})"));
         if first {
             if let Some(p) = self.project(&t.project_id) {
@@ -592,12 +591,12 @@ impl Engine {
         let options = vec![format!("Add ${BUDGET_STEP_USD:.0}"), "Stop".to_string()];
         t.question = Some(Question { text: text.clone(), options: options.clone(), kind: QuestionKind::Agent });
         t.status = Status::NeedsHuman;
-        self.save(t)?;
         let mut pend = self.pending(&t.id);
         pend.stage = Some(stage);
         self.set_pending(&t.id, &pend)?;
         let key = key.to_string();
         self.update_state(&t.id, |s| s.special = Some(key))?;
+        self.save(t)?; // after what the answer needs (see `on_auth`)
         self.log(&t.id, LogKind::Stage, &text);
         self.notify(NoticeKind::Question, t, p, text, options);
         Ok(())
@@ -608,7 +607,6 @@ impl Engine {
         let (body, options) = (q.0.clone(), q.1.clone());
         t.question = Some(Question { text: q.0, options: q.1, kind: QuestionKind::Agent });
         t.status = Status::NeedsHuman;
-        self.save(t)?;
         let mut pend = self.pending(&t.id);
         pend.stage = Some(stage);
         pend.prompt = None;
@@ -618,6 +616,7 @@ impl Engine {
             s.asked_session = session;
             s.special = None;
         })?;
+        self.save(t)?; // after what the answer needs (see `on_auth`)
         self.log(&t.id, LogKind::Stage, "needs human");
         self.notify(NoticeKind::Question, t, p, body, options);
         Ok(())

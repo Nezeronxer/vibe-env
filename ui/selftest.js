@@ -347,7 +347,7 @@ eq('council lanes carry the model of the member even without an executor run', L
 
 // --- every section, kit group, criterion and refusal has words in both languages (stories 194, 205, 212) ---
 const need = [].concat(L.SETTINGS_SECTIONS.map((x) => 'set.nav.' + x.id), L.KIT_GROUPS.map((g) => 'kit.g.' + g), ['correctness', 'coverage', 'simplicity', 'risk'].map((k) => 'crit.' + k),
-  ['not_a_kit', 'bad_zip', 'unsafe_path', 'symlink', 'file_too_large', 'kit_too_large', 'too_many_files', 'corrupt', 'wrong_env', 'clone_failed', 'unknown_env', 'dest_not_empty', 'not_found', 'changed', 'bad_name', 'interrupted', 'io', 'not_applied'].map((k) => 'kit.err.' + k));
+  ['not_a_kit', 'bad_zip', 'unsafe_path', 'symlink', 'file_too_large', 'kit_too_large', 'too_many_files', 'corrupt', 'wrong_env', 'clone_failed', 'unknown_env', 'dest_not_empty', 'not_found', 'changed', 'bad_name', 'bad_value', 'interrupted', 'io', 'not_applied'].map((k) => 'kit.err.' + k));
 eq('labels exist in ru and en', need.filter((k) => !(k in NSI18n.dicts.ru) || !(k in NSI18n.dicts.en)), []);
 eq('the wrong-env refusal reads as in the spec (story 210)', t('kit.err.wrong_env', { detail: 'Codex', env: 'Claude Code' }), 'Это набор Codex. В Claude Code он не ставится: у каждой среды свои скиллы и правила.');
 

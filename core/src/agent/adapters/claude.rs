@@ -54,9 +54,14 @@ fn settings_json(open_network: bool) -> String {
 const MIN_WILDCARD: (u32, u32, u32) = (2, 1, 186);
 const VERSION_TTL: Duration = Duration::from_secs(600);
 
+type Version = (u32, u32, u32);
+
+/// binary -> (when read, what it said)
+type VersionCache = Mutex<HashMap<String, (Instant, Option<Version>)>>;
+
 /// `claude --version`, re-read at most every 10 minutes per binary (the user may upgrade while the app runs).
-fn version_at(bin: &str, now: Instant) -> Option<(u32, u32, u32)> {
-    static CACHE: OnceLock<Mutex<HashMap<String, (Instant, Option<(u32, u32, u32)>)>>> = OnceLock::new();
+fn version_at(bin: &str, now: Instant) -> Option<Version> {
+    static CACHE: OnceLock<VersionCache> = OnceLock::new();
     let cache = CACHE.get_or_init(Default::default);
     if let Some((at, v)) = cache.lock().unwrap().get(bin) {
         if now.saturating_duration_since(*at) < VERSION_TTL {

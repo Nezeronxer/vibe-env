@@ -25,15 +25,24 @@ pub use nightshift_core::agent::adapters::common::valid_session_id;
 /// land in the process arguments and, on macOS, in a file on disk. The person's own shell has their login anyway.
 pub const CARRIED_ENV: [&str; 10] = ["PATH", "HOME", "LANG", "LC_ALL", "TMPDIR", "CODEX_HOME", "CLAUDE_CONFIG_DIR", "XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_CACHE_HOME"];
 
-fn carried(k: &str) -> bool {
-    CARRIED_ENV.contains(&k)
+/// A variable goes into the terminal when its name is carried and its value keeps the shape of that name
+/// (`kits::env_value_ok`: a kit may have put it there). The log gets the name of a rejected one, never the value.
+fn carried(k: &str, v: &str) -> bool {
+    if !CARRIED_ENV.contains(&k) {
+        return false;
+    }
+    let ok = nightshift_core::kits::env_value_ok(k, v);
+    if !ok {
+        eprintln!("env_value_rejected: {k}");
+    }
+    ok
 }
 
 /// The program, the arguments and the folder of a `Command` an adapter built.
 pub fn from_command(c: &Command) -> Launch {
     let mut argv = vec![c.get_program().to_string_lossy().into_owned()];
     argv.extend(c.get_args().map(|a| a.to_string_lossy().into_owned()));
-    let env = c.get_envs().filter_map(|(k, v)| Some((k.to_string_lossy().into_owned(), v?.to_string_lossy().into_owned()))).filter(|(k, _)| carried(k)).collect();
+    let env = c.get_envs().filter_map(|(k, v)| Some((k.to_string_lossy().into_owned(), v?.to_string_lossy().into_owned()))).filter(|(k, v)| carried(k, v)).collect();
     Launch { cwd: c.get_current_dir().map(Path::to_path_buf), argv, banner: None, env }
 }
 
@@ -44,7 +53,7 @@ const SHELL_AFTER_BANNER: &str = r#"printf '%s\n\n' "$1"; exec "${SHELL:-sh}""#;
 /// The list of words that finally runs in the terminal.
 pub fn final_argv(l: &Launch) -> Vec<String> {
     // `env K=V prog args`: the variables travel as words, no shell reads them
-    let vars: Vec<&(String, String)> = l.env.iter().filter(|(k, _)| carried(k)).collect();
+    let vars: Vec<&(String, String)> = l.env.iter().filter(|(k, v)| carried(k, v)).collect();
     let argv: Vec<String> = if vars.is_empty() || l.argv.is_empty() {
         l.argv.clone()
     } else {
@@ -230,6 +239,18 @@ mod tests {
             assert!(!text.contains("secret-123") && !text.contains("tok-456"), "{text}");
         }
         assert_eq!(final_argv(&from_command(&Command::new("x"))), ["x"].map(String::from).to_vec(), "none: the command as it is");
+    }
+
+    #[test]
+    fn a_carried_variable_whose_value_is_out_of_its_shape_stays_out_of_the_terminal() {
+        let mut c = Command::new("/opt/bin/claude");
+        c.env("HOME", "rel/home").env("PATH", "/usr/bin:.").env("LANG", "C;x").env("TMPDIR", "/t\nEVIL=1").env("CODEX_HOME", "/ok");
+        let l = from_command(&c);
+        assert_eq!(l.env, vec![("CODEX_HOME".to_string(), "/ok".to_string())]);
+        // one put on the Launch by hand is dropped again on the way out
+        let mut forged = l.clone();
+        forged.env.push(("XDG_CONFIG_HOME".into(), "/a=b".into()));
+        assert_eq!(final_argv(&forged), ["env", "CODEX_HOME=/ok", "/opt/bin/claude"].map(String::from).to_vec());
     }
 
     #[test]

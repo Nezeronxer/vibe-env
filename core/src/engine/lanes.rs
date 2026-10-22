@@ -245,16 +245,14 @@ impl Engine {
         if let Err(why) = a.available() {
             return LaneEnd::Unavailable(why);
         }
-        if a.reports_cost() {
-            if self.budget_breach(&t).is_some() {
-                return LaneEnd::Budget;
-            }
+        if a.reports_cost() && self.budget_breach(&t).is_some() {
+            return LaneEnd::Budget;
         }
         let settings = lk(&self.store).settings();
         let env_set = settings.envs.get(&env).cloned().unwrap_or_default();
         let cat = models::catalog(&env, &*a, &lk(&self.store));
         let role = l.role;
-        let notes = self.take_lane_notes(l.task_id, role, Some(l.label));
+        let notes = self.pending_lane_notes(l.task_id, role, Some(l.label));
         let mut lane_runs = Self::lane_runs_of(&t, role, l.label);
         let mut choice = Some(l.model.clone());
         let mut pinned = l.pin.clone();
@@ -267,7 +265,6 @@ impl Engine {
         let mut announced = false;
         let mut nudge_text: Option<String> = None;
         let mut nudged = false;
-        let mut announced_notes = false;
         for _ in 0..MAX_RUN_TRIES {
             let (cli_arg, label, vendor, note) = match &pinned {
                 Some(p) => (p.cli_arg.clone(), p.label.clone(), Vendor::from_name(&p.vendor), None),
@@ -301,7 +298,7 @@ impl Engine {
             run.resume = resume.clone();
             run.model = cli_arg.clone();
             run.read_only = ro;
-            run.extra_env = lk(&self.env_vars).as_ref().map(|f| f(&env)).unwrap_or_default();
+            run.extra_env = self.env_vars_of(&env, Some(l.task_id));
             run.json_schema = l.schema.clone();
             run.extra_args = env_set.extra_args.clone();
             if a.reports_cost() {
@@ -310,10 +307,6 @@ impl Engine {
                 let day_left = (settings.limits.day_usd + day.extra_usd - day.spent_usd).max(0.0);
                 let task_left = fresh.budget_usd.map(|b| (b - fresh.cost_usd.unwrap_or(0.0)).max(0.0));
                 run.max_budget_usd = Some(task_left.map_or(day_left, |x| x.min(day_left)));
-            }
-            if !announced_notes {
-                announced_notes = true;
-                self.announce_notes(l.task_id, role, Some(l.label), &notes);
             }
             lane_runs.push(RoleRun {
                 role,
@@ -327,7 +320,7 @@ impl Engine {
             });
             let idx = lane_runs.len() - 1;
             self.publish_runs(l.task_id, role, l.label, &lane_runs);
-            let ran = self.run_agent(&t, &*a, &run, &label, Some(l.label), self.silence_limit(role, nudged), cancel);
+            let ran = self.run_agent(&t, &*a, &run, (&label, Some(l.label)), &notes, self.silence_limit(role, nudged), cancel);
             if let Some(dir) = copy {
                 self.drop_ro(&t.id, l.project, &dir);
             }
@@ -463,9 +456,10 @@ impl Engine {
         let Some(a) = first else { return Ok(false) };
         let role = if a.kind == "Member" { RoleKind::Council } else { RoleKind::Worker };
         let text = format!("{} {}: {}", a.kind, a.label, a.question);
-        self.ask_role(t, p, role, stage, (text, a.options), a.session)?;
+        // the lane is named before the question shows: an answer given at once goes back to it
         let label = a.label;
         self.update_state(&t.id, |s| s.swarm.asked_lane = Some(label))?;
+        self.ask_role(t, p, role, stage, (text, a.options), a.session)?;
         Ok(true)
     }
 

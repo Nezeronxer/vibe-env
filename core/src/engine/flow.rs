@@ -204,11 +204,12 @@ impl Engine {
         self.stage(t, "preparing");
         self.clear_pending(&t.id);
         // notes the person left while the task was queued survive the fresh start
-        let notes: Vec<_> = self.state(&t.id).notes.into_iter().filter(|n| !n.delivered).collect();
-        self.clear_state(&t.id);
-        if !notes.is_empty() {
-            self.update_state(&t.id, |s| s.notes = notes)?;
-        }
+        // one write: a note given right now from another thread is not lost between a read and a clear
+        self.update_state(&t.id, |s| {
+            let notes: Vec<_> = std::mem::take(&mut s.notes).into_iter().filter(|n| !n.delivered).collect();
+            *s = Default::default();
+            s.notes = notes;
+        })?;
         if t.outcome.error.as_deref().is_some_and(|e| e.starts_with("waiting_") || e.starts_with("env_unavailable") || e.starts_with("dependency_blocked")) {
             t.outcome.error = None;
         }
@@ -791,12 +792,7 @@ impl Engine {
         }
         let _ = self.save(t);
         self.clear_pending(&t.id);
-        // the copies of a swarm live until the task is removed (G11.5): their record stays
-        let sw = self.state(&t.id).swarm;
-        self.clear_state(&t.id);
-        if !sw.variants.is_empty() || !sw.parts.is_empty() || !sw.council.proposals.is_empty() {
-            let _ = self.update_state(&t.id, |s| s.swarm = sw);
-        }
+        self.keep_only_swarm(&t.id);
         let line = summary_line(t);
         self.stage(t, &line);
         self.notify(NoticeKind::Done, t, p, line, vec![]);

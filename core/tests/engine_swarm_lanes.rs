@@ -9,15 +9,7 @@ use nightshift_core::model::*;
 use nightshift_core::notify::{NoticeKind, RecordingNotifier};
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
-use std::time::{Duration, Instant};
 
-fn until(what: &str, mut f: impl FnMut() -> bool) {
-    let t0 = Instant::now();
-    while !f() {
-        assert!(t0.elapsed() < Duration::from_secs(60), "timeout: {what}");
-        std::thread::sleep(Duration::from_millis(10));
-    }
-}
 
 const CHECK: &str = r#"grep -q ok feature.txt && echo "3 passed""#;
 const CRITIC_OK: &str = r#"{"ok":true,"issues":[],"plan":[]}"#;
@@ -125,12 +117,14 @@ fn a_cli_that_goes_away_in_the_middle_of_a_race_makes_the_task_wait_for_it_as_fo
     let env = Env::new();
     let p = project(&env);
     let (clock, now) = manual_clock();
-    let inner = Arc::new(
+    // the planner waits at a gate: the CLI is gone by the time the variants start
+    let hold = HoldRole::wrap(
         fake(vec![("m1", vec![ok_run("m1")]), ("m2", vec![ok_run("m2")])], &["A", "B"])
-            // the planner takes its time: the CLI is gone by the time the variants start
-            .with_role(RoleKind::Planner, vec![vec![FakeStep::Sleep(500), done(&brief_json("Add it", &["write feature.txt"], false, false, None))]]),
+            .with_role(RoleKind::Planner, vec![vec![done(&brief_json("Add it", &["write feature.txt"], false, false, None))]]),
+        RoleKind::Planner,
+        env.d.path(),
     );
-    let knobs = Arc::new(Knobs::new(inner.clone()));
+    let knobs = Arc::new(Knobs::new(hold.clone()));
     let e = env.engine(
         env.store_v2(&p, |s| {
             models3(s);
@@ -141,18 +135,19 @@ fn a_cli_that_goes_away_in_the_middle_of_a_race_makes_the_task_wait_for_it_as_fo
         Some(clock),
     );
     let id = go(&e, &p, "Add the feature file", SwarmMode::Race, 2);
-    until("the planner runs", || calls_of(&inner, RoleKind::Planner).len() == 1);
+    until("the planner runs", || calls_of(&hold.inner, RoleKind::Planner).len() == 1);
     knobs.installed.store(false, Ordering::SeqCst);
+    hold.open();
     until("the task waits for its env", || task(&e, &id).outcome.error.as_deref().is_some_and(|x| x.starts_with("env_unavailable")));
     let t = task(&e, &id);
     assert_eq!(t.status, Status::Working, "not failed: it waits, as a task whose planner would find the CLI gone");
     assert!(e.swarm_view(&id).unwrap().variants.iter().all(|v| v.state != "failed"), "{:?}", e.swarm_view(&id).unwrap().variants);
-    assert!(calls_of(&inner, RoleKind::Worker).is_empty());
+    assert!(calls_of(&hold.inner, RoleKind::Worker).is_empty());
 
     knobs.installed.store(true, Ordering::SeqCst);
     advance(&now, 61); // it asks again once a minute
     until("the advice", || has_advice(&e, &id));
-    assert_eq!(calls_of(&inner, RoleKind::Worker).len(), 2);
+    assert_eq!(calls_of(&hold.inner, RoleKind::Worker).len(), 2);
 }
 
 #[test]
