@@ -315,19 +315,14 @@ pub fn group_models(rows: &[(String, Option<String>, Option<String>, bool)], ven
     out
 }
 
-/// One-line summary of tool input: first known key, flattened and cut.
+/// Summary of tool input: the first known key, else the whole input. Neither flattened nor cut here:
+/// `actions::finish_action` scrubs first and makes it one short line after, so a cut never splits a secret.
 pub fn summarize(input: &Value) -> String {
-    let v = ["file_path", "path", "command", "pattern", "url", "query", "description", "filePath"]
+    ["file_path", "path", "command", "pattern", "url", "query", "description", "filePath"]
         .iter()
         .find_map(|k| input.get(k).and_then(Value::as_str))
         .map(str::to_string)
-        .unwrap_or_else(|| input.to_string());
-    let one: String = v.split_whitespace().collect::<Vec<_>>().join(" ");
-    if one.chars().count() > 120 {
-        format!("{}…", one.chars().take(120).collect::<String>())
-    } else {
-        one
-    }
+        .unwrap_or_else(|| input.to_string())
 }
 
 /// What a JSON line meant, for engines whose stream has no final text (Done is built at EOF).

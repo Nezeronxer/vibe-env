@@ -1171,3 +1171,126 @@ fn values_of_env_files_below_the_top_of_the_copy_are_scrubbed_too() {
     let sc = Scrub::for_run(&run);
     assert_eq!(sc.text("deepsecret-999 / nested-pass-42"), "${API_KEY} / ${DB_PASS}");
 }
+
+// ---- live run 23.10 (F2): symlinked .env, scrub before every cut, wide .env search, paths, our own tools ----
+
+#[test]
+fn a_symlinked_env_file_in_the_copy_is_read() {
+    let (copy, outside) = (tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap());
+    std::fs::write(outside.path().join("real.env"), "LINK_KEY=linked-secret-77\n").unwrap();
+    std::os::unix::fs::symlink(outside.path().join("real.env"), copy.path().join(".env")).unwrap();
+    // a symlinked folder is still not entered
+    std::fs::create_dir_all(outside.path().join("other")).unwrap();
+    std::fs::write(outside.path().join("other/.env"), "FAR_KEY=far-away-secret\n").unwrap();
+    std::os::unix::fs::symlink(outside.path().join("other"), copy.path().join("other")).unwrap();
+    let sc = Scrub::for_run(&Run::new(copy.path().to_path_buf(), "p".into(), String::new(), Role::Worker));
+    assert_eq!(sc.text("linked-secret-77 far-away-secret"), "${LINK_KEY} far-away-secret");
+}
+
+#[test]
+fn a_multiline_secret_across_the_head_of_a_new_file_is_scrubbed_before_the_cut() {
+    let pem = "-----BEGIN KEY-----\nMIIBsecretline1\nMIIBsecretline2\nMIIBsecretline3\n-----END KEY-----";
+    let content = format!("{}{pem}\ntail\n", (1..=18).map(|i| format!("line{i}\n")).collect::<String>());
+    let mut a = actions::tool_action("t", "Write", &serde_json::json!({"file_path": "cfg.txt", "content": content}));
+    actions::finish_action(&mut a, &Scrub::new([("PEM_KEY".to_string(), pem.to_string())]));
+    let ActionInput::Write { head, lines, .. } = &a.input else { panic!() };
+    assert!(!head.contains("MIIB") && !head.contains("BEGIN KEY"), "{head}");
+    assert!(head.contains("${PEM_KEY}"), "{head}");
+    assert_eq!(head.lines().count(), actions::HEAD_LINES, "{head}");
+    assert_eq!(*lines, 24, "the count is of the real file");
+}
+
+#[test]
+fn a_secret_across_the_cut_of_a_one_line_summary_is_scrubbed_before_the_cut() {
+    let secret = "s3cr3t-value-123";
+    let input = serde_json::json!({"description": format!("{} {secret}", "x".repeat(115))});
+    let mut a = actions::tool_action("t", "Task", &input);
+    actions::finish_action(&mut a, &Scrub::new([("API_TOKEN".to_string(), secret.to_string())]));
+    let ActionInput::Other { summary } = &a.input else { panic!() };
+    assert!(!summary.contains("s3cr"), "{summary}");
+    assert!(summary.starts_with(&"x".repeat(115)) && summary.chars().count() <= 121, "{summary}");
+}
+
+#[test]
+fn an_env_file_is_found_even_beside_a_folder_with_hundreds_of_folders() {
+    let d = tempfile::tempdir().unwrap();
+    for i in 0..600 {
+        std::fs::create_dir_all(d.path().join(format!("docs/d{i}"))).unwrap();
+    }
+    for i in 0..600 {
+        std::fs::create_dir_all(d.path().join(format!("examples/e{i}"))).unwrap();
+    }
+    std::fs::create_dir_all(d.path().join("server")).unwrap();
+    std::fs::write(d.path().join("server/.env"), "SERVER_KEY=server-secret-5\n").unwrap();
+    let sc = Scrub::for_run(&Run::new(d.path().to_path_buf(), "p".into(), String::new(), Role::Worker));
+    assert_eq!(sc.text("server-secret-5"), "${SERVER_KEY}");
+}
+
+/// What `run_blocking` makes of a Claude stream of `lines` run in `cwd`, with an answer schema or not.
+fn replay_lines(cwd: &std::path::Path, lines: &[serde_json::Value], schema: bool) -> Vec<AgentEvent> {
+    let f = tempfile::NamedTempFile::new().unwrap();
+    std::fs::write(f.path(), lines.iter().map(|l| l.to_string() + "\n").collect::<String>()).unwrap();
+    let mut run = Run::new(cwd.to_path_buf(), "p".into(), String::new(), Role::Worker);
+    run.json_schema = schema.then(|| "{}".to_string());
+    let claude = Claude::new();
+    let r = Replay { inner: &claude, path: f.path().to_string_lossy().into_owned(), exit_ok: true };
+    run_blocking(&r, &run, &mut |_| {}, &AtomicBool::new(false)).unwrap()
+}
+
+fn tool_use(id: &str, name: &str, input: serde_json::Value) -> serde_json::Value {
+    serde_json::json!({"type":"assistant","message":{"content":[{"type":"tool_use","id":id,"name":name,"input":input}]}})
+}
+fn tool_result(id: &str, rec: serde_json::Value) -> serde_json::Value {
+    serde_json::json!({"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":id,"content":"ok"}]},"tool_use_result":rec})
+}
+
+#[test]
+fn paths_in_actions_are_relative_to_the_copy_and_outside_ones_start_with_home() {
+    let d = tempfile::tempdir().unwrap();
+    let root = d.path().canonicalize().unwrap();
+    let home = std::env::var("HOME").unwrap();
+    let (inside, real_inside) = (d.path().join("calc.py"), root.join("src/m.py"));
+    let lines = [
+        tool_use("r1", "Read", serde_json::json!({"file_path": inside})),
+        tool_result("r1", serde_json::json!({})),
+        tool_use("e1", "Edit", serde_json::json!({"file_path": real_inside, "old_string": "a", "new_string": "b"})),
+        tool_result("e1", serde_json::json!({"filePath": real_inside, "structuredPatch": [{"oldStart":1,"oldLines":1,"newStart":1,"newLines":1,"lines":["-a","+b"]}]})),
+        tool_use("r2", "Read", serde_json::json!({"file_path": format!("{home}/notes/x.md")})),
+        tool_result("r2", serde_json::json!({})),
+        tool_use("r3", "Read", serde_json::json!({"file_path": "/etc/hosts"})),
+        tool_result("r3", serde_json::json!({})),
+    ];
+    let acts = actions_of(&replay_lines(d.path(), &lines, false));
+    let path_of = |id: &str| match &acts.iter().find(|a| a.id == id && a.done).unwrap().input {
+        ActionInput::Read { path } | ActionInput::Edit { path, .. } => path.clone(),
+        other => panic!("{other:?}"),
+    };
+    assert_eq!(path_of("r1"), "calc.py");
+    assert_eq!(path_of("e1"), "src/m.py");
+    assert_eq!(path_of("r2"), "~/notes/x.md");
+    assert_eq!(path_of("r3"), "/etc/hosts");
+    let start = acts.iter().find(|a| a.id == "r1" && !a.done).unwrap();
+    assert_eq!(start.input, ActionInput::Read { path: "calc.py".into() }, "the start too");
+    let ActionInput::Edit { diff, .. } = &acts.iter().find(|a| a.id == "e1" && a.done).unwrap().input else { panic!() };
+    assert!(diff.starts_with("--- a/src/m.py\n+++ b/src/m.py\n@@ -1,1 +1,1 @@\n"), "{diff}");
+}
+
+#[test]
+fn the_structured_answer_of_our_roles_is_a_log_line_not_an_action() {
+    let d = tempfile::tempdir().unwrap();
+    let lines = [
+        tool_use("b1", "Bash", serde_json::json!({"command": "ls"})),
+        serde_json::json!({"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"b1","content":"a"}]}}),
+        tool_use("so", "StructuredOutput", serde_json::json!({"verdict": "approve", "notes": "fine"})),
+        serde_json::json!({"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"so","content":"Structured output provided successfully"}]}}),
+        serde_json::json!({"type":"result","subtype":"success","is_error":false,"result":"","session_id":"s1"}),
+    ];
+    let evs = replay_lines(d.path(), &lines, true);
+    let acts = actions_of(&evs);
+    assert!(acts.iter().all(|a| a.name != "StructuredOutput"), "{acts:?}");
+    assert_eq!(acts.iter().filter(|a| a.name == "Bash").count(), 2, "other tools stay actions");
+    let tools: Vec<_> = evs.iter().filter_map(|e| if let AgentEvent::Tool { name, summary } = e { Some((name.clone(), summary.clone())) } else { None }).collect();
+    assert_eq!(tools.len(), 1, "{tools:?}");
+    assert_eq!(tools[0].0, "StructuredOutput");
+    assert!(tools[0].1.contains("approve"), "{tools:?}");
+}

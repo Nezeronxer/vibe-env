@@ -69,11 +69,29 @@ fn with_nl(mut s: String) -> String {
     s
 }
 
-/// `Write` of a file: its first `HEAD_LINES` lines and its number of lines.
+/// `Write` of a file: its whole text as `head` and its number of lines. `finish_action` scrubs first and
+/// cuts `head` to `HEAD_LINES` after, so a cut never splits a secret of several lines.
 pub fn write_input(path: &str, content: &str) -> ActionInput {
-    let head: Vec<&str> = content.lines().take(HEAD_LINES).collect();
-    ActionInput::Write { path: path.to_string(), head: head.join("\n"), lines: content.lines().count() as u32 }
+    ActionInput::Write { path: path.to_string(), head: content.to_string(), lines: content.lines().count() as u32 }
 }
+
+/// The first `HEAD_LINES` lines of `s`.
+fn head_lines(s: &str) -> String {
+    s.lines().take(HEAD_LINES).collect::<Vec<_>>().join("\n")
+}
+
+/// `s` on one line, at most `max` chars (with `…` when cut).
+pub fn one_line(s: &str, max: usize) -> String {
+    let one: String = s.split_whitespace().collect::<Vec<_>>().join(" ");
+    if one.chars().count() > max {
+        format!("{}…", one.chars().take(max).collect::<String>())
+    } else {
+        one
+    }
+}
+
+/// Length of the one-line summary of a tool the app does not know.
+const SUMMARY_MAX: usize = 120;
 
 /// A plan or to-do list (Claude `TodoWrite`, Codex `update_plan` / `todo_list`, opencode `todowrite`), when `v` is one.
 pub fn plan_items(v: &Value) -> Option<Vec<PlanItem>> {
@@ -143,9 +161,7 @@ pub fn summary_line(a: &ToolAction) -> String {
         ActionInput::Plan { items } => items.iter().map(|i| i.text.as_str()).collect::<Vec<_>>().join("; "),
         ActionInput::Other { summary } => summary.clone(),
     };
-    let one: String = what.split_whitespace().collect::<Vec<_>>().join(" ");
-    let one = if one.chars().count() > 120 { format!("{}…", one.chars().take(120).collect::<String>()) } else { one };
-    format!("{}: {one}", a.name)
+    format!("{}: {}", a.name, one_line(&what, SUMMARY_MAX))
 }
 
 /// Text of a tool result: a string, or the text parts of a list of content blocks.
@@ -248,8 +264,9 @@ const SKIP_DIRS: [&str; 8] = ["node_modules", "target", "vendor", "dist", "build
 /// taken off); hidden folders and `SKIP_DIRS` are not entered.
 fn dotenv_pairs(dir: &std::path::Path) -> Vec<(String, String)> {
     let mut out = vec![];
-    let (mut todo, mut seen) = (vec![(dir.to_path_buf(), 0usize)], 0usize);
-    while let Some((d, depth)) = todo.pop() {
+    // wide first: one folder with hundreds of folders must not use up `ENV_DIRS` before its neighbours
+    let (mut todo, mut seen) = (std::collections::VecDeque::from([(dir.to_path_buf(), 0usize)]), 0usize);
+    while let Some((d, depth)) = todo.pop_front() {
         seen += 1;
         if seen > ENV_DIRS {
             break;
@@ -258,14 +275,19 @@ fn dotenv_pairs(dir: &std::path::Path) -> Vec<(String, String)> {
         for e in rd.flatten() {
             let name = e.file_name().to_string_lossy().into_owned();
             let Ok(ft) = e.file_type() else { continue };
+            // a symlinked folder is not entered (it may lead anywhere, or in a loop)
             if ft.is_dir() {
                 if depth < ENV_DEPTH && !name.starts_with('.') && !SKIP_DIRS.contains(&name.as_str()) {
-                    todo.push((e.path(), depth + 1));
+                    todo.push_back((e.path(), depth + 1));
                 }
                 continue;
             }
             let template = [".env.example", ".env.sample", ".env.template"].contains(&name.as_str());
-            if ft.is_file() && name.starts_with(".env") && !template && e.metadata().is_ok_and(|m| m.len() <= ENV_FILE_MAX) {
+            if !name.starts_with(".env") || template {
+                continue;
+            }
+            // a symlinked `.env` (git worktrees often have one) is read through the link
+            if std::fs::metadata(e.path()).is_ok_and(|m| m.is_file() && m.len() <= ENV_FILE_MAX) {
                 env_file_pairs(&e.path(), &mut out);
             }
         }
@@ -307,30 +329,127 @@ pub fn finish_action(a: &mut ToolAction, scrub: &Scrub) {
     if let Some(o) = a.output.take() {
         a.output = Some(cut(&o, OUTPUT_MAX, "output"));
     }
-    if let ActionInput::Edit { diff, .. } = &mut a.input {
-        *diff = cut(diff, DIFF_MAX, "diff");
+    match &mut a.input {
+        ActionInput::Edit { diff, .. } => *diff = cut(diff, DIFF_MAX, "diff"),
+        ActionInput::Write { head, .. } => *head = head_lines(head),
+        ActionInput::Other { summary } => *summary = one_line(summary, SUMMARY_MAX),
+        _ => {}
     }
 }
+
+/// Paths of a run's actions as a person reads them: relative to the copy (`calc.py`), outside it with `~`
+/// for the home folder, else as they are.
+#[derive(Clone, Debug, Default)]
+pub struct Paths {
+    /// The copy, as given and as resolved (`/var` vs `/private/var`), each ending in `/`.
+    roots: Vec<String>,
+    home: Option<String>,
+}
+
+impl Paths {
+    pub fn new(root: &std::path::Path) -> Paths {
+        let slash = |p: &std::path::Path| format!("{}/", p.to_string_lossy().trim_end_matches('/'));
+        let mut roots = vec![slash(root)];
+        if let Ok(c) = root.canonicalize() {
+            roots.push(slash(&c));
+        }
+        roots.dedup();
+        let home = std::env::var("HOME").ok().filter(|h| h.len() > 1).map(|h| format!("{}/", h.trim_end_matches('/')));
+        Paths { roots, home }
+    }
+
+    pub fn show(&self, p: &str) -> String {
+        for r in &self.roots {
+            if let Some(rel) = p.strip_prefix(r.as_str()) {
+                return if rel.is_empty() { ".".into() } else { rel.to_string() };
+            }
+            if p == r.trim_end_matches('/') {
+                return ".".into();
+            }
+        }
+        match &self.home {
+            Some(h) => p.strip_prefix(h.as_str()).map_or_else(|| p.to_string(), |rest| format!("~/{rest}")),
+            None => p.to_string(),
+        }
+    }
+
+    /// Every path the action names (the headers of its diff too); free text is left alone.
+    pub fn action(&self, a: &mut ToolAction) {
+        match &mut a.input {
+            ActionInput::Read { path } | ActionInput::Write { path, .. } => *path = self.show(path),
+            ActionInput::Edit { path, diff } => {
+                *path = self.show(path);
+                *diff = self.diff_headers(diff);
+            }
+            _ => {}
+        }
+    }
+
+    /// `--- a/<abs>` / `+++ b/<abs>` lines with the copy's path taken off.
+    fn diff_headers(&self, diff: &str) -> String {
+        let mut out = String::with_capacity(diff.len());
+        for line in diff.split_inclusive('\n') {
+            let fixed = ["--- a/", "+++ b/"].iter().find_map(|pre| {
+                let rest = line.strip_prefix(pre)?;
+                let (p, nl) = rest.strip_suffix('\n').map_or((rest, ""), |p| (p, "\n"));
+                let shown = self.show(&format!("/{p}"));
+                (!shown.starts_with('/') && !shown.starts_with('~')).then(|| format!("{pre}{shown}{nl}"))
+            });
+            out.push_str(fixed.as_deref().unwrap_or(line));
+        }
+        out
+    }
+
+    /// A free line that lists paths (`Tool` summaries): the copy's path taken off.
+    pub fn text(&self, s: &str) -> String {
+        self.roots.iter().fold(s.to_string(), |acc, r| acc.replace(r.as_str(), ""))
+    }
+}
+
+/// The tool by which Claude Code hands over the answer of `--json-schema`: our roles' decision, not work to show.
+const STRUCTURED_TOOL: &str = "StructuredOutput";
 
 /// What a run says on the way to the engine: results joined to their starts, secrets out, long text cut.
 pub(crate) struct Tracker {
     scrub: Scrub,
+    paths: Paths,
+    /// The run asked for an answer by schema: its `StructuredOutput` call is a log line, not an action.
+    structured: bool,
+    /// Ids of those calls, whose results are not passed on.
+    hidden: std::collections::HashSet<String>,
     started: HashMap<String, ToolAction>,
     /// Streamed text held back because it may be the start of a secret.
     carry: String,
 }
 
 impl Tracker {
-    pub(crate) fn new(scrub: Scrub) -> Tracker {
-        Tracker { scrub, started: HashMap::new(), carry: String::new() }
+    pub(crate) fn new(scrub: Scrub, paths: Paths, structured: bool) -> Tracker {
+        Tracker { scrub, paths, structured, hidden: Default::default(), started: HashMap::new(), carry: String::new() }
+    }
+
+    fn finish(&self, a: &mut ToolAction) {
+        self.paths.action(a);
+        finish_action(a, &self.scrub);
     }
 
     pub(crate) fn pass(&mut self, e: AgentEvent) -> Vec<AgentEvent> {
         let sc = |t: &str| self.scrub.text(t);
         match e {
             AgentEvent::Action(mut a) => {
+                if self.hidden.contains(&a.id) {
+                    if a.done {
+                        self.hidden.remove(&a.id);
+                    }
+                    return vec![];
+                }
+                if !a.done && self.structured && a.name == STRUCTURED_TOOL {
+                    self.hidden.insert(a.id.clone());
+                    self.finish(&mut a);
+                    let summary = summary_line(&a).split_once(": ").map(|(_, s)| s.to_string()).unwrap_or_default();
+                    return vec![AgentEvent::Tool { name: a.name, summary }];
+                }
                 if !a.done {
-                    finish_action(&mut a, &self.scrub);
+                    self.finish(&mut a);
                     self.started.insert(a.id.clone(), a.clone());
                     return vec![AgentEvent::Action(a)];
                 }
@@ -349,7 +468,7 @@ impl Tracker {
                 } else if a.name.is_empty() {
                     a.name = "tool".into();
                 }
-                finish_action(&mut a, &self.scrub);
+                self.finish(&mut a);
                 vec![AgentEvent::Action(a)]
             }
             AgentEvent::TextDelta(t) => {
@@ -374,7 +493,7 @@ impl Tracker {
                 out.push(AgentEvent::Text(sc(&t)));
                 out
             }
-            AgentEvent::Tool { name, summary } => vec![AgentEvent::Tool { name, summary: sc(&summary) }],
+            AgentEvent::Tool { name, summary } => vec![AgentEvent::Tool { name, summary: self.paths.text(&sc(&summary)) }],
             AgentEvent::Done { session, text, is_error } => vec![AgentEvent::Done { session, text: sc(&text), is_error }],
             AgentEvent::ModelRejected(m) => vec![AgentEvent::ModelRejected(sc(&m))],
             AgentEvent::AuthRequired(m) => vec![AgentEvent::AuthRequired(sc(&m))],

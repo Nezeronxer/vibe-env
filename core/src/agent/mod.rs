@@ -217,7 +217,7 @@ pub fn run_blocking_with(
     let mut events = Vec::new();
     let mut all_text = String::new();
     // results joined to their starts, secrets out, long output cut: before anyone sees an event
-    let mut tr = actions::Tracker::new(Scrub::for_run(run));
+    let mut tr = actions::Tracker::new(Scrub::for_run(run), actions::Paths::new(&run.cwd), run.json_schema.is_some());
     let r = run_lines_with(a.command(run), cancel, on_spawn, &mut |line| {
         all_text.push_str(&line);
         all_text.push('\n');

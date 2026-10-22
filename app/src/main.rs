@@ -874,6 +874,18 @@ fn build_app(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     }
     let tray_icon = tb.build(app)?;
     *lk(&app.state::<App>().tray) = Some(Tray { icon: tray_icon, freeze: freeze_i, status });
+    // our own menu bar: Tauri's standard one takes ⌘W for "Close Window" before the page sees it
+    #[cfg(target_os = "macos")]
+    {
+        app.set_menu(app_menu(&h, is_ru_now)?)?;
+        app.on_menu_event(|app, ev| {
+            if ev.id().as_ref() == CLOSE_WINDOW_ID {
+                if let Some(w) = app.get_webview_window("main") {
+                    let _ = w.close(); // CloseRequested: hidden or minimized as on the red button
+                }
+            }
+        });
+    }
 
     h.notification().on_action({
         let h = h.clone();
@@ -900,6 +912,85 @@ fn emit_startup(app: &AppHandle) {
     if st.first_new_chat.swap(false, Ordering::Relaxed) {
         let _ = app.emit("focus-input", ());
     }
+}
+
+/// One item of the macOS menu bar: a standard one, or our "Close Window".
+#[cfg(any(target_os = "macos", test))]
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum MenuEntry {
+    About,
+    Services,
+    Hide,
+    HideOthers,
+    ShowAll,
+    Quit,
+    Undo,
+    Redo,
+    Cut,
+    Copy,
+    Paste,
+    SelectAll,
+    Fullscreen,
+    Minimize,
+    Maximize,
+    Separator,
+    CloseWindow,
+}
+
+/// "Close Window" is on ⇧⌘W: ⌘W, ⌘T, ⌘D and ⇧⌘D are the page's tab keys (caught in `keydown`), and a menu
+/// item with one of them would take it first. No other item of the menu uses them.
+#[cfg(any(target_os = "macos", test))]
+const CLOSE_WINDOW_KEY: &str = "Shift+CmdOrCtrl+W";
+#[cfg(any(target_os = "macos", test))]
+const CLOSE_WINDOW_ID: &str = "close_window";
+
+/// The menu bar: the app, Edit (copy / paste work in the fields), View, Window.
+#[cfg(any(target_os = "macos", test))]
+fn menu_layout(ru: bool) -> Vec<(&'static str, Vec<MenuEntry>)> {
+    use MenuEntry::*;
+    let t = |r: &'static str, e: &'static str| if ru { r } else { e };
+    vec![
+        ("Nightshift", vec![About, Separator, Services, Separator, Hide, HideOthers, ShowAll, Separator, Quit]),
+        (t("Правка", "Edit"), vec![Undo, Redo, Separator, Cut, Copy, Paste, SelectAll]),
+        (t("Вид", "View"), vec![Fullscreen]),
+        (t("Окно", "Window"), vec![Minimize, Maximize, Separator, CloseWindow]),
+    ]
+}
+
+#[cfg(target_os = "macos")]
+fn app_menu(app: &AppHandle, ru: bool) -> tauri::Result<Menu<Wry>> {
+    use tauri::menu::{IsMenuItem, Submenu};
+    let menu = Menu::new(app)?;
+    for (title, entries) in menu_layout(ru) {
+        let mut items: Vec<Box<dyn IsMenuItem<Wry>>> = vec![];
+        for e in entries {
+            items.push(match e {
+                MenuEntry::About => Box::new(PredefinedMenuItem::about(app, None, None)?),
+                MenuEntry::Services => Box::new(PredefinedMenuItem::services(app, None)?),
+                MenuEntry::Hide => Box::new(PredefinedMenuItem::hide(app, None)?),
+                MenuEntry::HideOthers => Box::new(PredefinedMenuItem::hide_others(app, None)?),
+                MenuEntry::ShowAll => Box::new(PredefinedMenuItem::show_all(app, None)?),
+                MenuEntry::Quit => Box::new(PredefinedMenuItem::quit(app, None)?),
+                MenuEntry::Undo => Box::new(PredefinedMenuItem::undo(app, None)?),
+                MenuEntry::Redo => Box::new(PredefinedMenuItem::redo(app, None)?),
+                MenuEntry::Cut => Box::new(PredefinedMenuItem::cut(app, None)?),
+                MenuEntry::Copy => Box::new(PredefinedMenuItem::copy(app, None)?),
+                MenuEntry::Paste => Box::new(PredefinedMenuItem::paste(app, None)?),
+                MenuEntry::SelectAll => Box::new(PredefinedMenuItem::select_all(app, None)?),
+                MenuEntry::Fullscreen => Box::new(PredefinedMenuItem::fullscreen(app, None)?),
+                MenuEntry::Minimize => Box::new(PredefinedMenuItem::minimize(app, None)?),
+                MenuEntry::Maximize => Box::new(PredefinedMenuItem::maximize(app, None)?),
+                MenuEntry::Separator => Box::new(PredefinedMenuItem::separator(app)?),
+                MenuEntry::CloseWindow => {
+                    let text = if ru { "Закрыть окно" } else { "Close Window" };
+                    Box::new(MenuItem::with_id(app, CLOSE_WINDOW_ID, text, true, Some(CLOSE_WINDOW_KEY))?)
+                }
+            });
+        }
+        let refs: Vec<&dyn IsMenuItem<Wry>> = items.iter().map(|b| b.as_ref()).collect();
+        menu.append(&Submenu::with_items(app, title, true, &refs)?)?;
+    }
+    Ok(menu)
 }
 
 fn main() {
@@ -999,6 +1090,28 @@ fn main() {
 
 #[cfg(test)]
 mod tests {
+    use super::{menu_layout, MenuEntry, CLOSE_WINDOW_KEY};
+    use tauri_plugin_global_shortcut::Shortcut;
+
+    /// ⌘W / ⌘T / ⌘D / ⇧⌘D reach the page: the menu has no standard "Close Window" (⌘W) and ours is on another key.
+    #[test]
+    fn the_menu_bar_leaves_the_tab_keys_to_the_page() {
+        for ru in [false, true] {
+            let layout = menu_layout(ru);
+            let titles: Vec<&str> = layout.iter().map(|(t, _)| *t).collect();
+            assert_eq!(titles.len(), 4, "{titles:?}");
+            assert!(layout[1].1.contains(&MenuEntry::Copy) && layout[1].1.contains(&MenuEntry::Paste), "Edit with copy and paste");
+            let closes: Vec<usize> = layout.iter().enumerate().filter(|(_, (_, e))| e.contains(&MenuEntry::CloseWindow)).map(|(i, _)| i).collect();
+            assert_eq!(closes, [3], "one Close Window, in Window");
+        }
+        let close: Shortcut = CLOSE_WINDOW_KEY.parse().unwrap();
+        assert_eq!(close, "Shift+CmdOrCtrl+W".parse::<Shortcut>().unwrap());
+        let k = nightshift_core::model::KeySettings::default();
+        for page in [&k.tab_new, &k.tab_close, &k.tab_split, &k.tab_unsplit] {
+            assert_ne!(page.parse::<Shortcut>().unwrap(), close, "{page}");
+        }
+    }
+
     /// The window: no remote sources, no inline code; the capabilities name only what the window itself calls (R13).
     #[test]
     fn the_security_config_has_no_outside_source_and_the_capabilities_stay_small() {
