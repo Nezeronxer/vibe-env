@@ -198,7 +198,7 @@ fn usage_cost_refusals_and_sign_in_are_scripted_events() {
 
 #[test]
 fn fake_models_default_to_an_error_like_envs_without_a_list_command() {
-    let fam = ModelFamily { id: "x".into(), label: "X".into(), vendor: "v".into(), blurb: None, versions: vec![], default: false, exact: Default::default() };
+    let fam = ModelFamily { id: "x".into(), label: "X".into(), vendor: "v".into(), blurb: None, versions: vec![], default: false, exact: Default::default(), source_note: None };
     assert!(FakeAdapter::new(vec![]).models().is_err());
     assert_eq!(FakeAdapter::new(vec![]).with_models(vec![fam.clone()]).models().unwrap(), vec![fam]);
     assert!(!FakeAdapter::new(vec![]).read_only_native());

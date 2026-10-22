@@ -1,5 +1,8 @@
+pub mod actions;
 pub mod adapters;
 mod fake;
+pub use crate::model::{ActionInput, PlanItem, PlanState, ToolAction};
+pub use actions::{Scrub, DIFF_MAX, OUTPUT_MAX};
 pub use fake::{FakeAdapter, FakeStep};
 
 use crate::model::{LimitWindow, ModelFamily, RoleKind, Settings};
@@ -79,7 +82,13 @@ pub struct SandboxInfo {
 #[derive(Clone, Debug, PartialEq)]
 pub enum AgentEvent {
     Text(String),
+    /// Legacy one-line tool call (a CLI whose stream gives no more); logged as before.
     Tool { name: String, summary: String },
+    /// v3: an action with its input, and again with its output (same `id`).
+    Action(ToolAction),
+    /// v3: a piece of the text the model is writing (Claude `--include-partial-messages`); the whole
+    /// text still comes as `Text`.
+    TextDelta(String),
     Done { session: Option<String>, text: String, is_error: bool },
     Limit { resets_at: Option<DateTime<Local>> },
     /// Limit windows the env reported during the run (Claude: `rate_limit_event`).
@@ -207,10 +216,12 @@ pub fn run_blocking_with(
 ) -> std::io::Result<Vec<AgentEvent>> {
     let mut events = Vec::new();
     let mut all_text = String::new();
+    // results joined to their starts, secrets out, long output cut: before anyone sees an event
+    let mut tr = actions::Tracker::new(Scrub::for_run(run));
     let r = run_lines_with(a.command(run), cancel, on_spawn, &mut |line| {
         all_text.push_str(&line);
         all_text.push('\n');
-        for e in a.parse(&line) {
+        for e in a.parse(&line).into_iter().flat_map(|e| tr.pass(e)) {
             on_event(&e);
             events.push(e);
         }
@@ -219,7 +230,7 @@ pub fn run_blocking_with(
         if !ok && !err.is_empty() {
             all_text.push_str(&err);
         }
-        for e in a.finish(ok, &all_text) {
+        for e in a.finish(ok, &all_text).into_iter().flat_map(|e| tr.pass(e)) {
             on_event(&e);
             events.push(e);
         }

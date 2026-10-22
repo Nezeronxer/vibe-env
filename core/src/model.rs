@@ -246,12 +246,63 @@ pub struct LogEvent {
     /// The note of the person a "note delivered" line is about.
     #[serde(default)]
     pub note_id: Option<String>,
+    /// v3: the agent's action this line is about (a `Tool` line), with its output and diff.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub action: Option<ToolAction>,
 }
 
 impl LogEvent {
     pub fn new(at: DateTime<Local>, kind: LogKind, text: &str) -> LogEvent {
-        LogEvent { at, kind, text: text.to_string(), role: None, model: None, variant: None, note_id: None }
+        LogEvent { at, kind, text: text.to_string(), role: None, model: None, variant: None, note_id: None, action: None }
     }
+}
+
+/// One action of an agent (G30): sent when it starts (`done = false`, no output) and again when its result
+/// comes (`done = true`); both carry the same `id` (Claude: the `tool_use_id`).
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct ToolAction {
+    pub id: String,
+    /// The tool's name as the CLI says it (`Read`, `Bash`, `run_shell_command` ...).
+    pub name: String,
+    pub input: ActionInput,
+    /// What the tool printed or the error text, scrubbed, at most `agent::OUTPUT_MAX` bytes (cut with a mark).
+    #[serde(default)]
+    pub output: Option<String>,
+    #[serde(default)]
+    pub ok: bool,
+    #[serde(default)]
+    pub done: bool,
+}
+
+/// What an action works on, by the kind of tool.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum ActionInput {
+    Read { path: String },
+    /// `diff`: unified text (`@@`, `+`, `-`, ` `), at most `agent::DIFF_MAX` bytes.
+    Edit { path: String, diff: String },
+    /// A new file: its first 20 lines and how many lines it has.
+    Write { path: String, head: String, lines: u32 },
+    Bash { command: String },
+    Search { pattern: String, hits: Option<u32> },
+    Web { target: String },
+    Plan { items: Vec<PlanItem> },
+    Other { summary: String },
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct PlanItem {
+    pub text: String,
+    pub state: PlanState,
+}
+
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum PlanState {
+    Pending,
+    Active,
+    Done,
+    Dropped,
 }
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "snake_case")]
@@ -455,6 +506,9 @@ pub struct ModelFamily {
     /// A pinned version without an entry here is never started: no name is made up.
     #[serde(default)]
     pub exact: BTreeMap<String, String>,
+    /// Where the built-in description comes from ("Anthropic docs, 2026-10-21; не сверено с CLI"): a hint, not the text.
+    #[serde(default)]
+    pub source_note: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
@@ -735,6 +789,9 @@ pub struct ChatMsg {
     /// The message this one answers.
     #[serde(default)]
     pub reply_to: Option<String>,
+    /// v3: an agent's action with its output and diff (the window gets it as `chat-action`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub action: Option<ToolAction>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]

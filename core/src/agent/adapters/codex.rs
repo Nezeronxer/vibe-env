@@ -3,7 +3,7 @@
 //! (--json, --sandbox, `resume <SESSION_ID>`, --skip-git-repo-check, thread.started/item.*/turn.*).
 //! `--full-auto` is no longer supported there, so workspace-write is passed explicitly.
 use super::common::*;
-use crate::agent::{Adapter, AgentEvent, Run};
+use crate::agent::{actions, Adapter, AgentEvent, Run};
 use crate::model::ModelFamily;
 use std::time::Duration;
 use std::process::Command;
@@ -39,12 +39,44 @@ fn scan(line: &str) -> Scan {
     let Some(j) = json_line(line) else { return Scan::default() };
     let mut s = Scan::default();
     let item = &j["item"];
+    let id = item["id"].as_str().unwrap_or("");
     match (j["type"].as_str(), item["type"].as_str()) {
         (Some("thread.started"), _) => s.session = j["thread_id"].as_str().map(String::from),
-        (Some("item.started"), Some("command_execution")) => s.events.push(AgentEvent::Tool {
-            name: "shell".into(),
-            summary: summarize(&serde_json::json!({ "command": item["command"] })),
-        }),
+        (Some("item.started"), Some("command_execution")) => {
+            s.events.push(AgentEvent::Action(actions::tool_action(id, "shell", &serde_json::json!({ "command": item["command"] }))))
+        }
+        // unverified: item.updated with the output so far (the docs name item.updated, not its fields)
+        (Some("item.updated"), Some("command_execution")) => {
+            let mut a = actions::tool_action(id, "shell", &serde_json::json!({ "command": item["command"] }));
+            a.output = item["aggregated_output"].as_str().map(String::from);
+            s.events.push(AgentEvent::Action(a));
+        }
+        // unverified: aggregated_output / exit_code / status are the field names of codex-rs exec events
+        (Some("item.completed"), Some("command_execution")) => {
+            let ok = item["exit_code"].as_i64().map_or(item["status"] != "failed", |c| c == 0);
+            let out = item["aggregated_output"].as_str().map(String::from);
+            s.events.push(AgentEvent::Action(actions::result(id, out, ok, None)));
+        }
+        // unverified: todo_list items [{text, completed}] (codex-rs exec events), the plan of `update_plan`
+        (Some(t @ ("item.started" | "item.updated" | "item.completed")), Some("todo_list")) => {
+            let mut a = actions::tool_action(id, "update_plan", item);
+            a.done = t == "item.completed";
+            s.events.push(AgentEvent::Action(a));
+        }
+        // unverified: web_search {query}, mcp_tool_call {server, tool, arguments, result, error}
+        (Some("item.completed"), Some("web_search")) => {
+            s.events.push(AgentEvent::Action(actions::tool_action(id, "web_search", item)));
+            s.events.push(AgentEvent::Action(actions::result(id, None, true, None)));
+        }
+        (Some("item.started"), Some("mcp_tool_call")) => {
+            let name = format!("{}.{}", item["server"].as_str().unwrap_or("mcp"), item["tool"].as_str().unwrap_or("tool"));
+            s.events.push(AgentEvent::Action(actions::tool_action(id, &name, &item["arguments"])));
+        }
+        (Some("item.completed"), Some("mcp_tool_call")) => {
+            let err = item["error"]["message"].as_str().map(String::from);
+            let out = err.clone().or_else(|| Some(actions::content_text(&item["result"]["content"])));
+            s.events.push(AgentEvent::Action(actions::result(id, out, err.is_none() && item["status"] != "failed", None)));
+        }
         // unverified: shape of file_change items (changes: [{path, kind}]) -- chatgpt.com docs show only command_execution
         (Some("item.completed"), Some("file_change")) => {
             let paths: Vec<&str> = item["changes"].as_array().into_iter().flatten().filter_map(|c| c["path"].as_str()).collect();

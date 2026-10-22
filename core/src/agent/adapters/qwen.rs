@@ -80,18 +80,18 @@ impl Adapter for Qwen {
     /// (qwenlm.github.io/qwen-code-docs, model-providers), read 2026-10-21, not checked against the CLI;
     /// the table is what `/auth` configures with a Coding Plan key, other providers may differ.
     fn builtin_models(&self) -> Vec<ModelFamily> {
-        let note = |b: &str| format!("{b} (Qwen Code docs, 2026-10-21; не сверено с CLI)");
+        const SRC: &str = "Qwen Code docs, 2026-10-21; не сверено с CLI";
         vec![
-            builtin_family("qwen3-max-2026-01-23", "Qwen3 Max", "qwen", &note("Max model with thinking."), &[]),
+            builtin_family("qwen3-max-2026-01-23", "Qwen3 Max", "qwen", SRC /* Max model with thinking. */, &[]),
             builtin_family(
                 "qwen-plus",
                 "Qwen Plus",
                 "qwen",
-                &note("Advanced model with thinking (3.6: Pro subscribers only)."),
+                SRC /* Advanced model with thinking (3.6: Pro subscribers only). */,
                 &[("3.7", "qwen3.7-plus"), ("3.6", "qwen3.6-plus"), ("3.5", "qwen3.5-plus")],
             ),
-            builtin_family("qwen3-coder-plus", "Qwen3 Coder Plus", "qwen", &note("Optimized for coding."), &[]),
-            builtin_family("qwen3-coder-next", "Qwen3 Coder Next", "qwen", &note("Experimental coding model."), &[]),
+            builtin_family("qwen3-coder-plus", "Qwen3 Coder Plus", "qwen", SRC /* Optimized for coding. */, &[]),
+            builtin_family("qwen3-coder-next", "Qwen3 Coder Next", "qwen", SRC /* Experimental coding model. */, &[]),
         ]
     }
 }

@@ -10,6 +10,7 @@
 mod convoy;
 mod council;
 mod crew;
+mod edits;
 mod flow;
 mod lanes;
 mod ops;
@@ -57,7 +58,11 @@ type Availability = (Instant, Result<(), String>);
 #[derive(Clone, Debug)]
 pub enum EngineEvent {
     TaskChanged(Task),
+    /// A line of the task's log. A line with an `action` that is not `done` is only sent, not stored:
+    /// the stored one comes with the result.
     Log(TaskId, LogEvent),
+    /// A piece of the text a role is writing (not stored; the whole text comes as a log line).
+    TextDelta { task: TaskId, role: RoleKind, text: String },
     ProjectChanged(ProjectId),
     /// New limit windows of the env were stored.
     LimitsChanged(EnvId),

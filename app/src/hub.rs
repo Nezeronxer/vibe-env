@@ -4,7 +4,7 @@ use nightshift_core::agent::{self, Adapter};
 use nightshift_core::chat::{ChatTarget, Chats};
 use nightshift_core::engine::{Clock, Engine};
 use nightshift_core::kits::{ImportPlan, Kits};
-use nightshift_core::model::{ChatKind, ChatMsg, Project, Task};
+use nightshift_core::model::{ChatKind, ChatMsg, Project, Task, ToolAction};
 use nightshift_core::notify::Notifier;
 use nightshift_core::store::Store;
 use serde_json::{json, Value};
@@ -133,6 +133,15 @@ impl Hub {
         self.chats.send(target, msg_id, text)
     }
 
+    /// A page of a task's log (`Engine::task_log`); `before` is a time as the window got it (RFC 3339).
+    pub fn task_log(&self, id: &str, before: Option<&str>, limit: usize) -> Res<Vec<nightshift_core::model::LogEvent>> {
+        let before = match before {
+            Some(b) => Some(serde_json::from_value(Value::String(b.to_string())).map_err(|_| format!("bad_time: {b}"))?),
+            None => None,
+        };
+        Ok(self.engine.task_log(id, before, limit))
+    }
+
     pub fn submit_task(&self, project_id: &str, prompt: &str, agent: Option<String>) -> Res<String> {
         self.project_ready(project_id)?;
         self.engine.submit(nightshift_core::engine::NewTask { project_id: project_id.into(), prompt: prompt.into(), agent, ..Default::default() })
@@ -141,6 +150,134 @@ impl Hub {
     pub fn submit_convoy(&self, project_id: &str, env: &str, text: &str) -> Res<String> {
         self.project_ready(project_id)?;
         self.engine.submit_convoy(project_id, env, text)
+    }
+}
+
+/// The window gets an agent's actions and streamed text not more often than once per `GAP` for each task and chat
+/// (story 227: a fast command must not stall the window). What comes in between waits and goes out merged:
+/// the newest state of each action, the pieces of text of one message joined.
+/// Sends one event to the window: its name and payload.
+pub type Emit = Arc<dyn Fn(&str, Value) + Send + Sync>;
+
+pub struct Coalescer {
+    slots: Arc<Mutex<std::collections::HashMap<String, Slot>>>,
+    emit: Emit,
+}
+
+pub const GAP: std::time::Duration = std::time::Duration::from_millis(50);
+
+#[derive(Default)]
+struct Slot {
+    last: Option<std::time::Instant>,
+    items: Vec<WinItem>,
+}
+
+/// One event for the window: `task-action {id, action}`, `chat-action {id, msgId, action}`, `chat-delta {id, msgId, text}`.
+#[derive(Clone, Debug)]
+pub enum WinItem {
+    TaskAction { task: String, action: ToolAction },
+    ChatAction { chat: String, msg_id: String, action: ToolAction },
+    ChatDelta { chat: String, msg_id: String, text: String },
+}
+
+impl WinItem {
+    /// The task or chat the item belongs to: one slot each.
+    pub fn key(&self) -> String {
+        match self {
+            WinItem::TaskAction { task, .. } => format!("task:{task}"),
+            WinItem::ChatAction { chat, .. } | WinItem::ChatDelta { chat, .. } => format!("chat:{chat}"),
+        }
+    }
+    fn send(self, emit: &dyn Fn(&str, Value)) {
+        match self {
+            WinItem::TaskAction { task, action } => emit("task-action", json!({ "id": task, "action": action })),
+            WinItem::ChatAction { chat, msg_id, action } => emit("chat-action", json!({ "id": chat, "msgId": msg_id, "action": action })),
+            WinItem::ChatDelta { chat, msg_id, text } => emit("chat-delta", json!({ "id": chat, "msgId": msg_id, "text": text })),
+        }
+    }
+}
+
+/// Puts `it` into the waiting items: the newer state of the same action replaces the older, text joins the text before it.
+fn merge(items: &mut Vec<WinItem>, it: WinItem) {
+    use WinItem::*;
+    for old in items.iter_mut() {
+        match (old, &it) {
+            (TaskAction { action: a, .. }, TaskAction { action: b, .. }) if a.id == b.id => {
+                *a = b.clone();
+                return;
+            }
+            (ChatAction { msg_id: m, action: a, .. }, ChatAction { msg_id: n, action: b, .. }) if m == n && a.id == b.id => {
+                *a = b.clone();
+                return;
+            }
+            _ => {}
+        }
+    }
+    if let (Some(ChatDelta { msg_id: m, text, .. }), ChatDelta { msg_id: n, text: more, .. }) = (items.last_mut(), &it) {
+        if m == n {
+            text.push_str(more);
+            return;
+        }
+    }
+    items.push(it);
+}
+
+impl Coalescer {
+    /// `emit(event name, payload)` sends to the window. A thread sends what waited once its `GAP` is over;
+    /// it ends with the last handle to the coalescer.
+    pub fn new(emit: Emit) -> Coalescer {
+        let slots: Arc<Mutex<std::collections::HashMap<String, Slot>>> = Arc::default();
+        let (weak, e) = (Arc::downgrade(&slots), emit.clone());
+        std::thread::spawn(move || loop {
+            std::thread::sleep(std::time::Duration::from_millis(5));
+            let Some(slots) = weak.upgrade() else { return };
+            let now = std::time::Instant::now();
+            let due: Vec<WinItem> = lk(&slots)
+                .values_mut()
+                .filter(|s| !s.items.is_empty() && s.last.is_none_or(|l| now.duration_since(l) >= GAP))
+                .flat_map(|s| {
+                    s.last = Some(now);
+                    std::mem::take(&mut s.items)
+                })
+                .collect();
+            drop(slots);
+            for it in due {
+                it.send(&*e);
+            }
+        });
+        Coalescer { slots, emit }
+    }
+
+    pub fn push(&self, it: WinItem) {
+        let now = std::time::Instant::now();
+        let send_now = {
+            let mut slots = lk(&self.slots);
+            let s = slots.entry(it.key()).or_default();
+            if s.items.is_empty() && s.last.is_none_or(|l| now.duration_since(l) >= GAP) {
+                s.last = Some(now);
+                Some(it)
+            } else {
+                merge(&mut s.items, it);
+                None
+            }
+        };
+        if let Some(it) = send_now {
+            it.send(&*self.emit);
+        }
+    }
+
+    /// Sends what waits for `key` now: before another event of the same task or chat, so the window sees them in order.
+    pub fn flush(&self, key: &str) {
+        let items = match lk(&self.slots).get_mut(key) {
+            Some(s) if !s.items.is_empty() => {
+                s.last = Some(std::time::Instant::now());
+                std::mem::take(&mut s.items)
+            }
+            _ => return,
+        };
+        for it in items {
+            it.send(&*self.emit);
+        }
     }
 }
 
@@ -163,5 +300,40 @@ mod tests {
         let err = r.hub.send_chat(target, "m2", "again").unwrap_err();
         assert_eq!(err, format!("folder_not_found: {}", r.repo.display()));
         assert_eq!(r.hub.chats.list("fake").len(), 1, "no chat was made");
+    }
+
+    #[test]
+    fn five_hundred_lines_of_output_in_100_ms_give_at_most_three_window_events_and_the_last_has_them_all() {
+        use nightshift_core::model::ActionInput;
+        let sent: Arc<Mutex<Vec<(String, Value)>>> = Arc::default();
+        let s2 = sent.clone();
+        let c = Coalescer::new(Arc::new(move |n: &str, v: Value| lk(&s2).push((n.to_string(), v))));
+        let start = std::time::Instant::now();
+        let mut out = String::new();
+        for i in 0..500u32 {
+            out.push_str(&format!("line {i}\n"));
+            let action = ToolAction { id: "t1".into(), name: "Bash".into(), input: ActionInput::Bash { command: "make".into() }, output: Some(out.clone()), ok: true, done: false };
+            c.push(WinItem::TaskAction { task: "task-1".into(), action });
+            // evenly over 95 ms
+            let at = start + std::time::Duration::from_micros(190 * u64::from(i + 1));
+            if let Some(d) = at.checked_duration_since(std::time::Instant::now()) {
+                std::thread::sleep(d);
+            }
+        }
+        assert!(start.elapsed() < std::time::Duration::from_millis(100), "the lines took {:?}", start.elapsed());
+        std::thread::sleep(GAP * 3);
+        let got = lk(&sent).clone();
+        assert!(!got.is_empty() && got.len() <= 3, "{} events", got.len());
+        assert!(got.iter().all(|(n, v)| n == "task-action" && v["id"] == "task-1"));
+        assert_eq!(got.last().unwrap().1["action"]["output"].as_str(), Some(out.as_str()), "nothing is lost: the newest state goes last");
+        // pieces of one message are joined, not dropped
+        lk(&sent).clear();
+        for t in ["a", "b", "c"] {
+            c.push(WinItem::ChatDelta { chat: "c1".into(), msg_id: "m1".into(), text: t.into() });
+        }
+        std::thread::sleep(GAP * 3);
+        let texts: String = lk(&sent).iter().map(|(_, v)| v["text"].as_str().unwrap_or("").to_string()).collect();
+        assert_eq!(texts, "abc");
+        assert!(lk(&sent).iter().all(|(n, v)| n == "chat-delta" && v["msgId"] == "m1"));
     }
 }

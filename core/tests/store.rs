@@ -154,7 +154,7 @@ fn msg(id: &str, chat: &str, mins: i64) -> ChatMsg {
     ChatMsg {
         id: id.into(), chat_id: chat.into(), at: Local::now() + chrono::Duration::minutes(mins),
         who: Who::Human, text: format!("text {id}"), task_id: None, delivered_at: None,
-        kind: None, tool: None, model: None, reply_to: None,
+        kind: None, tool: None, model: None, reply_to: None, action: None,
     }
 }
 

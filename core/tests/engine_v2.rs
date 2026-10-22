@@ -659,6 +659,7 @@ fn latest_becomes_a_number_when_a_run_starts_and_a_resumed_session_stays_on_its_
             versions: versions.iter().map(|v| v.to_string()).collect(),
             default: false,
             exact: versions.iter().map(|v| (v.to_string(), format!("claude-opus-{}", v.replace('.', "-")))).collect(),
+            source_note: None,
         }],
         source: CatalogSource::CliList,
         at: chrono::Local::now(),

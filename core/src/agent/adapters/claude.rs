@@ -3,7 +3,7 @@
 //! --permission-mode (plan | bypassPermissions), --settings <json>, --append-system-prompt, --resume.
 //! Settings keys (permissions.deny, sandbox.*) confirmed in code.claude.com/docs (settings, sandboxing).
 use super::common::*;
-use crate::agent::{Adapter, AgentEvent, Run, SandboxInfo};
+use crate::agent::{actions, ActionInput, Adapter, AgentEvent, Run, SandboxInfo};
 use crate::model::{LimitWindow, ModelFamily};
 use chrono::{Local, TimeZone};
 use regex::Regex;
@@ -116,7 +116,8 @@ impl Adapter for Claude {
     }
     fn command(&self, run: &Run) -> Command {
         let mut c = Command::new(find_bin(&self.bin).unwrap_or_else(|| self.bin.clone().into()));
-        c.current_dir(&run.cwd).args(["-p", "--output-format", "stream-json", "--verbose"]);
+        // --include-partial-messages: the text comes word by word as `stream_event`s (seen live, 2.1.308)
+        c.current_dir(&run.cwd).args(["-p", "--output-format", "stream-json", "--verbose", "--include-partial-messages"]);
         let mode = if run.is_read_only() { "plan" } else { "bypassPermissions" };
         c.args(["--permission-mode", mode, "--settings", &settings_json(supports_wildcard_domain(&self.bin))]);
         if let Some(m) = &run.model {
@@ -178,24 +179,24 @@ impl Adapter for Claude {
     /// `claude-{name}-{major}[-{minor}]`; `claude-opus-5-5` was also seen live in the init event of the
     /// saved run. Order (fable, opus, sonnet, haiku) = the docs' comparison table, strongest first.
     fn builtin_models(&self) -> Vec<ModelFamily> {
-        let note = |b: &str| format!("{b} (Anthropic docs, 2026-10-21; не сверено с CLI)");
+        const SRC: &str = "Anthropic docs, 2026-10-21; не сверено с CLI";
         vec![
-            builtin_family("fable", "Fable", "anthropic", &note("Demanding reasoning, long agentic work."), &[("5.1", "claude-fable-5-1")]),
+            builtin_family("fable", "Fable", "anthropic", SRC /* Demanding reasoning, long agentic work. */, &[("5.1", "claude-fable-5-1")]),
             builtin_family(
                 "opus",
                 "Opus",
                 "anthropic",
-                &note("Long-running agentic coding and knowledge work."),
+                SRC /* Long-running agentic coding and knowledge work. */,
                 &[("5.5", "claude-opus-5-5"), ("5", "claude-opus-5"), ("4.8", "claude-opus-4-8"), ("4.7", "claude-opus-4-7"), ("4.6", "claude-opus-4-6")],
             ),
             builtin_family(
                 "sonnet",
                 "Sonnet",
                 "anthropic",
-                &note("Speed and intelligence."),
+                SRC /* Speed and intelligence. */,
                 &[("5.5", "claude-sonnet-5-5"), ("5", "claude-sonnet-5"), ("4.6", "claude-sonnet-4-6")],
             ),
-            builtin_family("haiku", "Haiku", "anthropic", &note("High-volume, latency-sensitive tasks."), &[("5.5", "claude-haiku-5-5"), ("4.5", "claude-haiku-4-5")]),
+            builtin_family("haiku", "Haiku", "anthropic", SRC /* High-volume, latency-sensitive tasks. */, &[("5.5", "claude-haiku-5-5"), ("4.5", "claude-haiku-4-5")]),
         ]
     }
 }
@@ -238,7 +239,8 @@ pub(super) fn valid_session(s: &str) -> Option<&str> {
     valid_session_id(s).then_some(s)
 }
 
-/// Claude-style stream-json (also spoken by Qwen Code): assistant / result events.
+/// Claude-style stream-json (also spoken by Qwen Code): assistant / user (tool results) / partial
+/// text / result events. Shapes from a saved live run (`core/tests/fixtures/claude_stream_partial.jsonl`).
 pub fn parse_line(line: &str) -> Vec<AgentEvent> {
     let Some(j) = json_line(line) else { return vec![] };
     match j["type"].as_str() {
@@ -248,13 +250,37 @@ pub fn parse_line(line: &str) -> Vec<AgentEvent> {
             .flatten()
             .filter_map(|b| match b["type"].as_str() {
                 Some("text") => b["text"].as_str().filter(|t| !t.trim().is_empty()).map(|t| AgentEvent::Text(t.to_string())),
-                Some("tool_use") => Some(AgentEvent::Tool {
-                    name: b["name"].as_str().unwrap_or("tool").to_string(),
-                    summary: summarize(&b["input"]),
-                }),
+                Some("tool_use") => Some(AgentEvent::Action(actions::tool_action(
+                    b["id"].as_str().unwrap_or(""),
+                    b["name"].as_str().unwrap_or("tool"),
+                    &b["input"],
+                ))),
                 _ => None,
             })
             .collect(),
+        Some("user") => {
+            let results: Vec<&serde_json::Value> =
+                j["message"]["content"].as_array().into_iter().flatten().filter(|b| b["type"] == "tool_result").collect();
+            // `tool_use_result` (the tool's own record) is one per line: trusted only when the line has one result
+            let rec = if results.len() == 1 { Some(&j["tool_use_result"]) } else { None };
+            results
+                .into_iter()
+                .map(|b| {
+                    let ok = !b["is_error"].as_bool().unwrap_or(false);
+                    let out = actions::content_text(&b["content"]);
+                    let input = rec.and_then(result_input);
+                    AgentEvent::Action(actions::result(b["tool_use_id"].as_str().unwrap_or(""), Some(out), ok, input))
+                })
+                .collect()
+        }
+        // partial text of the main agent (a subagent's has a parent_tool_use_id)
+        Some("stream_event") if j["parent_tool_use_id"].is_null() => {
+            let e = &j["event"];
+            match (e["type"].as_str(), e["delta"]["type"].as_str(), e["delta"]["text"].as_str()) {
+                (Some("content_block_delta"), Some("text_delta"), Some(t)) if !t.is_empty() => vec![AgentEvent::TextDelta(t.to_string())],
+                _ => vec![],
+            }
+        }
         Some("result") => {
             let is_error = j["is_error"].as_bool().unwrap_or(false) || j["subtype"].as_str().is_some_and(|s| s != "success");
             let text = j["result"]
@@ -277,6 +303,32 @@ pub fn parse_line(line: &str) -> Vec<AgentEvent> {
         }
         _ => vec![],
     }
+}
+
+/// What the tool's own record of a result says better than its start: the real hunks of an edit (with the
+/// file's line numbers), an overwrite of an existing file as an edit, the number of search hits.
+fn result_input(r: &serde_json::Value) -> Option<ActionInput> {
+    let path = r["filePath"].as_str().unwrap_or("").to_string();
+    if let Some(hunks) = r["structuredPatch"].as_array().filter(|h| !h.is_empty()) {
+        let p = path.trim_start_matches('/');
+        let mut diff = format!("--- a/{p}\n+++ b/{p}\n");
+        for h in hunks {
+            let n = |k: &str| h[k].as_u64().unwrap_or(0);
+            diff.push_str(&format!("@@ -{},{} +{},{} @@\n", n("oldStart"), n("oldLines"), n("newStart"), n("newLines")));
+            for l in h["lines"].as_array().into_iter().flatten().filter_map(|l| l.as_str()) {
+                diff.push_str(l);
+                diff.push('\n');
+            }
+        }
+        return Some(ActionInput::Edit { path, diff });
+    }
+    if r["type"] == "update" {
+        if let (Some(old), Some(new)) = (r["originalFile"].as_str(), r["content"].as_str()) {
+            return Some(ActionInput::Edit { diff: actions::unified_diff(&path, Some(old), Some(new)), path });
+        }
+    }
+    let hits = ["numMatches", "numLines", "numFiles"].iter().find_map(|k| r[k].as_u64());
+    hits.map(|h| ActionInput::Search { pattern: String::new(), hits: Some(h as u32) })
 }
 
 #[cfg(test)]

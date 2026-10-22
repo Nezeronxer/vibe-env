@@ -4,7 +4,7 @@
 //! the read-only default of print mode without --force -- not on that page (cursor.com/docs/cli).
 use super::claude::parse_line;
 use super::common::*;
-use crate::agent::{Adapter, AgentEvent, Run};
+use crate::agent::{actions, Adapter, AgentEvent, Run};
 use crate::model::ModelFamily;
 use std::time::Duration;
 use std::process::Command;
@@ -66,14 +66,30 @@ impl Adapter for Cursor {
     }
     fn parse(&self, line: &str) -> Vec<AgentEvent> {
         let Some(j) = json_line(line) else { return vec![] };
-        if j["type"] == "tool_call" && j["subtype"] == "started" {
+        if j["type"] == "tool_call" {
             // tool_call is keyed by tool type: {"writeToolCall": {"args": {...}}}
-            if let Some((key, v)) = j["tool_call"].as_object().and_then(|o| o.iter().next()) {
-                let name = key.strip_suffix("ToolCall").unwrap_or(key);
-                let args = if key == "function" { &v["arguments"] } else { &v["args"] };
-                return vec![AgentEvent::Tool { name: name.to_string(), summary: summarize(args) }];
-            }
-            return vec![];
+            let Some((key, v)) = j["tool_call"].as_object().and_then(|o| o.iter().next()) else { return vec![] };
+            let id = j["call_id"].as_str().unwrap_or("");
+            let name = key.strip_suffix("ToolCall").unwrap_or(key);
+            let args = if key == "function" { &v["arguments"] } else { &v["args"] };
+            return match j["subtype"].as_str() {
+                Some("started") => vec![AgentEvent::Action(actions::tool_action(id, name, args))],
+                // unverified: call_id and result.success {stdout|content|...} / result.error|failure {message}
+                Some("completed") => {
+                    let r = &v["result"];
+                    let failed = ["error", "failure", "rejected"].iter().find_map(|k| r.get(*k));
+                    let ok = failed.is_none();
+                    let body = failed.unwrap_or(&r["success"]);
+                    let text = ["stdout", "output", "content", "message", "errorMessage"].iter().find_map(|k| body[k].as_str()).map(String::from);
+                    let stderr = body["stderr"].as_str().filter(|e| !e.is_empty());
+                    let out = match (text, stderr) {
+                        (Some(o), Some(e)) => Some(format!("{o}\n{e}")),
+                        (o, e) => o.or(e.map(String::from)),
+                    };
+                    vec![AgentEvent::Action(actions::result(id, out, ok, None))]
+                }
+                _ => vec![],
+            };
         }
         parse_line(line)
     }

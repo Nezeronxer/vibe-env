@@ -518,6 +518,16 @@ impl Engine {
         Ok(cat)
     }
 
+    /// A page of the task's log, oldest first: the last `limit` lines before `before` (all lines when None).
+    /// Lines of actions carry their output and diff (story 230); lines written before v3 have no `action`.
+    pub fn task_log(&self, id: &str, before: Option<DateTime<Local>>, limit: usize) -> Vec<LogEvent> {
+        let all = lk(&self.store).read_log(id, usize::MAX);
+        let mut page: Vec<LogEvent> = all.into_iter().filter(|e| before.is_none_or(|b| e.at < b)).collect();
+        let skip = page.len().saturating_sub(limit);
+        page.drain(..skip);
+        page
+    }
+
     /// "Пока тебя не было": what finished, failed, waits for the person, and what it cost since `at`.
     pub fn summary_since(&self, at: DateTime<Local>) -> Summary {
         let now = self.now();

@@ -3,7 +3,8 @@ mod common;
 use chrono::{DateTime, Local};
 use common::*;
 use nightshift_core::agent::{Adapter, AgentEvent, FakeAdapter, FakeStep, Run};
-use nightshift_core::chat::{ChatState, ChatTarget, Chats};
+use nightshift_core::chat::{ChatEvent, ChatState, ChatTarget, Chats};
+use nightshift_core::agent::{ActionInput, ToolAction};
 use nightshift_core::engine::Engine;
 use nightshift_core::model::*;
 use nightshift_core::notify::RecordingNotifier;
@@ -94,6 +95,7 @@ fn a_question_is_answered_in_the_feed_and_changes_nothing() {
                 versions: vec!["5.5".into()],
                 default: false,
                 exact: [("5.5".to_string(), "claude-opus-5-5".to_string())].into(),
+                source_note: None,
             }],
             source: CatalogSource::Snapshot,
             at: Local::now(),
@@ -458,7 +460,7 @@ fn seed_task(st: &mut nightshift_core::store::Store, p: &Project, chat: Option<&
 }
 
 fn seed_msg(st: &nightshift_core::store::Store, chat: &str, id: &str, who: Who, text: &str, at: DateTime<Local>) {
-    let m = ChatMsg { id: id.into(), chat_id: chat.into(), at, who, text: text.into(), task_id: None, delivered_at: None, kind: None, tool: None, model: None, reply_to: None };
+    let m = ChatMsg { id: id.into(), chat_id: chat.into(), at, who, text: text.into(), task_id: None, delivered_at: None, kind: None, tool: None, model: None, reply_to: None, action: None };
     assert!(st.append_chat_msg(&m).unwrap());
 }
 
@@ -814,9 +816,33 @@ fn the_messages_of_the_roles_and_the_actions_of_the_agents_come_into_the_feed_of
             (Who::Role(RoleKind::Worker), "Looking at the footer", None),
             (Who::Role(RoleKind::Worker), "", Some("Write")),
             (Who::Role(RoleKind::Worker), "Footer added", None),
+            // v3: the fake CLI shows no text of its edit, so the step's diff of the copy follows it (story 226)
+            (Who::Role(RoleKind::Worker), "", Some("Edit")),
         ]
     );
     assert_eq!(roles[1].tool.as_ref().unwrap().arg, "f.txt");
+    let Some(ActionInput::Edit { path, diff }) = roles[3].action.as_ref().map(|a| &a.input) else { panic!("{:?}", roles[3]) };
+    assert_eq!((path.as_str(), diff.contains("+x")), ("f.txt", true), "{diff}");
     assert!(roles.iter().all(|x| x.model.is_some() && x.task_id.as_deref() == Some(task_id.as_str())), "each says which role, model and task");
     assert!(m.windows(2).all(|w| w[0].at <= w[1].at), "in the order of time");
+}
+
+#[test]
+fn the_answer_streams_into_its_own_message_and_its_actions_come_with_their_result_and_stay_in_the_feed() {
+    let act = |done: bool, out: Option<&str>| {
+        FakeStep::Action(ToolAction { id: "t1".into(), name: "Read".into(), input: ActionInput::Read { path: "a.txt".into() }, output: out.map(String::from), ok: true, done })
+    };
+    let r = rig(vec![vec![FakeStep::Delta("Hel".into()), FakeStep::Delta("lo".into()), act(false, None), act(true, Some("one")), done("Hello")]]);
+    let rx = r.chats.subscribe();
+    let id = r.chats.send(new_target(&r.p), "c1", "what is in a.txt?").unwrap();
+    let m = wait_feed(&r, &id, "the answer", |m| m.iter().any(|x| x.who == Who::Model && x.text == "Hello"));
+    let answer = m.iter().find(|x| x.who == Who::Model && x.action.is_none()).unwrap();
+    let stored = m.iter().find(|x| x.action.is_some()).expect("the action's result is in the feed");
+    let a = stored.action.as_ref().unwrap();
+    assert_eq!((a.id.as_str(), a.done, a.output.as_deref()), ("t1", true, None), "a read that worked keeps no output");
+    let evs: Vec<ChatEvent> = rx.try_iter().collect();
+    let deltas: Vec<(&str, &str)> = evs.iter().filter_map(|e| if let ChatEvent::Delta { msg_id, text, .. } = e { Some((msg_id.as_str(), text.as_str())) } else { None }).collect();
+    assert_eq!(deltas, [(answer.id.as_str(), "Hel"), (answer.id.as_str(), "lo")], "pieces of the text go to the id of the message it ends in");
+    let started: Vec<&str> = evs.iter().filter_map(|e| if let ChatEvent::Action { msg_id, action, .. } = e { (!action.done).then_some(msg_id.as_str()) } else { None }).collect();
+    assert_eq!(started, [stored.id.as_str()], "the start is sent under the id its result is stored with");
 }

@@ -2,7 +2,7 @@
 //! Confirmed with `opencode run --help` (1.18.34) and real runs: --format json, --session, --dir,
 //! --auto (auto-approve), --agent. The stream has no final event, so Done is built at EOF.
 use super::common::*;
-use crate::agent::{Adapter, AgentEvent, Run};
+use crate::agent::{actions, ActionInput, Adapter, AgentEvent, Run};
 use crate::model::ModelFamily;
 use std::time::Duration;
 use std::process::Command;
@@ -36,10 +36,24 @@ fn scan(line: &str) -> Scan {
                 s.text = Some(t.to_string());
             }
         }
-        Some("tool_use") => s.events.push(AgentEvent::Tool {
-            name: j["part"]["tool"].as_str().unwrap_or("tool").to_string(),
-            summary: summarize(&j["part"]["state"]["input"]),
-        }),
+        // one line per finished tool: its start and its result at once.
+        // unverified: part.callID, state.status/output/error and metadata.diff (seen: tool, state.input)
+        Some("tool_use") => {
+            let part = &j["part"];
+            let st = &part["state"];
+            let id = part["callID"].as_str().or_else(|| part["id"].as_str()).unwrap_or("");
+            let start = actions::tool_action(id, part["tool"].as_str().unwrap_or("tool"), &st["input"]);
+            let status = st["status"].as_str().unwrap_or("completed");
+            s.events.push(AgentEvent::Action(start.clone()));
+            if matches!(status, "completed" | "error") {
+                let out = st["output"].as_str().or_else(|| st["error"].as_str()).map(String::from);
+                let input = match (&start.input, st["metadata"]["diff"].as_str()) {
+                    (ActionInput::Edit { path, .. }, Some(d)) => Some(ActionInput::Edit { path: path.clone(), diff: d.to_string() }),
+                    _ => None,
+                };
+                s.events.push(AgentEvent::Action(actions::result(id, out, status == "completed", input)));
+            }
+        }
         Some("error") => {
             let m = j["error"]["data"]["message"].as_str().or_else(|| j["error"]["name"].as_str());
             s.error = Some(m.unwrap_or("opencode error").to_string());

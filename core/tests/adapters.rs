@@ -3,6 +3,7 @@
 //! engine's documentation, the others were captured from real runs on the dev machine.
 use chrono::{Duration, Local, Timelike};
 use nightshift_core::agent::adapters::*;
+use nightshift_core::agent::actions;
 use nightshift_core::agent::*;
 use nightshift_core::model::{CustomAgent, Settings};
 use std::sync::atomic::AtomicBool;
@@ -12,16 +13,60 @@ fn fixture(name: &str) -> String {
     std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("{p}: {e}"))
 }
 
-/// What run_blocking does with a process that printed `name`: parse every line, then finish().
-fn replay(a: &dyn Adapter, name: &str, exit_ok: bool) -> Vec<AgentEvent> {
-    let text = fixture(name);
-    let mut evs: Vec<AgentEvent> = text.lines().flat_map(|l| a.parse(l)).collect();
-    evs.extend(a.finish(exit_ok, &text));
-    evs
+/// An adapter whose process prints a saved fixture (and exits with `exit_ok`): the real `run_blocking` path.
+struct Replay<'a> {
+    inner: &'a dyn Adapter,
+    path: String,
+    exit_ok: bool,
 }
 
-fn tool(name: &str, summary: &str) -> AgentEvent {
-    AgentEvent::Tool { name: name.into(), summary: summary.into() }
+impl Adapter for Replay<'_> {
+    fn id(&self) -> &str {
+        self.inner.id()
+    }
+    fn name(&self) -> &str {
+        self.inner.name()
+    }
+    fn available(&self) -> Result<(), String> {
+        Ok(())
+    }
+    fn command(&self, _run: &Run) -> std::process::Command {
+        let mut c = std::process::Command::new("sh");
+        c.arg("-c").arg(format!("cat \"$1\"; exit {}", if self.exit_ok { 0 } else { 1 })).arg("sh").arg(&self.path);
+        c
+    }
+    fn parse(&self, line: &str) -> Vec<AgentEvent> {
+        self.inner.parse(line)
+    }
+    fn finish(&self, exit_ok: bool, all_text: &str) -> Vec<AgentEvent> {
+        self.inner.finish(exit_ok, all_text)
+    }
+}
+
+/// What `run_blocking` makes of a process that printed the fixture `name`.
+fn replay(a: &dyn Adapter, name: &str, exit_ok: bool) -> Vec<AgentEvent> {
+    let path = format!("{}/tests/fixtures/agents/{name}", env!("CARGO_MANIFEST_DIR"));
+    replay_path(a, &path, exit_ok, vec![])
+}
+
+fn replay_path(a: &dyn Adapter, path: &str, exit_ok: bool, env: Vec<(String, String)>) -> Vec<AgentEvent> {
+    let d = tempfile::tempdir().unwrap();
+    let mut run = Run::new(d.path().to_path_buf(), "p".into(), String::new(), Role::Worker);
+    run.extra_env = env;
+    let r = Replay { inner: a, path: path.to_string(), exit_ok };
+    run_blocking(&r, &run, &mut |_| {}, &AtomicBool::new(false)).unwrap()
+}
+
+/// An action at its start, as the fixture has it.
+fn start(id: &str, name: &str, input: ActionInput) -> AgentEvent {
+    AgentEvent::Action(ToolAction { id: id.into(), name: name.into(), input, output: None, ok: true, done: false })
+}
+/// The same action with its result.
+fn end(id: &str, name: &str, input: ActionInput, output: Option<&str>, ok: bool) -> AgentEvent {
+    AgentEvent::Action(ToolAction { id: id.into(), name: name.into(), input, output: output.map(String::from), ok, done: true })
+}
+fn bash(c: &str) -> ActionInput {
+    ActionInput::Bash { command: c.into() }
 }
 fn text(t: &str) -> AgentEvent {
     AgentEvent::Text(t.into())
@@ -38,14 +83,23 @@ fn claude_real_run_text_tool_and_done_with_session() {
         evs.into_iter().filter(|e| !matches!(e, AgentEvent::Usage(_) | AgentEvent::Cost(_))).collect();
     assert_eq!(
         plain,
-        vec![tool("Bash", "echo hi"), text("ok"), done("fe525380-9073-47bf-9375-54c8ca3c6d08", "ok")]
+        vec![
+            start("toolu_01MELK46bqyQtgAZJQ5CpVwy", "Bash", bash("echo hi")),
+            end("toolu_01MELK46bqyQtgAZJQ5CpVwy", "Bash", bash("echo hi"), Some("hi"), true),
+            text("ok"),
+            done("fe525380-9073-47bf-9375-54c8ca3c6d08", "ok")
+        ]
     );
 }
 
 #[test]
 fn opencode_real_run_text_tool_and_done_with_session() {
     let evs = replay(&OpenCode::new(), "opencode.jsonl", true);
-    assert_eq!(evs, vec![tool("bash", "echo hi"), text("ok"), done("ses_ea2aa5d4affeYzoOqNuIEz6nKL", "ok")]);
+    let id = "call_0b407c29ddb54297b98f91e2";
+    assert_eq!(
+        evs,
+        vec![start(id, "bash", bash("echo hi")), end(id, "bash", bash("echo hi"), Some("hi\n"), true), text("ok"), done("ses_ea2aa5d4affeYzoOqNuIEz6nKL", "ok")]
+    );
 }
 
 #[test]
@@ -64,7 +118,10 @@ fn opencode_real_error_becomes_failed_done() {
 #[test]
 fn qwen_stream_text_tool_done_and_real_auth_error() {
     let evs = replay(&Qwen::new(), "qwen-from-docs.jsonl", true);
-    assert_eq!(evs, vec![tool("run_shell_command", "ls"), text("ok"), done("qwen-sess-1", "ok")]);
+    assert_eq!(
+        evs,
+        vec![start("t1", "run_shell_command", bash("ls")), end("t1", "run_shell_command", bash("ls"), Some("a b"), true), text("ok"), done("qwen-sess-1", "ok")]
+    );
     // captured from the installed `qwen` without credentials
     let evs = replay(&Qwen::new(), "qwen-error.jsonl", false);
     assert_eq!(
@@ -80,7 +137,12 @@ fn codex_events_text_tool_done_and_error() {
     let evs = replay(&Codex::new(), "codex-from-docs.jsonl", true);
     assert_eq!(
         evs,
-        vec![tool("shell", "bash -lc ls"), text("Repo contains docs and src. ok"), done("0199a213-81c0-7800-8aa1-bbab2a035a53", "Repo contains docs and src. ok")]
+        vec![
+            start("item_1", "shell", bash("bash -lc ls")),
+            end("item_1", "shell", bash("bash -lc ls"), Some("docs\nsrc\n"), true),
+            text("Repo contains docs and src. ok"),
+            done("0199a213-81c0-7800-8aa1-bbab2a035a53", "Repo contains docs and src. ok")
+        ]
     );
     // a usage-limit failure is a Limit, with the reset time taken from "in 2 hours 30 minutes"
     let before = Local::now();
@@ -93,7 +155,10 @@ fn codex_events_text_tool_done_and_error() {
 #[test]
 fn gemini_events_join_deltas_and_report_errors() {
     let evs = replay(&Gemini::new(), "gemini-from-docs.jsonl", true);
-    assert_eq!(evs, vec![tool("run_shell_command", "ls"), text("o"), text("k"), done("gem-sess-1", "ok")]);
+    assert_eq!(
+        evs,
+        vec![start("t1", "run_shell_command", bash("ls")), end("t1", "run_shell_command", bash("ls"), Some("a b"), true), text("o"), text("k"), done("gem-sess-1", "ok")]
+    );
     let evs = replay(&Gemini::new(), "gemini-error-from-docs.jsonl", false);
     assert!(matches!(evs.as_slice(), [AgentEvent::Limit { resets_at: None }]), "{evs:?}");
 }
@@ -101,7 +166,9 @@ fn gemini_events_join_deltas_and_report_errors() {
 #[test]
 fn cursor_events_tool_text_done() {
     let evs = replay(&Cursor::new(), "cursor-from-docs.jsonl", true);
-    assert_eq!(evs, vec![tool("write", "notes.txt"), text("ok"), done("cur-sess-1", "ok")]);
+    let w = ActionInput::Write { path: "notes.txt".into(), head: "hi".into(), lines: 1 };
+    // a write that worked has no output to show: the new file's head is the view
+    assert_eq!(evs, vec![start("c1", "write", w.clone()), end("c1", "write", w, None, true), text("ok"), done("cur-sess-1", "ok")]);
 }
 
 #[test]
@@ -703,8 +770,13 @@ fn envs_without_a_list_command_have_only_the_built_in_hint_list() {
         assert!(a.models().is_err(), "{}", a.id());
         let b = a.builtin_models();
         assert!(!b.is_empty(), "{}", a.id());
-        // dated and marked as not checked against the CLI; no pre-selected default
-        assert!(b.iter().all(|f| !f.default && f.blurb.as_deref().unwrap().contains("2026-10-21; не сверено с CLI")), "{}", a.id());
+        // the description is a dictionary key of the interface (story 240); the source mark is a field of its own
+        for f in &b {
+            assert!(!f.default, "{} {}", a.id(), f.id);
+            assert_eq!(f.blurb.as_deref(), Some(format!("model.desc.{}", f.id).as_str()), "{} {}", a.id(), f.id);
+            let note = f.source_note.as_deref().unwrap_or_default();
+            assert!(note.contains("2026-10-21; не сверено с CLI"), "{} {}: {note}", a.id(), f.id);
+        }
         // every version has the identifier the vendor docs give for it
         assert!(b.iter().all(|f| f.versions.iter().all(|v| f.exact.contains_key(v))), "{}", a.id());
     }
@@ -772,6 +844,7 @@ fn fam(id: &str, versions: &[&str]) -> ModelFamily {
         versions: versions.iter().map(|s| s.to_string()).collect(), default: false,
         // test data: the identifier of version v is spelled out here, the code under test never builds one
         exact: versions.iter().map(|v| (v.to_string(), format!("{id}-{v}"))).collect(),
+        source_note: None,
     }
 }
 
@@ -924,4 +997,135 @@ fn broad_words_in_the_tail_of_the_output_are_not_a_login_or_model_error() {
     // the same words in the CLI's own error message do count
     let own = "{\"type\":\"error\",\"message\":\"401 Unauthorized\"}\n";
     assert!(matches!(Codex::new().finish(false, own).as_slice(), [AgentEvent::AuthRequired(_)]));
+}
+
+// ---- v3: actions with input, output and diff; streamed text (stories 225-231) ----
+
+fn actions_of(evs: &[AgentEvent]) -> Vec<ToolAction> {
+    evs.iter().filter_map(|e| if let AgentEvent::Action(a) = e { Some(a.clone()) } else { None }).collect()
+}
+
+#[test]
+fn claude_live_stream_gives_each_action_with_its_result_and_the_text_word_by_word() {
+    // captured from claude 2.1.308 `-p --output-format stream-json --verbose --include-partial-messages`
+    // (paths shortened to /repo, thinking and input deltas left out)
+    let path = format!("{}/tests/fixtures/claude_stream_partial.jsonl", env!("CARGO_MANIFEST_DIR"));
+    let evs = replay_path(&Claude::new(), &path, true, vec![]);
+    let acts = actions_of(&evs);
+    let read = |p: &str| ActionInput::Read { path: p.into() };
+    let edit_diff = "--- a/repo/calc.py\n+++ b/repo/calc.py\n@@ -1,2 +1,3 @@\n def add(a, b):\n-    return a + b\n+    s = a + b\n+    return s\n";
+    let notes = ActionInput::Write { path: "/repo/notes.txt".into(), head: "alpha\nbeta\ngamma".into(), lines: 3 };
+    let want_done = vec![
+        end("toolu_01HSTpFejLcZRnjmR1wut3bK", "Read", read("/repo/calc.py"), None, true),
+        end("toolu_01JiVM761xCKLda52CQB8Hfa", "Edit", ActionInput::Edit { path: "/repo/calc.py".into(), diff: edit_diff.into() }, None, true),
+        end("toolu_016hXt1MRnX5Wk5t3xPh2D4X", "Write", notes.clone(), None, true),
+        end("toolu_01Ldpu8vBvCLfNgdv6m8Q3Df", "Bash", bash("echo hello; ls"), Some("hello"), true),
+        end(
+            "toolu_018mv9gwgjfTdxpV7wbkGHGn",
+            "Read",
+            read("/repo/missing_file.py"),
+            Some("File does not exist. Note: your current working directory is /repo."),
+            false,
+        ),
+    ];
+    let got_done: Vec<AgentEvent> = acts.iter().filter(|a| a.done).cloned().map(AgentEvent::Action).collect();
+    assert_eq!(got_done, want_done);
+    // every action came first at its start, before its result, with the same id
+    let starts: Vec<(&str, &str)> = acts.iter().filter(|a| !a.done).map(|a| (a.id.as_str(), a.name.as_str())).collect();
+    assert_eq!(
+        starts,
+        [
+            ("toolu_01HSTpFejLcZRnjmR1wut3bK", "Read"),
+            ("toolu_01JiVM761xCKLda52CQB8Hfa", "Edit"),
+            ("toolu_016hXt1MRnX5Wk5t3xPh2D4X", "Write"),
+            ("toolu_01Ldpu8vBvCLfNgdv6m8Q3Df", "Bash"),
+            ("toolu_018mv9gwgjfTdxpV7wbkGHGn", "Read")
+        ]
+    );
+    assert_eq!(acts.iter().find(|a| !a.done && a.name == "Write").unwrap().input, notes);
+    // the pieces of streamed text make the same text as the whole messages
+    let deltas: String = evs.iter().filter_map(|e| if let AgentEvent::TextDelta(t) = e { Some(t.as_str()) } else { None }).collect();
+    let texts: String = evs.iter().filter_map(|e| if let AgentEvent::Text(t) = e { Some(t.as_str()) } else { None }).collect();
+    assert!(evs.iter().filter(|e| matches!(e, AgentEvent::TextDelta(_))).count() > 10);
+    assert_eq!(deltas, texts);
+    assert!(texts.starts_with("TodoWrite isn't among the tools") && texts.ends_with("missing_file.py was confirmed missing."), "{texts}");
+}
+
+#[test]
+fn claude_runs_with_partial_messages() {
+    let d = tempfile::tempdir().unwrap();
+    let c = Claude::with_bin("/bin/true").command(&Run::new(d.path().to_path_buf(), "p".into(), String::new(), Role::Worker));
+    let args: Vec<String> = c.get_args().map(|a| a.to_string_lossy().into_owned()).collect();
+    assert!(args.iter().any(|a| a == "--include-partial-messages"), "{args:?}");
+}
+
+#[test]
+fn a_plan_tool_becomes_a_checklist() {
+    let todo = serde_json::json!({"todos": [
+        {"content": "read", "status": "completed", "activeForm": "Reading"},
+        {"content": "edit", "status": "in_progress", "activeForm": "Editing"},
+        {"content": "run", "status": "pending", "activeForm": "Running"},
+        {"content": "docs", "status": "cancelled"}
+    ]});
+    let a = actions::tool_action("t1", "TodoWrite", &todo);
+    let item = |t: &str, s: PlanState| PlanItem { text: t.into(), state: s };
+    assert_eq!(
+        a.input,
+        ActionInput::Plan { items: vec![item("read", PlanState::Done), item("edit", PlanState::Active), item("run", PlanState::Pending), item("docs", PlanState::Dropped)] }
+    );
+    // Codex `update_plan` (plan: [{step, status}]) and opencode `todowrite` read the same way
+    let plan = actions::tool_action("t2", "update_plan", &serde_json::json!({"plan": [{"step": "a", "status": "completed"}, {"step": "b", "status": "in_progress"}]}));
+    assert_eq!(plan.input, ActionInput::Plan { items: vec![item("a", PlanState::Done), item("b", PlanState::Active)] });
+    let oc = actions::tool_action("t3", "todowrite", &serde_json::json!({"todos": [{"content": "x", "status": "pending", "id": "1"}]}));
+    assert_eq!(oc.input, ActionInput::Plan { items: vec![item("x", PlanState::Pending)] });
+}
+
+#[test]
+fn edits_and_new_files_are_unified_diffs() {
+    // a change of several lines inside a file: 3 lines of context, the file's own line numbers
+    let old = "a\nb\nc\nd\ne\nf\n";
+    let new = "a\nb\nC\nC2\nd\ne\nf\n";
+    assert_eq!(actions::unified_diff("src/x.rs", Some(old), Some(new)), "--- a/src/x.rs\n+++ b/src/x.rs\n@@ -1,6 +1,7 @@\n a\n b\n-c\n+C\n+C2\n d\n e\n f\n");
+    // a new file: every line added
+    assert_eq!(actions::unified_diff("n.txt", None, Some("x\ny\n")), "--- /dev/null\n+++ b/n.txt\n@@ -0,0 +1,2 @@\n+x\n+y\n");
+    // MultiEdit at its start: the pieces it replaces
+    let me = actions::tool_action(
+        "t",
+        "MultiEdit",
+        &serde_json::json!({"file_path": "m.py", "edits": [{"old_string": "a = 1", "new_string": "a = 2"}, {"old_string": "b = 1\nc = 1", "new_string": "b = 2"}]}),
+    );
+    assert_eq!(me.input, ActionInput::Edit { path: "m.py".into(), diff: "--- a/m.py\n+++ b/m.py\n@@ -1,3 +1,2 @@\n-a = 1\n-b = 1\n-c = 1\n+a = 2\n+b = 2\n".into() });
+}
+
+#[test]
+fn long_output_and_diff_are_cut_and_secrets_never_leave_the_run() {
+    let secret = "s3cr3t-value-123";
+    let d = tempfile::tempdir().unwrap();
+    let big_out = format!("TOKEN={secret}\n{}", "x".repeat(70_000));
+    let big_new = "y\n".repeat(130_000);
+    let lines = [
+        serde_json::json!({"type":"stream_event","parent_tool_use_id":null,"event":{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"key is s3cr3"}}}),
+        serde_json::json!({"type":"stream_event","parent_tool_use_id":null,"event":{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"t-value-123 ok"}}}),
+        serde_json::json!({"type":"assistant","message":{"content":[{"type":"text","text":format!("key is {secret} ok")}]}}),
+        serde_json::json!({"type":"assistant","message":{"content":[{"type":"tool_use","id":"t1","name":"Bash","input":{"command":format!("echo {secret}")}}]}}),
+        serde_json::json!({"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"t1","content":big_out}]}}),
+        serde_json::json!({"type":"assistant","message":{"content":[{"type":"tool_use","id":"t2","name":"Write","input":{"file_path":"big.txt","content":"z"}}]}}),
+        serde_json::json!({"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"t2","content":"ok"}]},"tool_use_result":{"type":"update","filePath":"big.txt","originalFile":"z\n","content":big_new}}),
+        serde_json::json!({"type":"result","subtype":"success","is_error":false,"result":format!("done {secret}"),"session_id":"s1"}),
+    ];
+    let path = d.path().join("stream.jsonl");
+    std::fs::write(&path, lines.iter().map(|l| l.to_string() + "\n").collect::<String>()).unwrap();
+    let evs = replay_path(&Claude::new(), path.to_str().unwrap(), true, vec![("API_TOKEN".into(), secret.into())]);
+    assert!(!format!("{evs:?}").contains(secret), "the value is nowhere in what the run says");
+    let deltas: String = evs.iter().filter_map(|e| if let AgentEvent::TextDelta(t) = e { Some(t.as_str()) } else { None }).collect();
+    assert_eq!(deltas, "key is ${API_TOKEN} ok", "a value split between two pieces is caught too");
+    let acts = actions_of(&evs);
+    let bash = acts.iter().find(|a| a.id == "t1" && a.done).unwrap();
+    assert_eq!(bash.input, ActionInput::Bash { command: "echo ${API_TOKEN}".into() });
+    let out = bash.output.as_deref().unwrap();
+    assert!(out.starts_with("TOKEN=${API_TOKEN}\nxxx"), "{}", &out[..40]);
+    assert!(out.len() <= OUTPUT_MAX + 64 && out.ends_with(&format!("[output_truncated: {} bytes]", big_out.len() - secret.len() + "${API_TOKEN}".len())), "{}", &out[out.len() - 60..]);
+    let ActionInput::Edit { diff, .. } = &acts.iter().find(|a| a.id == "t2" && a.done).unwrap().input else { panic!("an overwrite is an edit") };
+    assert!(diff.len() <= DIFF_MAX + 64 && diff.contains("\n[diff_truncated: "), "{}", &diff[diff.len() - 60..]);
+    assert!(diff.starts_with("--- a/big.txt\n+++ b/big.txt\n@@ -1 +1,130000 @@\n-z\n+y\n"), "{}", &diff[..80]);
 }

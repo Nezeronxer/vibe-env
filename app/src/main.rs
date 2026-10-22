@@ -226,6 +226,12 @@ fn on_notification_click(app: &AppHandle, a: &tauri_plugin_notification::ActionP
 fn forward_events(app: &AppHandle, hub: &Arc<Hub>, notifier: &Arc<AppNotifier>) {
     let rx = hub.engine.subscribe();
     let (h, hub2, n) = (app.clone(), hub.clone(), notifier.clone());
+    // actions and streamed text go out merged, at most once per 50 ms per task / chat (story 227)
+    let he = app.clone();
+    let win = Arc::new(hub::Coalescer::new(Arc::new(move |name: &str, payload: Value| {
+        let _ = he.emit(name, payload);
+    })));
+    let w = win.clone();
     std::thread::spawn(move || {
         for ev in rx {
             let changed = match ev {
@@ -242,9 +248,17 @@ fn forward_events(app: &AppHandle, hub: &Arc<Hub>, notifier: &Arc<AppNotifier>) 
                     true
                 }
                 EngineEvent::Log(id, ev) => {
-                    let _ = h.emit("task-log", json!({ "id": id, "event": ev }));
+                    match ev.action {
+                        Some(action) => w.push(hub::WinItem::TaskAction { task: id, action }),
+                        None => {
+                            w.flush(&format!("task:{id}"));
+                            let _ = h.emit("task-log", json!({ "id": id, "event": ev }));
+                        }
+                    }
                     false // log lines do not change the counter
                 }
+                // a task's text is streamed to its chat (`chat-delta`), the task's own feed gets the whole line
+                EngineEvent::TextDelta { .. } => false,
                 EngineEvent::ProjectChanged(id) => h.emit("project-changed", id).is_ok(),
                 EngineEvent::LimitsChanged(env) => {
                     let _ = h.emit("limits-changed", env);
@@ -268,9 +282,20 @@ fn forward_events(app: &AppHandle, hub: &Arc<Hub>, notifier: &Arc<AppNotifier>) 
     let (h, rx) = (app.clone(), hub.chats.subscribe());
     std::thread::spawn(move || {
         for ev in rx {
-            // the list of chats is read again by the window when a message of an unknown chat arrives
-            if let ChatEvent::Msg(m) = ev {
-                let _ = h.emit("chat-msg", &m);
+            match ev {
+                // the stored result of an action: the window has its start as `chat-action` already
+                ChatEvent::Msg(m) if m.action.is_some() => {
+                    let action = m.action.clone().unwrap_or_else(|| unreachable!());
+                    win.push(hub::WinItem::ChatAction { chat: m.chat_id.clone(), msg_id: m.id.clone(), action });
+                }
+                // the list of chats is read again by the window when a message of an unknown chat arrives
+                ChatEvent::Msg(m) => {
+                    win.flush(&format!("chat:{}", m.chat_id));
+                    let _ = h.emit("chat-msg", &m);
+                }
+                ChatEvent::Action { chat, msg_id, action } => win.push(hub::WinItem::ChatAction { chat, msg_id, action }),
+                ChatEvent::Delta { chat, msg_id, text } => win.push(hub::WinItem::ChatDelta { chat, msg_id, text }),
+                ChatEvent::Changed(_) | ChatEvent::Removed(_) => {}
             }
         }
     });
@@ -393,6 +418,13 @@ async fn list_tasks(s: State<'_, App>) -> Res<Vec<Value>> {
 #[tauri::command]
 async fn get_log(s: State<'_, App>, id: String, limit: usize) -> Res<Value> {
     Ok(json!(lk(s.hub.engine.store()).read_log(&id, limit)))
+}
+
+/// v3: a page of the task's log before `before` (an RFC 3339 time; None = the newest), with the actions'
+/// output and diffs (story 230).
+#[tauri::command]
+async fn get_task_log(s: State<'_, App>, id: String, before: Option<String>, limit: usize) -> Res<Value> {
+    Ok(json!(s.hub.task_log(&id, before.as_deref(), limit)?))
 }
 
 #[tauri::command]
@@ -943,7 +975,7 @@ fn main() {
         })
         .invoke_handler(tauri::generate_handler![
             list_projects, add_project, update_project, remove_project, init_repo, repo_info,
-            list_tasks, get_log, submit_task, answer, approve_outward,
+            list_tasks, get_log, get_task_log, submit_task, answer, approve_outward,
             cancel, retry, remove_task, undo, push_base, pull_base, pause_all,
             list_agents, get_settings, set_settings,
             github_info, delete_merged_branches, pr_state, get_diffstat,

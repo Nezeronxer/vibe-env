@@ -247,13 +247,15 @@ pub fn capture(bin: &str, args: &[&str], timeout: std::time::Duration) -> Result
     }
 }
 
-/// One built-in family; `versions` are `(version, exact CLI identifier)`, newest first.
-pub fn builtin_family(id: &str, label: &str, vendor: &str, blurb: &str, versions: &[(&str, &str)]) -> ModelFamily {
+/// One built-in family; `versions` are `(version, exact CLI identifier)`, newest first. The description is
+/// the interface's dictionary key `model.desc.<id>` (story 240); `source` says where it comes from, for the hint.
+pub fn builtin_family(id: &str, label: &str, vendor: &str, source: &str, versions: &[(&str, &str)]) -> ModelFamily {
     ModelFamily {
         id: id.into(),
         label: label.into(),
         vendor: vendor.into(),
-        blurb: Some(blurb.into()),
+        blurb: Some(format!("model.desc.{id}")),
+        source_note: Some(source.into()),
         versions: versions.iter().map(|(v, _)| v.to_string()).collect(),
         default: false,
         exact: versions.iter().map(|(v, e)| (v.to_string(), e.to_string())).collect(),
@@ -293,6 +295,7 @@ pub fn group_models(rows: &[(String, Option<String>, Option<String>, bool)], ven
                     versions: vec![],
                     default: false,
                     exact: Default::default(),
+                    source_note: None,
                 });
                 out.len() - 1
             }
@@ -351,7 +354,7 @@ pub fn synth_done(scan: impl Fn(&str) -> Scan, exit_ok: bool, all_text: &str) ->
         if s.session.is_some() {
             session = s.session;
         }
-        if s.events.iter().any(|e| matches!(e, AgentEvent::Tool { .. })) {
+        if s.events.iter().any(|e| matches!(e, AgentEvent::Tool { .. } | AgentEvent::Action(_))) {
             text.clear();
         }
         if let Some(t) = s.text {

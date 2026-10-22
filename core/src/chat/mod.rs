@@ -111,8 +111,13 @@ pub struct ChatSummary {
 #[allow(clippy::large_enum_variant)] // a message travels whole to the window, like a task in `EngineEvent`
 #[derive(Clone, Debug, PartialEq)]
 pub enum ChatEvent {
-    /// A message was added to a feed.
+    /// A message was added to a feed. One with an `action` is the stored result of that action.
     Msg(ChatMsg),
+    /// v3: an action of the model or of a role of the chat's task, at its start (not stored) and again with its
+    /// result (then also as `Msg`); `msg_id` is the id of the message that stores it.
+    Action { chat: ChatId, msg_id: String, action: ToolAction },
+    /// v3: a piece of the text being written; `msg_id` is the id of the message the whole text comes in.
+    Delta { chat: ChatId, msg_id: String, text: String },
     /// The chat's list item may have changed (a task of it moved, the chat was created or archived).
     Changed(ChatId),
     Removed(ChatId),
@@ -183,6 +188,10 @@ pub struct Chats {
     task_chat: Mutex<HashMap<TaskId, Option<ChatId>>>,
     /// (task, role) -> the last prose mirrored, so the final text of a run is not shown twice.
     last_said: Mutex<HashMap<(TaskId, RoleKind), String>>,
+    /// (task, action id) -> the id of the message its result is stored in, from its start on.
+    act_msgs: Mutex<HashMap<(TaskId, String), String>>,
+    /// (task, role) -> the id of the message the text being streamed will be stored in.
+    delta_msgs: Mutex<HashMap<(TaskId, RoleKind), String>>,
     pub(crate) stop: AtomicBool,
 }
 
@@ -232,6 +241,8 @@ impl Chats {
             push_lock: Mutex::new(()),
             task_chat: Mutex::new(HashMap::new()),
             last_said: Mutex::new(HashMap::new()),
+            act_msgs: Mutex::new(HashMap::new()),
+            delta_msgs: Mutex::new(HashMap::new()),
             stop: AtomicBool::new(false),
         });
         Chats::spawn_watchers(&me);
@@ -349,6 +360,7 @@ impl Chats {
             tool: None,
             model: None,
             reply_to: reply_to.map(str::to_string),
+            action: None,
         });
     }
 
@@ -405,6 +417,7 @@ impl Chats {
             tool: None,
             model: None,
             reply_to: None,
+            action: None,
         };
         let Some(msg) = self.push(msg) else { return Ok(chat.id) }; // the same message again
         if chat.archived {
@@ -780,6 +793,12 @@ impl Chats {
                 Some(nid) => self.on_delivered(&nid, e.at),
                 None => self.mirror(&task, &e),
             },
+            EngineEvent::TextDelta { task, role, text } if speaks(role) => {
+                if let Some(chat) = self.chat_of_task(&task) {
+                    let msg_id = lk(&self.delta_msgs).entry((task, role)).or_insert_with(|| uuid::Uuid::new_v4().to_string()).clone();
+                    self.emit(ChatEvent::Delta { chat, msg_id, text });
+                }
+            }
             _ => {}
         }
     }
@@ -812,6 +831,10 @@ impl Chats {
     fn mirror(&self, task: &str, e: &LogEvent) {
         let Some(role) = e.role else { return };
         let Some(chat) = self.chat_of_task(task) else { return };
+        if let Some(a) = &e.action {
+            return self.mirror_action(task, &chat, role, e, a);
+        }
+        let mut id = None;
         let (text, tool) = match e.kind {
             LogKind::Tool => {
                 let (name, arg) = e.text.split_once(": ").unwrap_or((e.text.as_str(), ""));
@@ -823,6 +846,7 @@ impl Chats {
                 if text.is_empty() || lk(&self.last_said).insert((task.to_string(), role), text.clone()).as_deref() == Some(text.as_str()) {
                     return;
                 }
+                id = lk(&self.delta_msgs).remove(&(task.to_string(), role)); // the streamed text ends in this message
                 (text, None)
             }
             _ => return,
@@ -831,7 +855,7 @@ impl Chats {
             return;
         }
         self.push(ChatMsg {
-            id: uuid::Uuid::new_v4().to_string(),
+            id: id.unwrap_or_else(|| uuid::Uuid::new_v4().to_string()),
             chat_id: chat,
             at: e.at,
             who: Who::Role(role),
@@ -842,7 +866,43 @@ impl Chats {
             tool,
             model: e.model.clone(),
             reply_to: None,
+            action: None,
         });
+    }
+
+    /// An action of a role of the task: its start goes to the window only, its result is stored in the same message.
+    fn mirror_action(&self, task: &str, chat: &str, role: RoleKind, e: &LogEvent, a: &ToolAction) {
+        if self.chat(chat).is_none() {
+            return;
+        }
+        let key = (task.to_string(), a.id.clone());
+        if !a.done {
+            let msg_id = lk(&self.act_msgs).entry(key).or_insert_with(|| uuid::Uuid::new_v4().to_string()).clone();
+            return self.emit(ChatEvent::Action { chat: chat.to_string(), msg_id, action: a.clone() });
+        }
+        let msg_id = lk(&self.act_msgs).remove(&key).unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
+        self.push(action_msg(msg_id, chat, e.at, Who::Role(role), Some(task), e.model.clone(), None, a));
+    }
+}
+
+/// The stored form of an action's result in a feed: the action, and the v2 `tool` line for older readers.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn action_msg(id: String, chat: &str, at: DateTime<Local>, who: Who, task: Option<&str>, model: Option<String>, reply_to: Option<&str>, a: &ToolAction) -> ChatMsg {
+    let line = crate::agent::actions::summary_line(a);
+    let arg = line.split_once(": ").map(|(_, r)| r.to_string()).unwrap_or_default();
+    ChatMsg {
+        id,
+        chat_id: chat.to_string(),
+        at,
+        who,
+        text: String::new(),
+        task_id: task.map(str::to_string),
+        delivered_at: None,
+        kind: None,
+        tool: Some(ToolCall { name: a.name.clone(), arg, result: a.output.clone().unwrap_or_default(), ok: a.ok }),
+        model,
+        reply_to: reply_to.map(str::to_string),
+        action: Some(a.clone()),
     }
 }
 

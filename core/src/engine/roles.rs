@@ -374,11 +374,37 @@ impl Engine {
             ev.variant = variant.map(str::to_string);
             self.log_ev(&id, ev);
         };
+        // the run's actions: a start is only sent to the window, the result is stored (story 230)
+        let act = |a: &agent::ToolAction| {
+            let mut ev = LogEvent::new(self.now(), LogKind::Tool, &agent::actions::summary_line(a));
+            ev.role = Some(role);
+            ev.model = Some(model.to_string());
+            ev.variant = variant.map(str::to_string);
+            ev.action = Some(a.clone());
+            if a.done {
+                self.log_ev(&id, ev);
+            } else {
+                self.emit(EngineEvent::Log(id.clone(), ev));
+            }
+        };
+        // edits the CLI did not show as text: from the copy after the run (story 226)
+        let writes = !run.is_read_only() && !is_read_only(role);
+        let before = if writes { edits::before(&run.cwd) } else { None };
+        let shown = Mutex::new(std::collections::BTreeSet::new());
         let mut on = |e: &AgentEvent| {
             *lk(&last) = self.now();
             match e {
                 AgentEvent::Text(s) => tag(kind.clone(), s),
                 AgentEvent::Tool { name, summary } => tag(LogKind::Tool, &format!("{name}: {summary}")),
+                AgentEvent::Action(a) => {
+                    if a.done && a.ok {
+                        if let agent::ActionInput::Edit { path, .. } | agent::ActionInput::Write { path, .. } = &a.input {
+                            lk(&shown).insert(edits::rel_path(&run.cwd, path));
+                        }
+                    }
+                    act(a);
+                }
+                AgentEvent::TextDelta(t) => self.emit(EngineEvent::TextDelta { task: id.clone(), role, text: t.clone() }),
                 AgentEvent::Done { text, is_error, .. } => tag(if *is_error { LogKind::Error } else { kind.clone() }, text),
                 AgentEvent::Limit { .. } => tag(LogKind::Stage, "usage limit reached"),
                 AgentEvent::Usage(_) | AgentEvent::Cost(_) => {}
@@ -416,6 +442,11 @@ impl Engine {
             let _end = EndOnDrop(&done);
             agent::run_blocking_with(a, run, &mut on, &mut || self.deliver_notes(&id, role, variant, notes), flag)
         });
+        if let Some(b) = &before {
+            for a in edits::after(&run.cwd, b, &lk(&shown), &agent::Scrub::for_run(run)) {
+                act(&a);
+            }
+        }
         if cancel.load(Ordering::SeqCst) {
             return Ran::Cancelled;
         }

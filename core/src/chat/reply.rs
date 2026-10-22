@@ -122,6 +122,9 @@ impl Chats {
         let signature = format!("{} · {}", a.name(), model.label);
 
         let (mut session, mut recap) = (c.session.clone(), None);
+        // the answer's text streams into the message it is stored in at the end (story 227)
+        let reply_id = uuid::Uuid::new_v4().to_string();
+        let mut act_ids: HashMap<String, String> = HashMap::new();
         loop {
             let mut run = Run::new(
                 copy.clone(),
@@ -134,13 +137,25 @@ impl Chats {
             run.read_only = true;
             run.extra_args = env_set.extra_args.clone();
             run.extra_env = self.engine.env_vars_of(&c.env, None);
-            let events = match agent::run_blocking(&*a, &run, &mut |_| {}, &self.stop) {
+            let mut on = |e: &agent::AgentEvent| match e {
+                agent::AgentEvent::TextDelta(t) => self.emit(ChatEvent::Delta { chat: chat.to_string(), msg_id: reply_id.clone(), text: t.clone() }),
+                agent::AgentEvent::Action(act) if !act.done => {
+                    let msg_id = act_ids.entry(act.id.clone()).or_insert_with(|| uuid::Uuid::new_v4().to_string()).clone();
+                    self.emit(ChatEvent::Action { chat: chat.to_string(), msg_id, action: act.clone() });
+                }
+                agent::AgentEvent::Action(act) => {
+                    let msg_id = act_ids.remove(&act.id).unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
+                    self.push(action_msg(msg_id, chat, self.now(), Who::Model, None, Some(signature.clone()), Some(&msg.id), act));
+                }
+                _ => {}
+            };
+            let events = match agent::run_blocking(&*a, &run, &mut on, &self.stop) {
                 Ok(_) if self.stop.load(Ordering::SeqCst) => return,
                 Ok(e) => e,
                 Err(e) => return self.fail(chat, &msg.id, &format!("{}: {e}", reason::RUN_FAILED)),
             };
             match self.read_outcome(&c.env, session.is_some(), &events) {
-                Outcome::Reply { session, text } => return self.reply(&c, job, &signature, session, &text),
+                Outcome::Reply { session, text } => return self.reply(&c, job, &signature, session, &text, reply_id),
                 Outcome::Failed(why) => return self.fail(chat, &msg.id, &why),
                 Outcome::Limit(until) => return self.hold_for_limit(&c, job, until),
                 Outcome::SessionLost => {
@@ -154,7 +169,7 @@ impl Chats {
     }
 
     /// The answer goes to the feed; a closing `NS_TASK:` line makes the message a task and does not show.
-    fn reply(&self, c: &Chat, job: &Job, signature: &str, session: Option<String>, text: &str) {
+    fn reply(&self, c: &Chat, job: &Job, signature: &str, session: Option<String>, text: &str, id: String) {
         if session.is_some() {
             self.update_chat(&c.id, |x| x.session = session.clone());
         }
@@ -163,7 +178,7 @@ impl Chats {
         let shown = if is_task { sig.body.clone() } else { text.trim().to_string() };
         if !shown.is_empty() {
             self.push(ChatMsg {
-                id: uuid::Uuid::new_v4().to_string(),
+                id,
                 chat_id: c.id.clone(),
                 at: self.now(),
                 who: Who::Model,
@@ -174,6 +189,7 @@ impl Chats {
                 tool: None,
                 model: Some(signature.to_string()),
                 reply_to: Some(job.msg.id.clone()),
+                action: None,
             });
         }
         if is_task {

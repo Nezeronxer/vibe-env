@@ -8,7 +8,7 @@ fn catalog(ids: &[&str]) -> Catalog {
         env: "fake".into(),
         families: ids
             .iter()
-            .map(|id| ModelFamily { id: id.to_string(), label: id.to_string(), vendor: "x".into(), blurb: None, versions: vec![], default: false, exact: Default::default() })
+            .map(|id| ModelFamily { id: id.to_string(), label: id.to_string(), vendor: "x".into(), blurb: None, versions: vec![], default: false, exact: Default::default(), source_note: None })
             .collect(),
         source: CatalogSource::BuiltIn,
         at: Local::now(),

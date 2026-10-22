@@ -4,7 +4,7 @@
 //! The event names are documented (init/message/tool_use/tool_result/error/result); field names
 //! below are unverified: headless.md has no JSON examples.
 use super::common::*;
-use crate::agent::{Adapter, AgentEvent, Run};
+use crate::agent::{actions, Adapter, AgentEvent, Run};
 use crate::model::ModelFamily;
 use std::process::Command;
 
@@ -38,10 +38,17 @@ fn scan(line: &str) -> Scan {
                 s.text = Some(t.to_string());
             }
         }
-        Some("tool_use") => s.events.push(AgentEvent::Tool {
-            name: j["tool_name"].as_str().unwrap_or("tool").to_string(),
-            summary: summarize(&j["parameters"]),
-        }),
+        Some("tool_use") => s.events.push(AgentEvent::Action(actions::tool_action(
+            j["tool_id"].as_str().unwrap_or(""),
+            j["tool_name"].as_str().unwrap_or("tool"),
+            &j["parameters"],
+        ))),
+        // unverified: tool_result {tool_id, status, output, error.message} (headless.md names the event only)
+        Some("tool_result") => {
+            let ok = j["status"].as_str().is_none_or(|st| st == "success");
+            let out = j["output"].as_str().or_else(|| j["error"]["message"].as_str()).map(String::from);
+            s.events.push(AgentEvent::Action(actions::result(j["tool_id"].as_str().unwrap_or(""), out, ok, None)));
+        }
         Some("error") if j["severity"] == "error" => s.error = j["message"].as_str().map(String::from),
         Some("result") if j["status"] == "success" => s.ok = true,
         Some("result") => {
@@ -106,21 +113,21 @@ impl Adapter for Gemini {
     /// read 2026-10-21, not checked against the CLI. Only stable / preview text models; Gemini 4 Argon
     /// ("new model" banner) is left out until the page lists it as a regular model.
     fn builtin_models(&self) -> Vec<ModelFamily> {
-        let note = |b: &str| format!("{b} (Google docs, 2026-10-21; не сверено с CLI)");
+        const SRC: &str = "Google docs, 2026-10-21; не сверено с CLI";
         vec![
-            builtin_family("pro", "Gemini Pro", "google", &note("Stronger, long context."), &[("3.1", "gemini-3.1-pro-preview"), ("2.5", "gemini-2.5-pro")]),
+            builtin_family("pro", "Gemini Pro", "google", SRC /* Stronger, long context. */, &[("3.1", "gemini-3.1-pro-preview"), ("2.5", "gemini-2.5-pro")]),
             builtin_family(
                 "flash",
                 "Gemini Flash",
                 "google",
-                &note("Fast and cheap."),
+                SRC /* Fast and cheap. */,
                 &[("3.8", "gemini-3.8-flash"), ("3.6", "gemini-3.6-flash"), ("2.5", "gemini-2.5-flash")],
             ),
             builtin_family(
                 "flash-lite",
                 "Gemini Flash-Lite",
                 "google",
-                &note("Fastest and cheapest."),
+                SRC /* Fastest and cheapest. */,
                 &[("3.5", "gemini-3.5-flash-lite"), ("3.1", "gemini-3.1-flash-lite"), ("2.5", "gemini-2.5-flash-lite")],
             ),
         ]

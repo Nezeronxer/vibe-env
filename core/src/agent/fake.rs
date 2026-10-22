@@ -27,6 +27,10 @@ pub enum FakeStep {
     RejectModel(String),
     /// The CLI is not logged in.
     Auth(String),
+    /// v3: an action event as it is (start or result).
+    Action(crate::model::ToolAction),
+    /// v3: a piece of streamed text.
+    Delta(String),
 }
 
 /// Which runs a role script answers: a role, and optionally one swarm variant.
@@ -162,6 +166,8 @@ impl Adapter for FakeAdapter {
                 FakeStep::RejectModel(m) => sh.push_str(&ev(serde_json::json!({"t":"reject_model","text":m}))),
                 FakeStep::Auth(m) => sh.push_str(&ev(serde_json::json!({"t":"auth","text":m}))),
                 FakeStep::Sleep(ms) => sh.push_str(&format!("sleep {}\n", ms as f64 / 1000.0)),
+                FakeStep::Action(a) => sh.push_str(&ev(serde_json::json!({"t":"action","action":a}))),
+                FakeStep::Delta(t) => sh.push_str(&ev(serde_json::json!({"t":"delta","text":t}))),
             }
         }
         let mut c = Command::new("sh");
@@ -184,6 +190,8 @@ impl Adapter for FakeAdapter {
             Some("cost") => v["usd"].as_f64().map(AgentEvent::Cost).into_iter().collect(),
             Some("reject_model") => vec![AgentEvent::ModelRejected(s("text"))],
             Some("auth") => vec![AgentEvent::AuthRequired(s("text"))],
+            Some("action") => serde_json::from_value(v["action"].clone()).map(AgentEvent::Action).into_iter().collect(),
+            Some("delta") => vec![AgentEvent::TextDelta(s("text"))],
             _ => vec![],
         }
     }

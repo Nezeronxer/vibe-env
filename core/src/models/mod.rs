@@ -36,6 +36,7 @@ fn with_extras(mut families: Vec<ModelFamily>, custom: &[String]) -> Vec<ModelFa
         versions: vec![],
         default: true,
         exact: Default::default(),
+        source_note: None,
     }];
     for f in &mut families {
         f.default = false; // exactly one entry is the default, and it is the one with no flag
@@ -51,6 +52,7 @@ fn with_extras(mut families: Vec<ModelFamily>, custom: &[String]) -> Vec<ModelFa
                 versions: vec![],
                 default: false,
                 exact: Default::default(),
+                source_note: None,
             });
         }
     }

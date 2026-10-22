@@ -62,6 +62,7 @@ impl Engine {
                 tool: None,
                 model: None,
                 reply_to: None,
+                action: None,
             })
             .map_err(|e| e.to_string())?;
         }
@@ -111,6 +112,7 @@ impl Engine {
                     tool: None,
                     model: None,
                     reply_to: None,
+                    action: None,
                 });
             }
         }

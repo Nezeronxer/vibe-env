@@ -108,6 +108,7 @@ fn a_model_the_cli_refuses_is_not_an_attempt_the_next_model_of_the_chain_runs_an
             versions: vec!["5.5".into(), "4.8".into()],
             default: false,
             exact: [("5.5".to_string(), "claude-opus-5-5".to_string()), ("4.8".to_string(), "claude-opus-4-8".to_string())].into(),
+            source_note: None,
         }],
         source: CatalogSource::CliList,
         at: chrono::Local::now(),
@@ -148,6 +149,7 @@ fn a_pinned_version_that_left_the_list_runs_on_the_nearest_and_the_feed_says_so(
             versions: vec!["5.5".into(), "4.8".into()],
             default: false,
             exact: [("5.5".to_string(), "claude-sonnet-5-5".to_string()), ("4.8".to_string(), "claude-sonnet-4-8".to_string())].into(),
+            source_note: None,
         }],
         source: CatalogSource::CliList,
         at: chrono::Local::now(),
@@ -460,7 +462,7 @@ fn the_daily_budget_of_an_env_asks_in_the_same_way_and_adding_five_raises_the_ca
 fn the_catalog_is_refreshed_from_the_envs_list_kept_as_the_snapshot_and_announced() {
     let env = Env::new();
     let p = env.project(|p| p.agent = "fa".into());
-    let fam = ModelFamily { id: "m1".into(), label: "M1".into(), vendor: "openai".into(), blurb: None, versions: vec![], default: false, exact: Default::default() };
+    let fam = ModelFamily { id: "m1".into(), label: "M1".into(), vendor: "openai".into(), blurb: None, versions: vec![], default: false, exact: Default::default(), source_note: None };
     let fa = Arc::new(quiet_pipeline("fa").with_models(vec![fam.clone()]));
     let e = env.engine(env.store(&p, |_| {}), vec![fa], Arc::new(RecordingNotifier::default()), None);
     let events = e.subscribe();
