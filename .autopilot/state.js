@@ -9,7 +9,7 @@ window.STATE =
   "briefFile": "2026-10-21-brief.md",
   "memoryFile": "CLAUDE.md",
   "startedAt": "2026-10-21T08:41:14+03:00",
-  "updatedAt": "2026-10-23T01:14:43+03:00",
+  "updatedAt": "2026-10-23T02:05:55+03:00",
   "finishedAt": null,
   "stages": [
     {
@@ -35,15 +35,15 @@ window.STATE =
       "id": "spec",
       "status": "done",
       "startedAt": "2026-10-21T12:15:27+03:00",
-      "note": "v2: 221 история, G2 - не покрыто 0, наполовину 5",
-      "finishedAt": "2026-10-23T00:59:59+03:00"
+      "note": "v4: истории 243-312, G2 - 7 находок, 5 закрыто в спеке, 2 уже покрыты",
+      "finishedAt": "2026-10-23T02:00:30+03:00"
     },
     {
       "id": "plan",
       "status": "done",
       "startedAt": "2026-10-21T13:22:54+03:00",
-      "note": "v2: ярус T3, 9 тасков в 5 волн (волны 4-8 на дашборде)",
-      "finishedAt": "2026-10-21T13:36:15+03:00"
+      "note": "v4: 9 тасков (18-26) в волны 12-15, ~21K строк",
+      "finishedAt": "2026-10-23T02:05:55+03:00"
     },
     {
       "id": "build",
@@ -66,9 +66,9 @@ window.STATE =
     }
   ],
   "requirements": {
-    "total": 71,
+    "total": 80,
     "done": 7,
-    "inTicket": 45,
+    "inTicket": 72,
     "inSpec": 0,
     "placeholder": 0,
     "deferred": 0,
@@ -1074,6 +1074,315 @@ window.STATE =
       "commit": "5962b0e"
     },
     {
+      "id": "18",
+      "title": "Каркас v4 и терминал-мультиплексор в ядре",
+      "requirements": [
+        "G35",
+        "G38",
+        "G58",
+        "G48"
+      ],
+      "blockedBy": [],
+      "wave": 12,
+      "zone": [
+        "core/src/term/",
+        "core/src/net/",
+        "core/src/market/",
+        "core/src/updates/",
+        "core/src/config/",
+        "core/src/lib.rs",
+        "core/Cargo.toml",
+        "Cargo.lock",
+        "app/src/main.rs",
+        "app/src/ptycmds.rs",
+        "app/src/windows.rs",
+        "app/src/market.rs",
+        "app/src/updates.rs",
+        "app/src/config.rs",
+        "app/src/gitcmds.rs",
+        "app/src/tray.rs",
+        "app/Cargo.toml",
+        "app/tauri.conf.json",
+        "app/capabilities/",
+        "ui/index.html",
+        "ui/vendor/xterm/",
+        "ui/js/v4/",
+        "ui/css/v4-shell.css",
+        "ui/css/v4-term.css",
+        "ui/css/v4-market.css",
+        "ui/css/v4-clawd.css",
+        "ui/css/v4-updates.css",
+        "core/tests/term.rs"
+      ],
+      "review": "да - фундамент (PTY, процессы пользователя, окна)",
+      "model": "сильная",
+      "status": "pending",
+      "retries": 0,
+      "repairs": 0
+    },
+    {
+      "id": "19",
+      "title": "Ядро: сеть, каталог скиллов/MCP/модов, моды в наборах",
+      "requirements": [
+        "G40",
+        "G41",
+        "G42"
+      ],
+      "blockedBy": [
+        "18"
+      ],
+      "wave": 13,
+      "zone": [
+        "core/src/net/",
+        "core/src/market/",
+        "core/src/kits/",
+        "app/src/market.rs",
+        "core/tests/market.rs",
+        "core/tests/fixtures/market/"
+      ],
+      "review": "да - загрузка и установка исполняемого кода из сети",
+      "model": "сильная",
+      "status": "pending",
+      "retries": 0,
+      "repairs": 0
+    },
+    {
+      "id": "20",
+      "title": "Ядро: автообновление CLI и моделей, конфиг-файл",
+      "requirements": [
+        "G43",
+        "G54",
+        "G51"
+      ],
+      "blockedBy": [
+        "18"
+      ],
+      "wave": 13,
+      "zone": [
+        "core/src/updates/",
+        "core/src/config/",
+        "core/src/models/",
+        "app/src/updates.rs",
+        "app/src/config.rs",
+        "core/tests/updates.rs",
+        "core/tests/config.rs",
+        "core/tests/fixtures/updates/"
+      ],
+      "review": "нет",
+      "model": "сильная",
+      "status": "pending",
+      "retries": 0,
+      "repairs": 0
+    },
+    {
+      "id": "21",
+      "title": "Ядро: публикация на GitHub, история коммитов, приёмы экономии из роликов",
+      "requirements": [
+        "G44",
+        "G45",
+        "G53"
+      ],
+      "blockedBy": [
+        "18"
+      ],
+      "wave": 13,
+      "zone": [
+        "core/src/git.rs",
+        "core/src/engine/",
+        "core/src/agent/",
+        "core/src/prompt/",
+        "core/src/swarm/",
+        "core/src/model.rs",
+        "app/src/gitcmds.rs",
+        "core/tests/git_v4.rs",
+        "core/tests/practices.rs"
+      ],
+      "review": "да - публикация наружу",
+      "model": "сильная",
+      "status": "pending",
+      "retries": 0,
+      "repairs": 0
+    },
+    {
+      "id": "22",
+      "title": "Интерфейс v4: вид терминала-райса, раскладка сплитами, палитра, настройки в два уровня",
+      "requirements": [
+        "G33",
+        "G34",
+        "G39",
+        "G48",
+        "G50",
+        "G52",
+        "G56",
+        "G57",
+        "G37",
+        "G36"
+      ],
+      "blockedBy": [
+        "18"
+      ],
+      "wave": 13,
+      "zone": [
+        "ui/js/app.js",
+        "ui/js/shell.js",
+        "ui/js/core/",
+        "ui/js/screens/",
+        "ui/css/tokens.css",
+        "ui/css/base.css",
+        "ui/css/components.css",
+        "ui/css/shell.css",
+        "ui/css/chat.css",
+        "ui/css/tabs.css",
+        "ui/css/live.css",
+        "ui/css/settings.css",
+        "ui/css/onboarding.css",
+        "ui/css/need.css",
+        "ui/css/lanes.css",
+        "ui/css/swarm.css",
+        "ui/css/factory.css",
+        "ui/css/kits.css",
+        "ui/css/notices.css",
+        "ui/css/v4-shell.css",
+        "ui/js/v4/theme.js",
+        "ui/js/v4/panes.js",
+        "ui/js/v4/palette.js",
+        "ui/js/v4/settings-v4.js",
+        "ui/js/v4/i18n-shell.js",
+        "ui/i18n.js",
+        "ui/i18n-v2.js",
+        "ui/i18n-v3.js",
+        "ui/logic.js",
+        "ui/logic-v3.js",
+        "ui/dev-mock.js",
+        "ui/selftest.js",
+        "scripts/ui-selftest.js",
+        "CONTEXT.md"
+      ],
+      "review": "да - главный экран, все экраны перекрашиваются",
+      "model": "сильная",
+      "status": "pending",
+      "retries": 0,
+      "repairs": 0
+    },
+    {
+      "id": "23",
+      "title": "Интерфейс v4: терминальные панели, среды как терминалы, окна, кастомизация терминала",
+      "requirements": [
+        "G35",
+        "G36",
+        "G37",
+        "G38",
+        "G49",
+        "G54",
+        "G55",
+        "G58",
+        "G51"
+      ],
+      "blockedBy": [
+        "18",
+        "22"
+      ],
+      "wave": 14,
+      "zone": [
+        "ui/js/v4/term.js",
+        "ui/js/v4/term-settings.js",
+        "ui/js/v4/i18n-term.js",
+        "ui/js/v4/mock-term.js",
+        "ui/css/v4-term.css",
+        "docs/themes-sources.md"
+      ],
+      "review": "нет",
+      "model": "сильная",
+      "status": "pending",
+      "retries": 0,
+      "repairs": 0
+    },
+    {
+      "id": "24",
+      "title": "Интерфейс v4: каталог скиллов/MCP/модов, публикация на GitHub, история коммитов",
+      "requirements": [
+        "G40",
+        "G41",
+        "G42",
+        "G44",
+        "G45"
+      ],
+      "blockedBy": [
+        "18",
+        "22"
+      ],
+      "wave": 14,
+      "zone": [
+        "ui/js/v4/market.js",
+        "ui/js/v4/history.js",
+        "ui/js/v4/publish.js",
+        "ui/js/v4/i18n-market.js",
+        "ui/js/v4/mock-market.js",
+        "ui/css/v4-market.css"
+      ],
+      "review": "нет",
+      "model": "обычная",
+      "status": "pending",
+      "retries": 0,
+      "repairs": 0
+    },
+    {
+      "id": "25",
+      "title": "Интерфейс v4: Clawd 60 FPS, обновления и новые модели, приёмы экономии, рой на заглушке",
+      "requirements": [
+        "G46",
+        "G47",
+        "G43",
+        "G53"
+      ],
+      "blockedBy": [
+        "18",
+        "22"
+      ],
+      "wave": 14,
+      "zone": [
+        "ui/js/v4/clawd.js",
+        "ui/js/v4/updates.js",
+        "ui/js/v4/practices.js",
+        "ui/js/v4/i18n-clawd.js",
+        "ui/js/v4/mock-clawd.js",
+        "ui/css/v4-clawd.css",
+        "ui/css/v4-updates.css",
+        "README.md",
+        "docs/clawd.md"
+      ],
+      "review": "нет",
+      "model": "сильная",
+      "status": "pending",
+      "retries": 0,
+      "repairs": 0
+    },
+    {
+      "id": "26",
+      "title": "Аудит безопасности v4 и живой прогон через computer use",
+      "requirements": [
+        "G59",
+        "G04"
+      ],
+      "blockedBy": [
+        "19",
+        "20",
+        "21",
+        "23",
+        "24",
+        "25"
+      ],
+      "wave": 15,
+      "zone": [
+        "docs/security.md"
+      ],
+      "review": "нет",
+      "model": "сильная",
+      "status": "pending",
+      "retries": 0,
+      "repairs": 0
+    },
+    {
       "id": "F1",
       "title": "Безопасность: чужой набор не запускает код и не уводит ключи, секреты не коммитятся",
       "requirements": [
@@ -1140,10 +1449,10 @@ window.STATE =
       "review": "да - путь секретов в окно",
       "model": "сильная",
       "status": "review",
-      "retries": 0,
-      "repairs": 0,
       "startedAt": "2026-10-23T00:37:59+03:00",
       "finishedAt": "2026-10-23T00:51:58+03:00",
+      "retries": 0,
+      "repairs": 0,
       "tests": {
         "passed": 444,
         "failed": 0
@@ -1170,18 +1479,18 @@ window.STATE =
       "review": "да - главный экран",
       "model": "сильная",
       "status": "done",
-      "retries": 0,
-      "repairs": 1,
       "startedAt": "2026-10-23T00:37:59+03:00",
       "finishedAt": "2026-10-23T00:58:42+03:00",
+      "retries": 0,
+      "repairs": 1,
+      "repairFindings": [
+        "вживую в .app после F3 не работают ⌘T и ⌘W (до F3 ⌘T работал); ⌘D не работал и до"
+      ],
       "tests": {
         "passed": 202,
         "failed": 0
       },
-      "commit": "3db28ec",
-      "repairFindings": [
-        "вживую в .app после F3 не работают ⌘T и ⌘W (до F3 ⌘T работал); ⌘D не работал и до"
-      ]
+      "commit": "3db28ec"
     }
   ],
   "singlePass": null,
@@ -1210,16 +1519,13 @@ window.STATE =
     "A08 ночная очередь - старт, когда тебя нет или сбросился лимит - ради R05"
   ],
   "coverage": {
-    "found": 2,
-    "fixed": 2,
+    "found": 7,
+    "fixed": 5,
     "deferred": 0,
-    "items": [
-      "v3: план агента (TodoWrite) - добавлена история 242",
-      "v3: смена среды и модели в строке ввода - есть с v2, оговорено в 237"
-    ]
+    "items": []
   },
   "blind": null,
-  "rev": 81,
+  "rev": 92,
   "beats": [
     "2026-10-22T19:03:58+03:00",
     "2026-10-22T19:04:35+03:00",
@@ -1278,7 +1584,13 @@ window.STATE =
     "2026-10-23T00:58:42+03:00",
     "2026-10-23T00:59:59+03:00",
     "2026-10-23T01:04:23+03:00",
-    "2026-10-23T01:14:43+03:00"
+    "2026-10-23T01:14:43+03:00",
+    "2026-10-23T02:00:30+03:00",
+    "2026-10-23T02:05:34+03:00",
+    "2026-10-23T02:05:40+03:00",
+    "2026-10-23T02:05:46+03:00",
+    "2026-10-23T02:05:54+03:00",
+    "2026-10-23T02:05:55+03:00"
   ],
   "log": [
     {
@@ -1694,6 +2006,77 @@ window.STATE =
       "k": "stage",
       "id": "spec",
       "act": "start"
+    },
+    {
+      "t": "2026-10-23T02:00:30+03:00",
+      "k": "gate",
+      "g": "G2",
+      "ok": false,
+      "found": 7,
+      "fixed": 5,
+      "deferred": 0
+    },
+    {
+      "t": "2026-10-23T02:00:30+03:00",
+      "k": "gate",
+      "g": "G1",
+      "ok": true,
+      "open": 0,
+      "total": 80
+    },
+    {
+      "t": "2026-10-23T02:00:30+03:00",
+      "k": "stage",
+      "id": "spec",
+      "act": "done"
+    },
+    {
+      "t": "2026-10-23T02:00:30+03:00",
+      "k": "stage",
+      "id": "plan",
+      "act": "start"
+    },
+    {
+      "t": "2026-10-23T02:05:34+03:00",
+      "k": "tickets",
+      "n": 29
+    },
+    {
+      "t": "2026-10-23T02:05:34+03:00",
+      "k": "gate",
+      "g": "G3",
+      "ok": false,
+      "problems": 34
+    },
+    {
+      "t": "2026-10-23T02:05:40+03:00",
+      "k": "tickets",
+      "n": 29
+    },
+    {
+      "t": "2026-10-23T02:05:40+03:00",
+      "k": "gate",
+      "g": "G3",
+      "ok": false,
+      "problems": 13
+    },
+    {
+      "t": "2026-10-23T02:05:46+03:00",
+      "k": "gate",
+      "g": "G3",
+      "ok": false,
+      "problems": 13
+    },
+    {
+      "t": "2026-10-23T02:05:54+03:00",
+      "k": "tier",
+      "v": "T3"
+    },
+    {
+      "t": "2026-10-23T02:05:55+03:00",
+      "k": "stage",
+      "id": "plan",
+      "act": "done"
     }
   ],
   "note": "ремонт ядра: исполнитель работает (отметка 01:04)",
@@ -2009,112 +2392,157 @@ window.STATE =
     {
       "id": "G33",
       "text": "«Я хочу сделать другой дизайн, прямо скруглённый»",
-      "status": "open"
+      "status": "in-ticket"
     },
     {
       "id": "G34",
       "text": "«это должно быть похоже на терминал»",
-      "status": "open"
+      "status": "in-ticket"
     },
     {
       "id": "G35",
       "text": "«код должен работать в терминале»; «терминал будет считаться эмулятором»",
-      "status": "open"
+      "status": "in-ticket"
     },
     {
       "id": "G36",
       "text": "«этот терминал можно было бы кастомизировать»",
-      "status": "open"
+      "status": "in-ticket"
     },
     {
       "id": "G37",
       "text": "«делать сплиты, девочка»",
-      "status": "open"
+      "status": "in-ticket"
     },
     {
       "id": "G38",
       "text": "«красивый дизайн, красивый, красивый плюс окна»",
-      "status": "open"
+      "status": "in-ticket"
     },
     {
       "id": "G39",
       "text": "«это как-то всё выглядит сейчас громоздко… нету какого-то вкуса… нету изюминки»",
-      "status": "open"
+      "status": "in-ticket"
     },
     {
       "id": "G40",
       "text": "«чтобы туда могли переноситься моды мои, моды чужие»",
-      "status": "open"
+      "status": "in-ticket"
     },
     {
       "id": "G41",
       "text": "«чтобы можно было качать скиллы с популярных сайтов»",
-      "status": "open"
+      "status": "in-ticket"
     },
     {
       "id": "G42",
       "text": "«моды для кладка, то есть MCP»",
-      "status": "open"
+      "status": "in-ticket"
     },
     {
       "id": "G43",
       "text": "«когда выходила новая модель, автоматически обновлялся, и все модели автоматически обновлялись, включая GMI, включая ChatGPT»",
-      "status": "open"
+      "status": "in-ticket"
     },
     {
       "id": "G44",
       "text": "«внедри туда ещё GitHub… чтобы можно было публиковать»",
-      "status": "open"
+      "status": "in-ticket"
     },
     {
       "id": "G45",
       "text": "«чтобы можно было смотреть историю изменений, чтобы всё это красиво выглядело»",
-      "status": "open"
+      "status": "in-ticket"
     },
     {
       "id": "G46",
       "text": "«анимацию персонажа Клота Нукро, этот вот, который я мод писал, то, что он там что-то делает, сделал анимацию в 60 FPS»",
-      "status": "open"
+      "status": "in-ticket"
     },
     {
       "id": "G47",
       "text": "«Придумай ему какую-нибудь историю этому персонажу»",
-      "status": "open"
+      "status": "in-ticket"
     },
     {
       "id": "G48",
       "text": "«сделай приложение сильным, а то оно сейчас какое-то громоздкое»",
-      "status": "open"
+      "status": "in-ticket"
     },
     {
       "id": "G49",
       "text": "«можешь ещё добавить функции по своему усмотрению, какие можешь посмотреть, какие люди добавляют»",
-      "status": "open"
+      "status": "in-ticket"
     },
     {
       "id": "G50",
       "text": "«Технические термины.»",
-      "status": "open"
+      "status": "in-ticket"
+    },
+    {
+      "id": "G51",
+      "text": "«приложение можно было полностью кастомизировать конфигами, но также настройками можно вручную»",
+      "status": "in-ticket"
+    },
+    {
+      "id": "G52",
+      "text": "«Дизайн разрабатывался через Tast-skills»",
+      "status": "in-ticket"
+    },
+    {
+      "id": "G53",
+      "text": "«Поищи рекомендации от других людей на YouTube… как запускать несколько кодов параллельно и экономить токены, как запускать несколько агентов… как делать фабрики, как делать заводы и внедри»",
+      "status": "in-ticket"
+    },
+    {
+      "id": "G54",
+      "text": "«Если вышло обновление какого-то терминального CLI, то ты его берёшь автоматически, приходит обновление, и пользователь должен перезапустить именно окно с терминалом»",
+      "status": "in-ticket"
+    },
+    {
+      "id": "G55",
+      "text": "«все вот эти Codex, КВН, Джамини — это считается как отдельный терминал… терминальная среда по типу Tmux и так далее и Head»",
+      "status": "in-ticket"
+    },
+    {
+      "id": "G56",
+      "text": "«Дизайн должен быть максимально похож на вот эти Linx, стэтапы, Linx, терминалы»",
+      "status": "in-ticket"
+    },
+    {
+      "id": "G57",
+      "text": "«Продвинутый пользователь может его кастомизировать через настройки. Обычный пользователь может… какие-то базовые вещи кастомить»",
+      "status": "in-ticket"
+    },
+    {
+      "id": "G58",
+      "text": "«То есть это должен быть по сути мультиплекс.»",
+      "status": "in-ticket"
+    },
+    {
+      "id": "G59",
+      "text": "«Приложение тестируешь обязательно, обязательно через мой компьютер… полностью всё проверяешь через компьютер US»",
+      "status": "in-ticket"
     }
   ],
   "gates": {
     "G2": {
-      "ok": true,
-      "at": "2026-10-22T23:02:17+03:00",
-      "found": 2,
-      "fixed": 2,
+      "ok": false,
+      "at": "2026-10-23T02:00:30+03:00",
+      "found": 7,
+      "fixed": 5,
       "deferred": 0
     },
     "G3": {
       "ok": false,
-      "at": "2026-10-23T00:37:59+03:00",
+      "at": "2026-10-23T02:05:46+03:00",
       "problems": 13
     },
     "G1": {
-      "ok": false,
-      "at": "2026-10-23T01:14:43+03:00",
-      "open": 18,
-      "total": 71
+      "ok": true,
+      "at": "2026-10-23T02:00:30+03:00",
+      "open": 0,
+      "total": 80
     }
   }
 }
