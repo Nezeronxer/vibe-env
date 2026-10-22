@@ -90,7 +90,7 @@ impl Engine {
         self.set_step(t, Step::Code, StepState::Running)?;
         if self.state(&id).swarm.variants.is_empty() {
             // the common preparation is committed: every variant starts from it
-            self.g_commit(&wt, &t.title).map_err(gerr)?;
+            self.g_commit(t, &wt, &t.title).map_err(gerr)?;
             let a = self.adapter(&t.agent).ok_or_else(|| format!("agent_not_found: {}", t.agent))?;
             let cat = models::catalog(&t.agent, &*a, &lk(&self.store));
             let worker = Self::choice_for(t, RoleKind::Worker).unwrap_or_else(default_choice);
@@ -268,7 +268,7 @@ impl Engine {
                         self.lane_asks(id, Asked { label: letter.to_string(), kind: "Variant".into(), question: q, options, session: s });
                         return self.set_variant(id, letter, |v| v.state = LaneState::Asking);
                     }
-                    if let Err(e) = self.g_commit(&v.worktree, &t.title) {
+                    if let Err(e) = self.g_commit(&t, &v.worktree, &t.title) {
                         return fail(gerr(e), None);
                     }
                     let touched = match self.protect_tests(&t, &v.worktree) {

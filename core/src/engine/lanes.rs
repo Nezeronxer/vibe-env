@@ -120,17 +120,25 @@ impl Engine {
     pub(crate) fn add_ro(&self, repo: &std::path::Path, dir: &std::path::Path, base: &str) -> Result<PathBuf, git::GitError> {
         self.with_git(repo, || git::create_readonly_copy(repo, dir, base))
     }
-    pub(super) fn g_commit(&self, wt: &std::path::Path, msg: &str) -> Result<Option<String>, git::GitError> {
-        self.with_git(wt, || git::commit_all(wt, msg))
+    /// "Защищённые пути" of the task's env (R17i.2): read from the settings on every call, never from the copy, where
+    /// the agent can write.
+    pub(super) fn protects(&self, t: &Task) -> bool {
+        lk(&self.store).settings().envs.get(&t.agent).is_none_or(|e| e.protected_paths)
     }
-    pub(super) fn g_uncommit(&self, wt: &std::path::Path, base: &str) -> Result<bool, git::GitError> {
-        self.with_git(wt, || git::uncommit_hidden(wt, base))
+    pub(super) fn g_commit(&self, t: &Task, wt: &std::path::Path, msg: &str) -> Result<Option<String>, git::GitError> {
+        let protect = self.protects(t);
+        self.with_git(wt, || git::commit_all(wt, msg, protect))
+    }
+    pub(super) fn g_uncommit(&self, t: &Task, wt: &std::path::Path, base: &str) -> Result<bool, git::GitError> {
+        let protect = self.protects(t);
+        self.with_git(wt, || git::uncommit_hidden(wt, base, protect))
     }
     pub(super) fn g_rebase(&self, wt: &std::path::Path, base: &str) -> Result<(), git::GitError> {
         self.with_git(wt, || git::rebase_onto(wt, base))
     }
-    pub(super) fn g_rebase_continue(&self, wt: &std::path::Path) -> Result<(), git::GitError> {
-        self.with_git(wt, || git::rebase_continue(wt))
+    pub(super) fn g_rebase_continue(&self, t: &Task, wt: &std::path::Path) -> Result<(), git::GitError> {
+        let protect = self.protects(t);
+        self.with_git(wt, || git::rebase_continue(wt, protect))
     }
     pub(super) fn g_squash(&self, repo: &std::path::Path, wt: &std::path::Path, base: &str, msg: &str) -> Result<String, git::GitError> {
         self.with_git(repo, || git::squash_to_base(repo, wt, base, msg))

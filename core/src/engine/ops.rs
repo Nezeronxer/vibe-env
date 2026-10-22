@@ -435,7 +435,7 @@ impl Engine {
         }
         let wt = t.worktree.clone().filter(|w| w.exists()).ok_or("no_worktree")?;
         if !git::rebase_in_progress(&wt) {
-            self.g_commit(&wt, &t.title).map_err(|e| e.to_string())?;
+            self.g_commit(&t, &wt, &t.title).map_err(|e| e.to_string())?;
         }
         for (s, st) in t.steps.iter_mut() {
             if matches!(s, Step::Gates | Step::E2e | Step::Review | Step::Merge) && !matches!(st, StepState::Skipped(_)) {

@@ -21,27 +21,123 @@ fn header_of(line: &str) -> Option<String> {
     Some(inner[..end].trim().to_string())
 }
 
+/// The key of a `key = value` line: the text before the first `=` outside quotes. Quotes come off only a key that is
+/// one plain quoted name (`"model" =`); anything else (`"a.b"`, `x."y"`) stays as written and is on no safe list.
 fn key_of(line: &str) -> Option<String> {
     let t = line.trim_start();
     if t.is_empty() || t.starts_with('#') || t.starts_with('[') {
         return None;
     }
-    let eq = t.find('=')?;
-    let k = t[..eq].trim().trim_matches('"').to_string();
+    let mut q: Option<char> = None;
+    let mut eq = None;
+    for (i, c) in t.char_indices() {
+        match (q, c) {
+            (Some(o), c) if c == o => q = None,
+            (Some(_), _) => {}
+            (None, '"' | '\'') => q = Some(c),
+            (None, '=') => {
+                eq = Some(i);
+                break;
+            }
+            _ => {}
+        }
+    }
+    let raw = t[..eq?].trim();
+    let plain = |x: &str| !x.is_empty() && x.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-');
+    let k = match raw.strip_prefix('"').and_then(|r| r.strip_suffix('"')) {
+        Some(inner) if plain(inner) => inner.to_string(),
+        _ => raw.to_string(),
+    };
     (!k.is_empty()).then_some(k)
+}
+
+/// Where the lexer is between lines: inside a multi-line string (its closing quotes) and how many brackets are open.
+#[derive(Default)]
+struct Lex {
+    multiline: Option<&'static str>,
+    depth: i32,
+}
+
+impl Lex {
+    fn cont(&self) -> bool {
+        self.multiline.is_some() || self.depth > 0
+    }
+
+    /// One line by the TOML rules for strings and comments: `#` outside a string ends the line, brackets inside a
+    /// string or a comment do not count, `\` escapes in basic strings, `"""` / `'''` span lines.
+    fn line(&mut self, line: &str) {
+        let b = line.as_bytes();
+        let mut i = 0;
+        while i < b.len() {
+            if let Some(close) = self.multiline {
+                if close == "\"\"\"" && b[i] == b'\\' {
+                    i += 2;
+                    continue;
+                }
+                if b[i..].starts_with(close.as_bytes()) {
+                    i += 3;
+                    // up to two more quotes right after belong to the string: `""""` closes too
+                    for _ in 0..2 {
+                        if i < b.len() && b[i] == close.as_bytes()[0] {
+                            i += 1;
+                        }
+                    }
+                    self.multiline = None;
+                } else {
+                    i += 1;
+                }
+                continue;
+            }
+            match b[i] {
+                b'#' => return,
+                b'"' if b[i..].starts_with(b"\"\"\"") => {
+                    self.multiline = Some("\"\"\"");
+                    i += 3;
+                }
+                b'\'' if b[i..].starts_with(b"\'\'\'") => {
+                    self.multiline = Some("\'\'\'");
+                    i += 3;
+                }
+                b'"' => {
+                    i += 1;
+                    while i < b.len() && b[i] != b'"' && b[i] != b'\n' {
+                        i += if b[i] == b'\\' { 2 } else { 1 };
+                    }
+                    i += 1;
+                }
+                b'\'' => {
+                    i += 1;
+                    while i < b.len() && b[i] != b'\'' && b[i] != b'\n' {
+                        i += 1;
+                    }
+                    i += 1;
+                }
+                b'[' | b'{' => {
+                    self.depth += 1;
+                    i += 1;
+                }
+                b']' | b'}' => {
+                    self.depth = (self.depth - 1).max(0);
+                    i += 1;
+                }
+                _ => i += 1,
+            }
+        }
+    }
 }
 
 pub(crate) fn parse(s: &str) -> Vec<Block> {
     let mut out: Vec<Block> = vec![];
     let mut in_tables = false;
-    let mut open_multiline = false;
-    let mut depth: i32 = 0; // open brackets of the current top-level value
+    let mut lex = Lex::default();
     for line in s.split_inclusive('\n') {
-        let cont = open_multiline || depth > 0;
+        let cont = lex.cont();
         if !cont {
             if let Some(h) = header_of(line) {
                 in_tables = true;
                 out.push(Block::Table { header: h, text: line.to_string() });
+                // nothing on a header line opens a value: what follows it is read afresh
+                lex = Lex::default();
                 continue;
             }
         }
@@ -55,22 +151,13 @@ pub(crate) fn parse(s: &str) -> Vec<Block> {
             }
         } else if let Some(k) = key_of(line) {
             out.push(Block::Key { key: k, text: line.to_string() });
-            depth = 0;
         } else {
             match out.last_mut() {
                 Some(Block::Other(t)) => t.push_str(line),
                 _ => out.push(Block::Other(line.to_string())),
             }
         }
-        if !in_tables {
-            let code = line.split(" #").next().unwrap_or(line);
-            depth += code.matches(['[', '{']).count() as i32 - code.matches([']', '}']).count() as i32;
-            depth = depth.max(0);
-        }
-        let triple = line.matches("\"\"\"").count() + line.matches("'''").count();
-        if triple % 2 == 1 {
-            open_multiline = !open_multiline;
-        }
+        lex.line(line);
     }
     out
 }

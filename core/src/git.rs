@@ -268,12 +268,13 @@ fn run_with(wt: &Path, head: &[&str], specs: &[String]) -> Result<Out, GitError>
 }
 
 /// `git add -A`, then the hidden paths are put back as HEAD has them (out of the index if HEAD
-/// lacks them), and so are new key and `.env` files under "Защищённые пути" (`protected_staged`).
-/// Naming ignored paths here is fine, unlike in an `add` pathspec.
-fn add_all(wt: &Path) -> Result<(), GitError> {
+/// lacks them), and with `protect` ("Защищённые пути", from the settings: nothing in the copy turns it on or off)
+/// so are new key and `.env` files (`protected_staged`). Naming ignored paths here is fine, unlike in an `add` pathspec.
+fn add_all(wt: &Path, protect: bool) -> Result<(), GitError> {
     let mut specs = hidden_specs(wt)?; // before anything is staged: an unreadable list stops the commit
     ok(wt, &["add", "-A"])?;
-    specs.extend(protected_staged(wt)?.iter().map(|p| format!(":(literal){p}")));
+    let keys = if protect { protected_staged(wt)? } else { vec![] };
+    specs.extend(keys.iter().map(|p| format!(":(literal){p}")));
     if !specs.is_empty() {
         let o = run_with(wt, &["reset", "-q"], &specs)?;
         if !o.ok {
@@ -281,23 +282,6 @@ fn add_all(wt: &Path) -> Result<(), GitError> {
         }
     }
     Ok(())
-}
-
-/// Marker in the worktree's private git dir: "Защищённые пути" is off for this copy (on when absent).
-fn unprotected_marker(wt: &Path) -> Option<PathBuf> {
-    hidden_list(wt).map(|f| f.with_file_name("ns-unprotected"))
-}
-
-/// "Защищённые пути" (R17i.2) for the commits the app makes in `wt`: on by default, the engine turns it off
-/// from `Settings.protected_paths`.
-pub fn set_protected(wt: &Path, on: bool) -> Result<(), GitError> {
-    let f = unprotected_marker(wt).ok_or_else(|| GitError::Other(format!("not a worktree: {}", wt.display())))?;
-    let r = if on { std::fs::remove_file(&f).or_else(|e| if e.kind() == std::io::ErrorKind::NotFound { Ok(()) } else { Err(e) }) } else { std::fs::write(&f, "") };
-    r.map_err(|e| GitError::Other(format!("{}: {e}", f.display())))
-}
-
-fn protected(wt: &Path) -> bool {
-    !unprotected_marker(wt).is_some_and(|f| f.exists())
 }
 
 /// A key, a `.env` or a credentials file (`kits::is_secret_file`); templates people commit on purpose
@@ -314,32 +298,24 @@ fn nul_list(s: &str) -> Vec<String> {
     v
 }
 
-/// Secret-like files that `add -A` just staged as new (protection on). Files git already tracks are left as they are.
+/// Secret-like files that `add -A` just staged as new. Files git already tracks stay staged: put back out of the index
+/// they would leave the copy dirty and stop the rebase; `protected_committed` refuses the merge for them instead.
 fn protected_staged(wt: &Path) -> Result<Vec<String>, GitError> {
-    if !protected(wt) {
-        return Ok(vec![]);
-    }
     Ok(nul_list(&ok(wt, &["diff", "--cached", "--name-only", "--no-renames", "--diff-filter=A", "-z"])?))
 }
 
-/// New secret-like files in `wt` that the next commit leaves out (protection on; hidden copied files are not
-/// listed, they never go anyway): for the feed.
+/// New secret-like files in `wt` that the next protected commit leaves out (hidden copied files are not listed, they
+/// never go anyway): for the feed.
 pub fn protected_pending(wt: &Path) -> Vec<String> {
-    if !protected(wt) {
-        return vec![];
-    }
     let hidden: Vec<String> = hidden_specs(wt).unwrap_or_default().iter().map(|s| s.trim_start_matches(":(literal)").to_string()).collect();
     let out = run(wt, &["ls-files", "--others", "--exclude-standard", "-z"]).map(|o| o.stdout).unwrap_or_default();
     nul_list(&out).into_iter().filter(|p| !hidden.contains(p)).collect()
 }
 
-/// Secret-like files a commit of the branch since it forked from `base` added (protection on).
+/// Secret-like files a commit of the branch since it forked from `base` added or changed (a deletion is no leak).
 pub fn protected_committed(wt: &Path, base: &str) -> Result<Vec<String>, GitError> {
-    if !protected(wt) {
-        return Ok(vec![]);
-    }
     let range = format!("{}..HEAD", merge_base(wt, base));
-    Ok(nul_list(&ok(wt, &["log", "--format=", "--name-only", "--no-renames", "--diff-filter=A", "-z", &range])?))
+    Ok(nul_list(&ok(wt, &["log", "--format=", "--name-only", "--no-renames", "--diff-filter=d", "-z", &range])?))
 }
 
 /// Hidden paths that a commit of the branch since it forked from `base` added or changed. A list that
@@ -366,16 +342,16 @@ pub fn hidden_committed(wt: &Path, base: &str) -> Vec<String> {
 /// Someone (the agent) committed a hidden path or a protected one (`protected_committed`): fold the branch back into the index
 /// (`reset --soft` to the fork point, files stay) so the next `commit_all` leaves it out and
 /// no commit of the branch keeps it. Ok(true) when it did that.
-pub fn uncommit_hidden(wt: &Path, base: &str) -> Result<bool, GitError> {
-    if try_hidden_committed(wt, base)?.is_empty() && protected_committed(wt, base)?.is_empty() {
+pub fn uncommit_hidden(wt: &Path, base: &str, protect: bool) -> Result<bool, GitError> {
+    if try_hidden_committed(wt, base)?.is_empty() && (!protect || protected_committed(wt, base)?.is_empty()) {
         return Ok(false);
     }
     ok(wt, &["reset", "-q", "--soft", &merge_base(wt, base)])?;
     Ok(true)
 }
 
-pub fn commit_all(wt: &Path, msg: &str) -> Result<Option<String>, GitError> {
-    add_all(wt)?;
+pub fn commit_all(wt: &Path, msg: &str, protect: bool) -> Result<Option<String>, GitError> {
+    add_all(wt, protect)?;
     if run(wt, &["diff", "--cached", "--quiet"])?.ok {
         return Ok(None);
     }
@@ -406,8 +382,8 @@ pub fn rebase_onto(wt: &Path, base: &str) -> Result<(), GitError> {
     }
 }
 
-pub fn rebase_continue(wt: &Path) -> Result<(), GitError> {
-    add_all(wt)?;
+pub fn rebase_continue(wt: &Path, protect: bool) -> Result<(), GitError> {
+    add_all(wt, protect)?;
     let o = run(wt, &["rebase", "--continue"])?;
     if o.ok {
         Ok(())

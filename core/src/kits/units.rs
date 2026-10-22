@@ -511,7 +511,8 @@ fn toml_units(l: &Layout, home: &str, cf: &str, s: &str, exists: &dyn Fn(&str) -
                         key: format!("setting:{key}"),
                         group: Group::Settings,
                         label: key.clone(),
-                        held: held_setting(l, key, text),
+                        // a value over several lines is never one of the safe scalars: held whatever its key
+                        held: if text.trim_end().contains('\n') { Some(HeldKind::Command) } else { held_setting(l, key, text) },
                         files: vec![],
                         conf: Some(ConfOp::TomlKey { file: cf.into(), key: key.clone(), text: text.clone() }),
                         scripts: vec![],

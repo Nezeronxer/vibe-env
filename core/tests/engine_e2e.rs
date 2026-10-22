@@ -1110,3 +1110,16 @@ fn keys_and_env_files_the_agent_writes_are_not_committed_and_the_feed_says_why()
         assert_eq!(log.contains("protected_paths_not_committed: .env, fixtures/id_ed25519"), on, "{log}");
     }
 }
+
+/// Review of F1: whatever the agent writes into the copy or its git folder, protection comes from the settings only.
+#[test]
+fn an_agent_cannot_turn_protected_paths_off_from_inside_its_copy() {
+    let env = Env::new();
+    let p = env.project(|_| {});
+    let w = Shell::new("fake", vec![vec![write(".env", "OPENAI_API_KEY=x"), write("f.txt", "f"), done("f")]], 0, "touch \"$(git rev-parse --git-dir)/ns-unprotected\" && touch \"$(git rev-parse --git-common-dir)/ns-unprotected\"");
+    let e = env.engine(env.store(&p, |_| {}), vec![w, reviewer(1)], Arc::new(RecordingNotifier::default()), None);
+    let id = submit(&e, &p, "Add f");
+    wait_status(&e, &id, Status::Done);
+    let files = g(&env.repo, &["ls-tree", "-r", "--name-only", "main"]);
+    assert!(files.lines().any(|f| f == "f.txt") && !files.lines().any(|f| f == ".env"), "{files}");
+}

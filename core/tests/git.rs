@@ -37,7 +37,7 @@ fn count(repo: &Path, rev: &str) -> u32 {
 fn task_with_change(d: &TempDir, repo: &Path, id: &str, branch: &str, file: &str, body: &str) -> PathBuf {
     let wt = wt_for(d, repo, id, branch);
     fs::write(wt.join(file), body).unwrap();
-    assert!(commit_all(&wt, "wip").unwrap().is_some());
+    assert!(commit_all(&wt, "wip", true).unwrap().is_some());
     wt
 }
 
@@ -70,11 +70,11 @@ fn remove_worktree_can_keep_the_branch() {
 fn commit_all_returns_none_when_nothing_changed() {
     let (d, repo) = new_repo();
     let wt = wt_for(&d, &repo, "t1", "ns/aaaa1111-x");
-    assert_eq!(commit_all(&wt, "nothing").unwrap(), None);
+    assert_eq!(commit_all(&wt, "nothing", true).unwrap(), None);
     fs::write(wt.join("new.txt"), "x").unwrap();
-    let sha = commit_all(&wt, "add new").unwrap().expect("sha");
+    let sha = commit_all(&wt, "add new", true).unwrap().expect("sha");
     assert_eq!(sha, g(&wt, &["rev-parse", "HEAD"]));
-    assert_eq!(commit_all(&wt, "again").unwrap(), None);
+    assert_eq!(commit_all(&wt, "again", true).unwrap(), None);
 }
 
 #[test]
@@ -82,14 +82,14 @@ fn rebase_conflict_is_reported_and_can_be_resolved() {
     let (d, repo) = new_repo();
     let wt = wt_for(&d, &repo, "t1", "ns/aaaa1111-x");
     fs::write(wt.join("a.txt"), "task side\n").unwrap();
-    commit_all(&wt, "task edit").unwrap();
+    commit_all(&wt, "task edit", true).unwrap();
     commit_in(&repo, "a.txt", "main side\n", "main edit");
 
     let err = rebase_onto(&wt, "main").unwrap_err();
     assert!(matches!(err, GitError::Conflict(_)), "got {err:?}");
 
     fs::write(wt.join("a.txt"), "resolved\n").unwrap();
-    rebase_continue(&wt).unwrap();
+    rebase_continue(&wt, true).unwrap();
     assert_eq!(fs::read_to_string(wt.join("a.txt")).unwrap(), "resolved\n");
     assert_eq!(count(&wt, "main..HEAD"), 1);
 }
@@ -109,7 +109,7 @@ fn diff_and_diffstat_describe_the_task_changes() {
     let wt = wt_for(&d, &repo, "t1", "ns/aaaa1111-x");
     fs::write(wt.join("a.txt"), "one\ntwo\nthree\n").unwrap();
     fs::write(wt.join("b.txt"), "x\n").unwrap();
-    commit_all(&wt, "c").unwrap();
+    commit_all(&wt, "c", true).unwrap();
     let mut st = diffstat(&wt, "main");
     st.sort_by(|a, b| a.path.cmp(&b.path));
     // counted by hand: a.txt gets two new lines, b.txt one
@@ -127,7 +127,7 @@ fn squash_gives_exactly_one_commit_with_the_task_message() {
     let wt = wt_for(&d, &repo, "t1", "ns/aaaa1111-x");
     for i in 0..3 {
         fs::write(wt.join(format!("f{i}.txt")), "x").unwrap();
-        commit_all(&wt, &format!("step {i}")).unwrap();
+        commit_all(&wt, &format!("step {i}"), true).unwrap();
     }
     assert_eq!(count(&repo, "main"), 1);
     let sha = squash_to_base(&repo, &wt, "main", "Add three files").unwrap();
@@ -399,7 +399,7 @@ fn paths_with_spaces_and_cyrillic_work() {
     commit_in(&repo, "a.txt", "one\n", "init");
     let wt = create_worktree(&repo, &d.path().join("рабочие копии"), "t1", "ns/aaaa1111-x", "main").unwrap();
     fs::write(wt.join("файл.txt"), "x").unwrap();
-    commit_all(&wt, "add").unwrap().unwrap();
+    commit_all(&wt, "add", true).unwrap().unwrap();
     squash_to_base(&repo, &wt, "main", "Задача").unwrap();
     assert_eq!(fs::read_to_string(repo.join("файл.txt")).unwrap(), "x");
     assert_eq!(g(&repo, &["status", "--porcelain"]), "");
@@ -431,7 +431,7 @@ fn revert_that_cannot_apply_cleanly_is_a_conflict() {
     let (d, repo) = new_repo();
     let wt = wt_for(&d, &repo, "t1", "ns/aaaa1111-x");
     fs::write(wt.join("a.txt"), "task\n").unwrap();
-    commit_all(&wt, "c").unwrap();
+    commit_all(&wt, "c", true).unwrap();
     let sha = squash_to_base(&repo, &wt, "main", "Edit a").unwrap();
     commit_in(&repo, "a.txt", "later human edit\n", "later");
     assert!(matches!(revert(&repo, "main", &sha), Err(GitError::Conflict(_))));
@@ -496,7 +496,7 @@ fn restore_paths_returns_files_to_the_state_of_from() {
     assert!(!wt.join("extra.txt").exists() && !wt.join("dir/inner.txt").exists());
     assert_eq!(fs::read_to_string(wt.join("keep.txt")).unwrap(), "mine", "other files stay");
     // after committing, the only difference left from `from` is the file that was not restored
-    commit_all(&wt, "fix").unwrap();
+    commit_all(&wt, "fix", true).unwrap();
     assert_eq!(changed_paths(&wt, &from, "HEAD"), vec!["keep.txt".to_string()]);
     assert!(restore_paths(&wt, &from, &["../outside".into()]).is_err());
     assert!(restore_paths(&wt, &from, &["/etc/passwd".into()]).is_err());
@@ -533,7 +533,7 @@ fn diff_file_cuts_at_max_lines_and_flags_binary_files() {
     let body: String = (0..50).map(|i| format!("line {i}\n")).collect();
     fs::write(wt.join("big.txt"), &body).unwrap();
     fs::write(wt.join("pic.bin"), [0u8, 159, 146, 150, 0, 1, 2]).unwrap();
-    commit_all(&wt, "add").unwrap();
+    commit_all(&wt, "add", true).unwrap();
 
     let full = diff_file(&wt, "main", "big.txt", 1000);
     assert!(!full.truncated && !full.binary);
@@ -598,7 +598,7 @@ fn restore_paths_refuses_a_folder_swapped_for_a_link_to_the_outside() {
     let wt = wt_for(&d, &repo, "t7", "ns/eeee5555-x");
     fs::create_dir(wt.join("dir")).unwrap();
     fs::write(wt.join("dir/f.txt"), "in").unwrap();
-    commit_all(&wt, "dir").unwrap();
+    commit_all(&wt, "dir", true).unwrap();
     let from = g(&wt, &["rev-parse", "HEAD"]);
     fs::write(wt.join("dir/new.txt"), "n").unwrap();
     // the part replaced the folder by a link to somewhere else
@@ -617,7 +617,7 @@ fn diff_file_also_stops_at_a_byte_limit() {
     let (d, repo) = new_repo();
     let wt = wt_for(&d, &repo, "t8", "ns/ffff6666-x");
     fs::write(wt.join("min.js"), "x".repeat(2_000_000)).unwrap(); // one huge line
-    commit_all(&wt, "min").unwrap();
+    commit_all(&wt, "min", true).unwrap();
     let df = diff_file(&wt, "main", "min.js", 10_000);
     assert!(df.truncated);
     assert!(df.text.len() <= 256 * 1024, "{}", df.text.len());
@@ -639,7 +639,7 @@ fn protected_paths_stay_out_of_every_commit_and_the_branch() {
     let mut pending = protected_pending(&wt);
     pending.sort();
     assert_eq!(pending, [".env", ".env.local", ".netrc", "fixtures/id_ed25519", "fixtures/server.pem"]);
-    assert!(commit_all(&wt, "work").unwrap().is_some());
+    assert!(commit_all(&wt, "work", true).unwrap().is_some());
     let mut files = tree_of(&wt, "HEAD");
     files.sort();
     assert_eq!(files, [".env.example", "a.txt", "code.rs"]);
@@ -650,8 +650,8 @@ fn protected_paths_stay_out_of_every_commit_and_the_branch() {
     g(&wt, &["add", "-f", "id_rsa"]);
     g(&wt, &["commit", "-q", "-m", "oops"]);
     assert_eq!(protected_committed(&wt, "main").unwrap(), ["id_rsa"]);
-    assert!(uncommit_hidden(&wt, "main").unwrap());
-    commit_all(&wt, "again").unwrap();
+    assert!(uncommit_hidden(&wt, "main", true).unwrap());
+    commit_all(&wt, "again", true).unwrap();
     assert!(!tree_of(&wt, "HEAD").contains(&"id_rsa".to_string()));
     assert!(protected_committed(&wt, "main").unwrap().is_empty());
 }
@@ -660,10 +660,21 @@ fn protected_paths_stay_out_of_every_commit_and_the_branch() {
 fn protected_paths_off_commits_them_as_any_file() {
     let (d, repo) = new_repo();
     let wt = wt_for(&d, &repo, "t1", "ns/abc12345-off");
-    set_protected(&wt, false).unwrap();
     fs::write(wt.join(".env"), "x\n").unwrap();
-    assert!(protected_pending(&wt).is_empty());
-    commit_all(&wt, "work").unwrap();
+    commit_all(&wt, "work", false).unwrap();
     assert!(tree_of(&wt, "HEAD").contains(&".env".to_string()));
-    assert!(protected_committed(&wt, "main").unwrap().is_empty());
+}
+
+/// Review of F1: a key already tracked on base and changed by the branch is no new file, but it still leaves with the
+/// branch: the merge check sees it. Deleting one is no leak.
+#[test]
+fn a_changed_tracked_key_is_seen_by_the_merge_check_and_a_deleted_one_is_not() {
+    let (d, repo) = new_repo();
+    commit_in(&repo, "server.key", "old\n", "tracked key");
+    commit_in(&repo, ".env", "A=1\n", "tracked env");
+    let wt = wt_for(&d, &repo, "t1", "ns/abc12345-tracked");
+    fs::write(wt.join("server.key"), "stolen\n").unwrap();
+    fs::remove_file(wt.join(".env")).unwrap();
+    commit_all(&wt, "work", true).unwrap();
+    assert_eq!(protected_committed(&wt, "main").unwrap(), ["server.key"]);
 }

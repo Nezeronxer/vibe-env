@@ -291,7 +291,7 @@ impl Engine {
             let commit_work = |t: &Task| -> Result<(), String> {
                 if !is_read_only(role) {
                     if let Some(w) = t.worktree.as_ref().filter(|w| !git::rebase_in_progress(w)) {
-                        self.g_commit(w, &t.title).map_err(|e| e.to_string())?;
+                        self.g_commit(t, w, &t.title).map_err(|e| e.to_string())?;
                     }
                 }
                 Ok(())

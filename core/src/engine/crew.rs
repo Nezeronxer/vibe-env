@@ -51,7 +51,7 @@ impl Engine {
         let wt = t.worktree.clone().ok_or("no_worktree")?;
         self.set_step(t, Step::Code, StepState::Running)?;
         if self.state(&id).swarm.parts.is_empty() {
-            self.g_commit(&wt, &t.title).map_err(gerr)?; // the preparation is part of the task's branch
+            self.g_commit(t, &wt, &t.title).map_err(gerr)?; // the preparation is part of the task's branch
             match self.crew_split(t, p, n, cancel)? {
                 Some(parts) => {
                     self.stage(t, &format!("crew: {} parts", parts.len()));
@@ -295,7 +295,7 @@ impl Engine {
                         self.lane_asks(id, Asked { label: letter.to_string(), kind: "Part".into(), question: q, options, session: s });
                         return self.set_part(id, letter, |x| x.state = LaneState::Asking);
                     }
-                    if let Err(e) = self.g_commit(&x.worktree, &t.title) {
+                    if let Err(e) = self.g_commit(&t, &x.worktree, &t.title) {
                         return fail(gerr(e));
                     }
                     // the app does not take the split on its word: of what the part changed, only the files it
@@ -330,7 +330,7 @@ impl Engine {
                         return interrupted("cancelled".into());
                     };
                     if gates.iter().all(|g| g.passed) {
-                        if let Err(e) = self.g_commit(&task_wt, &format!("{}: {}", t.title, x.title)) {
+                        if let Err(e) = self.g_commit(&t, &task_wt, &format!("{}: {}", t.title, x.title)) {
                             return fail(format!("part_not_landed: {}", gerr(e)));
                         }
                         self.log_part(id, letter, &format!("part_landed: {letter}"));
