@@ -455,3 +455,16 @@ pub fn load_token() -> Option<String>; pub fn save_token(t: &str) -> Result<(), 
 - CI: `.github/workflows/ci.yml` (push main и PR), `release.yml` (тег `v*`, черновик релиза), actions закреплены на SHA. Секреты подписи macOS (по именам): `APPLE_CERTIFICATE`, `APPLE_CERTIFICATE_PASSWORD`, `APPLE_SIGNING_IDENTITY`, `APPLE_ID`, `APPLE_PASSWORD`, `APPLE_TEAM_ID` - подпись только при всех шести, иначе сборка без подписи.
 - `scripts/ui-selftest.js` - ui selftest в node. `docs/security.md` - области аудита. bundle: цели dmg/deb/rpm/appimage, фон dmg.
 - Заглушки до публикации: `<OWNER>`, `<REPO>`, `<REPO_URL>`, `<SECURITY_CONTACT>`, `<MAINTAINER NAME/EMAIL>`, `sha256sums=SKIP`. LICENSE: MIT, «Copyright (c) 2026 Nezeronxer». Ничего не опубликовано.
+
+## Границы v3, решённые в спецификации (живой ход работы, вкладки, первый экран)
+
+- `core::agent`: `AgentEvent::Action(ToolAction)` и `AgentEvent::TextDelta(String)` добавляются; `Tool{name, summary}` остаётся.
+  `ToolAction {id: String, name: String, input: ActionInput, output: Option<String>, ok: bool, done: bool}` (serde, `kind` для перечислений),
+  `ActionInput = Read{path} | Edit{path, diff} | Write{path, head, lines} | Bash{command} | Search{pattern, hits: Option<u32>} | Web{target} | Plan{items: Vec<PlanItem{text, state: Pending|Active|Done|Dropped}>} | Other{summary}`.
+  Одно действие приходит дважды: при старте (`done=false, output=None`) и при результате (`done=true`, `output` до 64 КБ, `ok`); связь по `id` (= `tool_use_id`).
+  `diff` - унифицированный текст (`@@`, `+`, `-`, ` `), до 200 КБ, строится ядром (`similar`); для CLI без текста правки - `git diff` копии после шага, отдельным `Edit` на файл.
+- `core::model`: `LogEvent` получает `action: Option<ToolAction>` (`#[serde(default)]`); лог задачи хранит его на диске; всё, что уходит в лог и в окно, проходит `scrub`.
+- `app` → окно: `task-action {id, action: ToolAction}`, `chat-action {id, msgId, action: ToolAction}`, `chat-delta {id, msgId, text}`; склейка не чаще 50 мс на чат/задачу; `get_task_log(id, before, limit)` и `get_chat` отдают действия так же.
+- `ui`: `ui/js/core/md.js` `renderMarkdown(text) -> Node`, `ui/js/core/hl.js` `highlight(code, lang) -> Node`, `ui/js/core/actions.js` `actionNode(action) -> Node` (строка действия с выводом/диффом), `ui/js/screens/tabs.js` (полоса вкладок и панели). Без `innerHTML`. `dev-mock.js` эмулирует поток `task-action`/`chat-action`/`chat-delta`.
+- Модели: `ModelFamily.blurb` = ключ словаря `model.desc.<id>` (перевод в `ui/i18n*.js`), `ModelFamily.source_note: Option<String>` - пометка источника для подсказки.
+- Клавиши v3 (окно): ⌘T/Ctrl+T, ⌘1…9/Ctrl+1…9, ⌘⇧]/⌘⇧[ (Ctrl+Tab/Ctrl+Shift+Tab), ⌘W/Ctrl+W, ⌘D/Ctrl+D, ⌘⇧D/Ctrl+Shift+D, ⌘⌥←/→; среды - ⌥⌘1…7 / Ctrl+Alt+1…7.
