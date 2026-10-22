@@ -173,11 +173,14 @@
     const input = l ? { kind: l[1], [l[2]]: tool.arg || '' } : { kind: 'other', summary: [tool.name, tool.arg].filter(Boolean).join(' ') };
     return { id, name: l ? l[0] : String(tool.name || ''), input, output: tool.result == null ? null : String(tool.result), ok: tool.ok !== false, done: true };
   }
+  // the tool by which Claude Code hands over a role's answer by schema: our decision, not work to show (an action, a ChatMsg.tool, a log line)
+  const SERVICE_TOOLS = ['StructuredOutput'];
+  const isServiceTool = (x) => !!x && SERVICE_TOOLS.includes(x.name != null ? String(x.name) : String(x.text || '').split(':')[0].trim());
   // one action -> one feed row (G30). `acts`: Map key -> {key, at, role, taskId, action}; `owner`: a task id or 'chat:<id>'.
   // The core sends an action twice (start, result) with one id, and mirrors a task's action into its chat (chat-action):
   // all copies land in one row, the task's copy wins the owner and the role; a late start never undoes a result.
   function upsertAction(acts, owner, action, at, role) {
-    if (!action || action.id == null) return null;
+    if (!action || action.id == null || isServiceTool(action)) return null;
     const id = String(action.id), isChat = String(owner).startsWith('chat:');
     let key = owner + ':' + id, prev = acts.get(key);
     if (!prev) {
@@ -347,7 +350,21 @@
     return list;
   };
   const accelOf = (ev, platform) => (root.NSLogic && root.NSLogic.accelFromEvent ? root.NSLogic.accelFromEvent(ev, platform) : null);
-  function tabKeyAction(ev, platform, keys) {
+  // the physical key when an engine leaves `code` empty: from keyCode, a Latin letter, or the Russian ЙЦУКЕН letter on that key
+  const RU = 'йцукенгшщзфывапролдячсмить', US = 'qwertyuiopasdfghjklzxcvbnm';
+  function physCode(ev) {
+    if (ev.code) return ev.code;
+    const kc = Number(ev.keyCode) || 0;
+    if (kc >= 65 && kc <= 90) return 'Key' + String.fromCharCode(kc);
+    if (kc >= 48 && kc <= 57) return 'Digit' + (kc - 48);
+    const k = String(ev.key || '').toLowerCase(), i = k.length === 1 ? RU.indexOf(k) : -1;
+    if (i >= 0) return 'Key' + US[i].toUpperCase();
+    if (/^[a-z]$/.test(k)) return 'Key' + k.toUpperCase();
+    if (/^\d$/.test(k)) return 'Digit' + k;
+    return k === 'tab' ? 'Tab' : '';
+  }
+  function tabKeyAction(ev0, platform, keys) {
+    const ev = ev0.code ? ev0 : { code: physCode(ev0), key: ev0.key, metaKey: ev0.metaKey, ctrlKey: ev0.ctrlKey, altKey: ev0.altKey, shiftKey: ev0.shiftKey };
     const mac = platform === 'mac', mod = mac ? ev.metaKey : ev.ctrlKey, code = ev.code || '';
     const k = Object.assign(tabKeyDefaults(platform), keys || {});
     const accel = accelOf(ev, platform);
@@ -423,7 +440,7 @@
     return { text, note };
   }
 
-  const api = { safeHref, parseInline, parseMarkdown, langOf, fenceLang, tokenize, parseDiff, diffStat, foldLines, inputOf, toolToAction, upsertAction, groupActions, readSummary,
+  const api = { safeHref, parseInline, parseMarkdown, langOf, fenceLang, tokenize, parseDiff, diffStat, foldLines, inputOf, toolToAction, isServiceTool, upsertAction, groupActions, readSummary,
     actionVerb, planView, planState, typePlan, MAX_PANELS, tabsEmpty, tabsOpen, tabsActivate, tabsClose, tabsMove, tabsSplit, tabsUnsplit, tabsFocusPanel, tabsSetChat,
     tabsSerialize, tabsRestore, tabKeyDefaults, fixedTabKeys, tabKeyAction, migrateSwitchEnv, keyConflicts, queueInfo, ENV_ORDER, pickEnv, modelDesc };
   if (typeof module !== 'undefined') module.exports = api;

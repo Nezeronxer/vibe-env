@@ -190,6 +190,7 @@
       // one action may come from the chat record (get_chat: ChatMsg.action), the task log and a live event: the live/log copy wins
       const liveIds = new Set([...acts.values()].map((e) => String(e.action.id)));
       for (const m of msgs) {
+        if (V.isServiceTool(m.action) || V.isServiceTool(m.tool)) continue;
         if (m.action) { if (!liveIds.has(String(m.action.id))) items.push({ at: ts(m.at), type: 'act', e: { key: 'm:' + m.id, at: ts(m.at), role: (m.who && L.whoOf(m).role) || 'chat', taskId: m.task_id || null, action: m.action } }); continue; }
         if (m.tool) items.push({ at: ts(m.at), type: 'act', e: { key: 'm:' + m.id, at: ts(m.at), role: 'legacy', taskId: m.task_id || null, action: V.toolToAction(m.tool, m.id) } });
         else items.push({ at: ts(m.at), type: 'msg', m });

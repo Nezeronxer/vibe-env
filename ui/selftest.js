@@ -428,6 +428,14 @@ eq('verb by role: reviewer and critic check or read, "writing code" only after a
 const sumMd = V.parseMarkdown('Тест проверяет один случай.\n\n**Что ждёт меня:** ничего.\n**Что изменено:** `calc.py`.');
 eq('md: a blank line splits paragraphs, a single newline before a bold line stays a line break',
   sumMd.map((b) => [b.type, b.inline.map((n) => n.t)]), [['p', ['text']], ['p', ['b', 'text', 'br', 'b', 'text', 'code', 'text']]]);
+eq('service tool: StructuredOutput (our roles\' answer by schema) is never a feed line - as an action, a v2 tool row or a log line; real tools are',
+  [V.isServiceTool({ name: 'StructuredOutput' }), V.isServiceTool({ name: 'StructuredOutput', arg: '{"constraints":[]}' }), V.isServiceTool({ kind: 'tool', text: 'StructuredOutput: {"constraints":[1]}' }),
+    V.isServiceTool({ name: 'Read' }), V.isServiceTool({ kind: 'tool', text: 'Bash: ls' }), V.isServiceTool(null)], [true, true, true, false, false, false]);
+const kev = (code, key, extra) => Object.assign({ code, key, metaKey: true, ctrlKey: false, altKey: false, shiftKey: false }, extra);
+eq('tab keys match the physical key: Russian layout (key "е"/"в"/"ц"), upper case, and an event without `code` (key or keyCode only)',
+  [V.tabKeyAction(kev('KeyT', 'е'), 'mac'), V.tabKeyAction(kev('KeyD', 'D'), 'mac'), V.tabKeyAction(kev('', 'е'), 'mac'), V.tabKeyAction(kev('', 'Ц'), 'mac'), V.tabKeyAction(kev('', 'в'), 'mac'),
+    V.tabKeyAction(kev('', 'T'), 'mac'), V.tabKeyAction(kev('', '', { keyCode: 68 }), 'mac'), V.tabKeyAction(kev('', '1'), 'mac'), V.tabKeyAction(kev('', 'е', { metaKey: false, ctrlKey: true }), 'linux')].map((a) => a && a.type),
+  ['new', 'split', 'new', 'close', 'split', 'new', 'split', 'goto', 'new']);
 const plan10 = Array.from({ length: 10 }, (_, i) => ({ text: 'p' + i, state: i < 5 ? 'done' : i === 5 ? 'active' : 'pending' }));
 eq('plan: more than 7 items -> the current one ±2, the rest counted', (({ items, before, after }) => [items.map((x) => x.text), before, after])(V.planView(plan10)), [['p3', 'p4', 'p5', 'p6', 'p7'], 3, 2]);
 eq('plan: 7 or fewer items are all shown', V.planView(plan10.slice(0, 4)).items.length, 4);

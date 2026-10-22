@@ -100,17 +100,11 @@
 
   // ---------- keys (window handler, active only while the tabs screen is shown) ----------
   // capture phase on the window: no handler of a feed, a field or a pop-up can swallow ⌘D / ⌘W / ⌘T before this one
-  const KEY_CODE = (ev) => {
-    if (ev.code) return ev;
-    const k = String(ev.key || '');           // some engines leave `code` empty while ⌘ is held
-    const code = /^[a-z]$/i.test(k) ? 'Key' + k.toUpperCase() : /^\d$/.test(k) ? 'Digit' + k : k === 'Tab' ? 'Tab' : '';
-    return { code, key: k, metaKey: ev.metaKey, ctrlKey: ev.ctrlKey, altKey: ev.altKey, shiftKey: ev.shiftKey };
-  };
   window.addEventListener('keydown', (e) => {
     if (!ws || e.defaultPrevented || e.isComposing) return;
     if (document.querySelector('dialog[open]')) return;
     if (e.target && e.target.closest && e.target.closest('.keyfield')) return;      // the hotkey field in the settings records keys
-    const a = V.tabKeyAction(KEY_CODE(e), platform(), keysOf());
+    const a = V.tabKeyAction(e, platform(), keysOf());
     if (!a) return;
     e.preventDefault();
     e.stopPropagation();
