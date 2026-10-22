@@ -13,6 +13,8 @@ pub const OUTPUT_MAX: usize = 64 * 1024;
 pub const DIFF_MAX: usize = 200 * 1024;
 /// Lines of a new file shown under `Write` (story 225).
 pub const HEAD_LINES: usize = 20;
+/// In place of the diff / head of a secret file (`.env`, `*.key` ...): only its path is shown.
+pub const SECRET_HIDDEN: &str = "[secret_file_hidden]";
 
 /// `s` cut to at most `max` bytes on a char boundary, with a line saying how long it was.
 pub fn cut(s: &str, max: usize, what: &str) -> String {
@@ -26,7 +28,8 @@ pub fn cut(s: &str, max: usize, what: &str) -> String {
     format!("{}\n[{what}_truncated: {} bytes]", &s[..end], s.len())
 }
 
-/// Unified diff of one file (`--- a/<path>`, `+++ b/<path>`, `@@` hunks, 3 lines of context), at most `DIFF_MAX`.
+/// Unified diff of one file (`--- a/<path>`, `+++ b/<path>`, `@@` hunks, 3 lines of context). Not cut here:
+/// `finish_action` scrubs first and cuts after, so a cut never splits a secret.
 /// `old` = None is a new file, `new` = None a removed one. Empty when nothing changed.
 pub fn unified_diff(path: &str, old: Option<&str>, new: Option<&str>) -> String {
     let (a, b) = (old.unwrap_or(""), new.unwrap_or(""));
@@ -36,8 +39,7 @@ pub fn unified_diff(path: &str, old: Option<&str>, new: Option<&str>) -> String 
     let p = path.trim_start_matches('/');
     let from = if old.is_some() { format!("a/{p}") } else { "/dev/null".to_string() };
     let to = if new.is_some() { format!("b/{p}") } else { "/dev/null".to_string() };
-    let d = similar::udiff::unified_diff(similar::Algorithm::Myers, a, b, 3, Some((&from, &to)));
-    cut(&d, DIFF_MAX, "diff")
+    similar::udiff::unified_diff(similar::Algorithm::Myers, a, b, 3, Some((&from, &to)))
 }
 
 fn s<'a>(v: &'a Value, keys: &[&str]) -> Option<&'a str> {
@@ -235,16 +237,45 @@ impl Scrub {
     }
 }
 
-/// KEY=VALUE pairs of the `.env*` files at the top of `dir` (quotes and `export ` taken off).
+/// How deep and how wide the search for `.env*` files in a copy goes.
+const ENV_DEPTH: usize = 4;
+const ENV_DIRS: usize = 500;
+const ENV_FILE_MAX: u64 = 64 * 1024;
+/// Folders that hold other people's code or build output, never the project's own `.env`.
+const SKIP_DIRS: [&str; 8] = ["node_modules", "target", "vendor", "dist", "build", "venv", "__pycache__", "Pods"];
+
+/// KEY=VALUE pairs of the `.env*` files of `dir` and its folders down to `ENV_DEPTH` (quotes and `export `
+/// taken off); hidden folders and `SKIP_DIRS` are not entered.
 fn dotenv_pairs(dir: &std::path::Path) -> Vec<(String, String)> {
-    let Ok(rd) = std::fs::read_dir(dir) else { return vec![] };
     let mut out = vec![];
-    for e in rd.flatten() {
-        let name = e.file_name().to_string_lossy().into_owned();
-        if !name.starts_with(".env") || [".env.example", ".env.sample", ".env.template"].contains(&name.as_str()) || !e.path().is_file() {
-            continue;
+    let (mut todo, mut seen) = (vec![(dir.to_path_buf(), 0usize)], 0usize);
+    while let Some((d, depth)) = todo.pop() {
+        seen += 1;
+        if seen > ENV_DIRS {
+            break;
         }
-        let Ok(text) = std::fs::read_to_string(e.path()) else { continue };
+        let Ok(rd) = std::fs::read_dir(&d) else { continue };
+        for e in rd.flatten() {
+            let name = e.file_name().to_string_lossy().into_owned();
+            let Ok(ft) = e.file_type() else { continue };
+            if ft.is_dir() {
+                if depth < ENV_DEPTH && !name.starts_with('.') && !SKIP_DIRS.contains(&name.as_str()) {
+                    todo.push((e.path(), depth + 1));
+                }
+                continue;
+            }
+            let template = [".env.example", ".env.sample", ".env.template"].contains(&name.as_str());
+            if ft.is_file() && name.starts_with(".env") && !template && e.metadata().is_ok_and(|m| m.len() <= ENV_FILE_MAX) {
+                env_file_pairs(&e.path(), &mut out);
+            }
+        }
+    }
+    out
+}
+
+fn env_file_pairs(path: &std::path::Path, out: &mut Vec<(String, String)>) {
+    {
+        let Ok(text) = std::fs::read_to_string(path) else { return };
         for line in text.lines() {
             let line = line.trim();
             let line = line.strip_prefix("export ").unwrap_or(line);
@@ -259,12 +290,17 @@ fn dotenv_pairs(dir: &std::path::Path) -> Vec<(String, String)> {
             }
         }
     }
-    out
 }
 
 /// Makes the final form of an action: secrets out, output and diff cut, no output for a read or an edit that worked.
 pub fn finish_action(a: &mut ToolAction, scrub: &Scrub) {
     scrub.action(a);
+    // a secret file shows its path only: values written into it now are not known to `scrub`
+    match &mut a.input {
+        ActionInput::Edit { path, diff } if crate::kits::is_secret_file(path) => *diff = SECRET_HIDDEN.into(),
+        ActionInput::Write { path, head, .. } if crate::kits::is_secret_file(path) => *head = SECRET_HIDDEN.into(),
+        _ => {}
+    }
     if a.ok && a.done && matches!(a.input, ActionInput::Read { .. } | ActionInput::Edit { .. } | ActionInput::Write { .. }) {
         a.output = None;
     }

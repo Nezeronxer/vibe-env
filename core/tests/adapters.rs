@@ -1129,3 +1129,45 @@ fn long_output_and_diff_are_cut_and_secrets_never_leave_the_run() {
     assert!(diff.len() <= DIFF_MAX + 64 && diff.contains("\n[diff_truncated: "), "{}", &diff[diff.len() - 60..]);
     assert!(diff.starts_with("--- a/big.txt\n+++ b/big.txt\n@@ -1 +1,130000 @@\n-z\n+y\n"), "{}", &diff[..80]);
 }
+
+// ---- review of task 16: secrets at the edge of a cut, in secret files, in .env files below the top ----
+
+#[test]
+fn a_secret_on_the_edge_of_the_diff_cut_is_scrubbed_before_the_cut() {
+    let secret = "s3cr3t-value-123";
+    let prefix = "--- a/f\n+++ b/f\n@@ -1 +1 @@\n-z\n+";
+    // the secret starts 5 bytes before the cut: a cut before the scrub would leave "s3cr3" in the diff
+    let line = format!("{}{secret}", "x".repeat(DIFF_MAX - 5 - prefix.len()));
+    let mut a = actions::tool_action("t", "Edit", &serde_json::json!({"file_path": "f", "old_string": "z", "new_string": line}));
+    actions::finish_action(&mut a, &Scrub::new([("API_TOKEN".to_string(), secret.to_string())]));
+    let ActionInput::Edit { diff, .. } = &a.input else { panic!() };
+    assert!(diff.contains("[diff_truncated: "), "the diff is cut");
+    assert!(!diff.contains("s3cr3"), "{}", &diff[DIFF_MAX - 20..DIFF_MAX + 10]);
+}
+
+#[test]
+fn the_text_of_a_secret_file_never_shows_only_its_path() {
+    let scrub = Scrub::default();
+    let hidden = |name: &str, input: serde_json::Value| {
+        let mut a = actions::tool_action("t", name, &input);
+        actions::finish_action(&mut a, &scrub);
+        a.input
+    };
+    let e = hidden("Edit", serde_json::json!({"file_path": "/repo/backend/.env", "old_string": "A=1", "new_string": "A=new-secret-1"}));
+    assert_eq!(e, ActionInput::Edit { path: "/repo/backend/.env".into(), diff: actions::SECRET_HIDDEN.into() });
+    let w = hidden("Write", serde_json::json!({"file_path": "keys/server.key", "content": "-----BEGIN KEY-----\nabc\n"}));
+    assert_eq!(w, ActionInput::Write { path: "keys/server.key".into(), head: actions::SECRET_HIDDEN.into(), lines: 2 });
+    // an ordinary file keeps its diff
+    assert!(matches!(hidden("Edit", serde_json::json!({"file_path": "a.py", "old_string": "a", "new_string": "b"})), ActionInput::Edit { diff, .. } if diff.contains("+b")));
+}
+
+#[test]
+fn values_of_env_files_below_the_top_of_the_copy_are_scrubbed_too() {
+    let d = tempfile::tempdir().unwrap();
+    std::fs::create_dir_all(d.path().join("backend/config")).unwrap();
+    std::fs::write(d.path().join("backend/.env"), "API_KEY=deepsecret-999\n").unwrap();
+    std::fs::write(d.path().join("backend/config/.env.local"), "DB_PASS=\"nested-pass-42\"\n").unwrap();
+    let run = Run::new(d.path().to_path_buf(), "p".into(), String::new(), Role::Worker);
+    let sc = Scrub::for_run(&run);
+    assert_eq!(sc.text("deepsecret-999 / nested-pass-42"), "${API_KEY} / ${DB_PASS}");
+}
