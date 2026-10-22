@@ -149,3 +149,23 @@ fn ctrl_c_gets_through_while_reading_waits_for_an_ack() {
     });
     t.close(&id).unwrap();
 }
+
+#[test]
+fn a_sink_that_reads_the_list_on_exit_does_not_hang_the_session() {
+    let t = Arc::new(Terms::new());
+    let id = t.open(spec(&["/bin/sh", "-c", "sleep 0.3; exit 4"])).unwrap();
+    let seen: Arc<Mutex<Option<usize>>> = Arc::default();
+    let (t2, s2) = (t.clone(), seen.clone());
+    // what the app does on exit: the tray counts the live sessions
+    t.attach(&id, Box::new(move |c| if let TermChunk::Exit(_) = c { *s2.lock().unwrap() = Some(t2.list().len()) })).unwrap();
+    wait_for("the sink to see the list", 5, || seen.lock().unwrap().is_some());
+    let (t3, done) = (t.clone(), Arc::new(Mutex::new(false)));
+    let d2 = done.clone();
+    std::thread::spawn(move || { let _ = t3.list(); *d2.lock().unwrap() = true; });
+    wait_for("list() after the exit", 2, || *done.lock().unwrap());
+    // and an attach after the exit may also read the list from its sink
+    let (t4, s4) = (t.clone(), Arc::new(Mutex::new(false)));
+    let s5 = s4.clone();
+    t.attach(&id, Box::new(move |_| { let _ = t4.list(); *s5.lock().unwrap() = true; })).unwrap();
+    assert!(*s4.lock().unwrap());
+}

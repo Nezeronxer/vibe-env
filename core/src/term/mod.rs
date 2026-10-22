@@ -219,8 +219,15 @@ impl Terms {
             let code = child.wait().ok().and_then(|st| if st.signal().is_some() { None } else { Some(st.exit_code() as i32) });
             let mut g = lk(&p.shared);
             g.exit = Some(code);
-            if let Some(sink) = &g.sink {
+            // called without the lock: the sink may read `list()` (the app's tray does)
+            let sink = g.sink.take();
+            drop(g);
+            if let Some(sink) = sink {
                 sink(TermChunk::Exit(code));
+                let mut g = lk(&p.shared);
+                if g.sink.is_none() {
+                    g.sink = Some(sink);
+                }
             }
         });
         let id = s.id.clone();
@@ -250,17 +257,20 @@ impl Terms {
         Ok(())
     }
 
-    /// The window that attaches gets the buffer now and every new piece through `sink` (called under the session's
-    /// lock: it must not call back into `Terms`). A window attached before is replaced.
+    /// The window that attaches gets the buffer now and every new piece through `sink`. `Data` comes under the
+    /// session's lock (it must not call back into `Terms`); `Exit` comes without it. A window attached before is replaced.
     pub fn attach(&self, id: &str, sink: Sink) -> Result<Vec<u8>> {
         let s = self.get(id)?;
         let mut g = lk(&s.shared);
+        let buf = g.ring.iter().copied().collect();
         if let Some(code) = g.exit {
+            // the process is over, nothing else comes: the exit goes out without the lock
+            drop(g);
             sink(TermChunk::Exit(code));
+            g = lk(&s.shared);
         }
         g.sink = Some(sink);
         g.in_flight = 0;
-        let buf = g.ring.iter().copied().collect();
         drop(g);
         s.wake.notify_all();
         Ok(buf)
