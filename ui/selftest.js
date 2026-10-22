@@ -403,6 +403,31 @@ const act = (kind, done) => ({ input: { kind }, done });
 eq('verb: during Bash - running, after Edit - writing code, after Read - thinking, while Read - reading, streaming text - answering, nothing - thinking',
   [V.actionVerb(act('bash', false)), V.actionVerb(act('edit', true)), V.actionVerb(act('read', true)), V.actionVerb(act('read', false)), V.actionVerb(null, true), V.actionVerb(null)],
   ['live.running', 'live.writing', 'live.thinking', 'live.reading', 'live.answering', 'live.thinking']);
+
+// --- F3: live feed without doubles, live gluing, verb by role, paragraphs of a result card ---
+const acts1 = new Map();
+V.upsertAction(acts1, 't1', { id: 'r1', name: 'Read', input: { kind: 'read', path: 'a' }, done: false, ok: false }, 10, 'exec');
+V.upsertAction(acts1, 'chat:c1', { id: 'r1', name: 'Read', input: { kind: 'read', path: 'a' }, done: false, ok: false }, 11, 'chat');
+V.upsertAction(acts1, 't1', { id: 'r1', name: 'Read', input: { kind: 'read', path: 'a' }, output: 'x\ny', done: true, ok: true }, 20, 'exec');
+V.upsertAction(acts1, 'chat:c1', { id: 'r1', name: 'Read', input: { kind: 'read', path: 'a' }, output: 'x\ny', done: true, ok: true }, 21, 'chat');
+eq('merge: start and result of one action, from task-action and its chat-action mirror -> one row of the task, done, with output',
+  [...acts1.values()].map((e) => [e.key, e.taskId, e.role, e.at, e.action.done, e.action.output]), [['t1:r1', 't1', 'exec', 10, true, 'x\ny']]);
+const acts2 = new Map();
+V.upsertAction(acts2, 'chat:c1', { id: 'e1', name: 'Edit', input: { kind: 'edit', path: 'a', diff: '' }, done: false, ok: false }, 5, 'chat');
+V.upsertAction(acts2, 't1', { id: 'e1', name: 'Edit', input: { kind: 'edit', path: 'a', diff: '' }, output: 'ok', done: true, ok: true }, 9, 'exec');
+V.upsertAction(acts2, 't1', { id: 'e1', name: 'Edit', input: { kind: 'edit', path: 'a', diff: '' }, done: false, ok: false }, 12, 'exec');
+V.upsertAction(acts2, 'chat:c1', { id: 'q1', name: 'Grep', input: { kind: 'search', pattern: 'x' }, done: true, ok: true }, 13, 'chat');
+eq('merge: the chat mirror first, the task copy later -> moved under the task; a late start never undoes a result; a chat-only action stays the chat\'s',
+  [...acts2.values()].map((e) => [e.key, e.taskId, e.role, e.at, e.action.done]), [['t1:e1', 't1', 'exec', 5, true], ['chat:c1:q1', null, 'chat', 13, true]]);
+const Ra = (key, done) => ({ key, role: 'exec', action: { id: key, name: 'Read', input: { kind: 'read', path: key }, done, ok: done } });
+eq('glue live: a read that has only started (done=false, ok=false) joins the run, the row grows in place', V.groupActions([Ra('1', true), Ra('2', false)]).map((g) => (g.type === 'group' ? 'G' + g.items.length : g.item.key)), ['G2']);
+eq('verb by role: reviewer and critic check or read, "writing code" only after an Edit/Write of the executor',
+  [V.actionVerb(act('edit', true), false, { role: 'rev', lastRole: 'exec' }), V.actionVerb(null, false, { role: 'crit' }), V.actionVerb(act('read', false), false, { role: 'rev', lastRole: 'rev' }),
+    V.actionVerb(act('bash', false), false, { role: 'rev', lastRole: 'rev' }), V.actionVerb(act('read', true), false, { role: 'rev', lastRole: 'rev' }), V.actionVerb(act('write', true), false, { role: 'exec', lastRole: 'exec' })],
+  ['live.reviewing', 'live.reviewing', 'live.reading', 'live.running', 'live.reviewing', 'live.writing']);
+const sumMd = V.parseMarkdown('Тест проверяет один случай.\n\n**Что ждёт меня:** ничего.\n**Что изменено:** `calc.py`.');
+eq('md: a blank line splits paragraphs, a single newline before a bold line stays a line break',
+  sumMd.map((b) => [b.type, b.inline.map((n) => n.t)]), [['p', ['text']], ['p', ['b', 'text', 'br', 'b', 'text', 'code', 'text']]]);
 const plan10 = Array.from({ length: 10 }, (_, i) => ({ text: 'p' + i, state: i < 5 ? 'done' : i === 5 ? 'active' : 'pending' }));
 eq('plan: more than 7 items -> the current one ±2, the rest counted', (({ items, before, after }) => [items.map((x) => x.text), before, after])(V.planView(plan10)), [['p3', 'p4', 'p5', 'p6', 'p7'], 3, 2]);
 eq('plan: 7 or fewer items are all shown', V.planView(plan10.slice(0, 4)).items.length, 4);

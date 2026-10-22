@@ -17,7 +17,9 @@
         const href = V.safeHref(n.href);
         if (!href) return inlineNodes(n.c);
         return h('a', { href, class: 'md-a', title: NS.t('act3.link') + ': ' + href, rel: 'noopener noreferrer',
-          onclick: (e) => { e.preventDefault(); NS.api.call('open_path', { path: href }).catch((er) => NS.shell.toast(NS.errHuman(NS.api.errText(er)), true)); } }, inlineNodes(n.c));
+          onclick: (e) => { e.preventDefault(); NS.api.call('open_path', { path: href }).catch((er) => NS.shell.toast(NS.errHuman(NS.api.errText(er)), true)); },
+          // a middle click or a drag would open the page inside the app window: only the click above opens a link
+          onauxclick: (e) => e.preventDefault(), onmousedown: (e) => { if (e.button === 1) e.preventDefault(); }, ondragstart: (e) => e.preventDefault() }, inlineNodes(n.c));
       }
       return '';
     });

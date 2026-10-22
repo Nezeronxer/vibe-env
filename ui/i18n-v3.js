@@ -3,7 +3,7 @@
 (function (root) {
   const ru = {
     // the live line under the feed (story 227)
-    'live.thinking': 'Думает…', 'live.writing': 'Пишет код…', 'live.running': 'Запускает команду…', 'live.reading': 'Читает…', 'live.web': 'Ищет в сети…',
+    'live.thinking': 'Думает…', 'live.writing': 'Пишет код…', 'live.running': 'Запускает команду…', 'live.reading': 'Читает…', 'live.reviewing': 'Проверяет…', 'live.web': 'Ищет в сети…',
     'live.planning': 'Составляет план…', 'live.answering': 'Пишет ответ…', 'live.queue': 'В очереди: {pos}-я, освободится после «{after}»', 'live.queue_short': 'В очереди: {pos}-я',
     'live.plan': 'План', 'live.plan_more': 'ещё {n}', 'live.label': 'Ход работы',
     // action lines (stories 225, 226, 229)
@@ -45,7 +45,7 @@
     'fmt.of': 'из', 'lim.wday': 'День', 'lim.wmonth': 'Месяц',
   };
   const en = {
-    'live.thinking': 'Thinking…', 'live.writing': 'Writing code…', 'live.running': 'Running a command…', 'live.reading': 'Reading…', 'live.web': 'Searching the web…',
+    'live.thinking': 'Thinking…', 'live.writing': 'Writing code…', 'live.running': 'Running a command…', 'live.reading': 'Reading…', 'live.reviewing': 'Reviewing…', 'live.web': 'Searching the web…',
     'live.planning': 'Making a plan…', 'live.answering': 'Writing the answer…', 'live.queue': 'Queued: #{pos}, frees after "{after}"', 'live.queue_short': 'Queued: #{pos}',
     'live.plan': 'Plan', 'live.plan_more': '{n} more', 'live.label': 'Progress',
     'act3.read_n': 'Read {n} {w}', 'act3.file_1': 'file', 'act3.file_2': 'files', 'act3.file_5': 'files', 'act3.search_n': 'searched {n} {w}', 'act3.times_1': 'time', 'act3.times_2': 'times', 'act3.times_5': 'times',

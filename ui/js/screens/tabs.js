@@ -15,11 +15,16 @@
   const newId = () => 'tab-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 7);
   const platform = () => (/Mac/i.test(navigator.platform || '') || /[?&]platform=mac/.test(location.search) ? 'mac' : 'linux');
 
+  // only once the chat lists of the saved tabs' envs are in: before that every saved chat looks deleted and all tabs would go
   function restore() {
     if (restored) return;
+    const saved = [NS.storage.get(KEY), ((S().settings || {}).ui || {}).tabs || null];
+    const envsOf = (raw) => { try { const o = typeof raw === 'string' ? JSON.parse(raw) : raw; return ((o && o.tabs) || []).map((x) => x && x.env).filter(Boolean); } catch (e) { return []; } };
+    const waiting = saved.flatMap(envsOf).some((env) => { const e = NS.store.env(env); return e && e.state !== 'missing' && !S().chats.has(env); });
+    if (waiting || !S().envs.length) return;
     restored = true;
     const known = (env, chat) => !!NS.store.env(env) && !!NS.store.findChat(chat);
-    const st = V.tabsRestore(NS.storage.get(KEY), known) || V.tabsRestore(((S().settings || {}).ui || {}).tabs || null, known);
+    const st = V.tabsRestore(saved[0], known) || V.tabsRestore(saved[1], known);
     if (st) state = st;
   }
   function persist() {
@@ -77,7 +82,10 @@
     const cur = activeTab(), env = (cur && cur.env) || S().lastEnv || ((S().envs.find((e) => e.state === 'ok') || {}).id);
     if (!env) return;
     setState(V.tabsOpen(state, { id: newId(), env, chat: 'new' }));
+    focusActive();
   }
+  // the cursor goes to the input field of the shown tab (after ⌘T, ⌘1…9, the next/previous tab)
+  function focusActive() { if (ws) (window.requestAnimationFrame || setTimeout)(() => ws && ws.focus()); }
   function closeTab(id) {
     let st = V.tabsClose(state, id);
     if (!st.tabs.length) { const tb = state.tabs.find((x) => x.id === id); st = V.tabsOpen(st, { id: newId(), env: tb.env, chat: 'new' }); }
@@ -91,13 +99,21 @@
   }
 
   // ---------- keys (window handler, active only while the tabs screen is shown) ----------
-  document.addEventListener('keydown', (e) => {
-    if (!ws || e.defaultPrevented) return;
+  // capture phase on the window: no handler of a feed, a field or a pop-up can swallow ⌘D / ⌘W / ⌘T before this one
+  const KEY_CODE = (ev) => {
+    if (ev.code) return ev;
+    const k = String(ev.key || '');           // some engines leave `code` empty while ⌘ is held
+    const code = /^[a-z]$/i.test(k) ? 'Key' + k.toUpperCase() : /^\d$/.test(k) ? 'Digit' + k : k === 'Tab' ? 'Tab' : '';
+    return { code, key: k, metaKey: ev.metaKey, ctrlKey: ev.ctrlKey, altKey: ev.altKey, shiftKey: ev.shiftKey };
+  };
+  window.addEventListener('keydown', (e) => {
+    if (!ws || e.defaultPrevented || e.isComposing) return;
     if (document.querySelector('dialog[open]')) return;
     if (e.target && e.target.closest && e.target.closest('.keyfield')) return;      // the hotkey field in the settings records keys
-    const a = V.tabKeyAction(e, platform(), keysOf());
+    const a = V.tabKeyAction(KEY_CODE(e), platform(), keysOf());
     if (!a) return;
     e.preventDefault();
+    e.stopPropagation();
     const ids = state.tabs.map((x) => x.id), i = ids.indexOf(state.active);
     if (a.type === 'new') newTab();
     else if (a.type === 'close') { if (state.active) closeTab(state.active); }
@@ -107,7 +123,8 @@
     else if (a.type === 'last') { if (ids.length) setState(V.tabsActivate(state, ids[ids.length - 1])); }
     else if (a.type === 'next' || a.type === 'prev') { if (ids.length > 1) setState(V.tabsActivate(state, ids[(i + (a.type === 'next' ? 1 : -1) + ids.length) % ids.length])); }
     else if (a.type === 'panel') setState(V.tabsFocusPanel(state, a.dir));
-  });
+    if (a.type !== 'new') focusActive();          // newTab() focuses its own field
+  }, true);
 
   // ---------- the screen ----------
   function tabTitle(tb) {
@@ -124,7 +141,8 @@
     const strip = h('div', { class: 'tabstrip', role: 'tablist', 'aria-label': t('tabs.label') });
     const hint = h('div', { class: 'ws-hint', role: 'status', hidden: true, text: t('tabs.narrow') });
     const panes = h('div', { class: 'panes' });
-    root.append(h('section', { class: 'ws' }, strip, hint, panes));
+    const wsEl = h('section', { class: 'ws' }, strip, hint, panes);
+    root.append(wsEl);
     const mounted = new Map();       // tab id -> {el, inst, sig, used}
     let menu = null, dragId = null;
     const closeMenu = () => { if (menu) { menu.remove(); menu = null; document.removeEventListener('click', onDocMenu); } };
@@ -140,9 +158,10 @@
         item(t('tabs.close'), () => closeTab(tb.id)),
         state.tabs.length > 1 ? item(t('tabs.close_others'), () => { let st = state; for (const x of state.tabs) if (x.id !== tb.id) st = V.tabsClose(st, x.id); setState(V.tabsActivate(st, tb.id)); }) : null,
         window.innerWidth < NARROW ? h('small', { text: t('tabs.narrow') }) : null);
-      const r = anchor.getBoundingClientRect(), rr = root.getBoundingClientRect();
+      // under the tab, inside the .ws box the menu is positioned in (it was placed against the screen: the left edge of the window)
+      const r = anchor.getBoundingClientRect(), rr = wsEl.getBoundingClientRect();
       NS.setVars(menu, { '--x': Math.max(0, Math.min(r.left - rr.left, rr.width - 220)) + 'px', '--y': (r.bottom - rr.top + 2) + 'px' });
-      root.append(menu);
+      wsEl.append(menu);
       setTimeout(() => document.addEventListener('click', onDocMenu), 0);
     }
 
@@ -176,9 +195,9 @@
       const more = rest.length ? h('button', { type: 'button', class: 'btn sm tab-more', text: t('tabs.more', { n: rest.length }), onclick: (e) => {
         e.stopPropagation(); closeMenu();
         menu = h('div', { class: 'menu tabmenu', role: 'menu' }, rest.map((tb) => h('button', { type: 'button', role: 'menuitem', text: short(tabTitle(tb)), onclick: () => { closeMenu(); setState(V.tabsActivate(state, tb.id)); } })));
-        const r = e.target.getBoundingClientRect(), rr = root.getBoundingClientRect();
+        const r = e.target.getBoundingClientRect(), rr = wsEl.getBoundingClientRect();
         NS.setVars(menu, { '--x': Math.max(0, r.right - rr.left - 220) + 'px', '--y': (r.bottom - rr.top + 2) + 'px' });
-        root.append(menu); setTimeout(() => document.addEventListener('click', onDocMenu), 0);
+        wsEl.append(menu); setTimeout(() => document.addEventListener('click', onDocMenu), 0);
       } }) : null;
       NS.append(clear(strip), [h('div', { class: 'tabs-scroll' }, list), h('button', { type: 'button', class: 'tab-plus', 'aria-label': t('tabs.new'), title: t('tabs.new') + ' (' + (platform() === 'mac' ? '⌘T' : 'Ctrl+T') + ')', onclick: newTab }, ic('i-plus')), more]);
       const a = strip.querySelector('.tab.on');
@@ -230,7 +249,8 @@
     function draw() { closeMenu(); drawStrip(); drawPanes(); }
     const onResize = () => drawPanes();
     window.addEventListener('resize', onResize);
-    ws = { draw };
+    const focus = () => { const m = mounted.get(state.active); if (m && m.inst && m.inst.update) m.inst.update('focus-input'); };
+    ws = { draw, focus };
     draw();
     const forward = (evt, payload) => {
       for (const [id, m] of mounted) {

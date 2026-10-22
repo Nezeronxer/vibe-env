@@ -333,11 +333,28 @@
   // task-action {id, action} (each action twice: start with done=false, then the result), chat-delta {id, msgId, text}, chat-msg at the end.
   // ?live=fast|slow|off - speed of the scripted runs; two chats run at once: "Кэш для отчётов" (streamed answer) and "Линтер в CI" (typed answer).
   const liveSpeed = { fast: 0.25, slow: 2, off: 0 }[q.get('live')] ?? 1;
-  const CACHE_DIFF = ['--- a/src/reports/cache.py', '+++ b/src/reports/cache.py', '@@ -1,6 +1,9 @@', ' import time', '-from functools import lru_cache', '+from dataclasses import dataclass, field',
-    '+from threading import Lock', ' ', ' from .db import fetch_report', ' ', '@@ -14,12 +17,48 @@ class ReportCache:'].concat(
-    [' class ReportCache:', '-    """Cache without expiry."""', '+    """Report cache with a time to live (TTL) per entry."""', '+', '+    def __init__(self, ttl: float = 300.0):', '+        self.ttl = ttl', '+        self._data: dict[str, tuple[float, dict]] = {}', '+        self._lock = Lock()', '+'],
-    Array.from({ length: 30 }, (_, i) => (i % 3 ? '+' : ' ') + '        ' + ['hit = self._data.get(key)', 'if hit and time.monotonic() - hit[0] < self.ttl:', 'return hit[1]'][i % 3] + (i > 2 ? '  # ' + (i + 1) : '')),
-    ['-    def get(self, key):', '-        return fetch_report(key)', '+    def get(self, key: str) -> dict:', '+        with self._lock:', '+            return self._get_locked(key)']).join('\n');
+  // unified diff the way the core builds it (`similar`): per hunk context, then the removed lines, then the added ones;
+  // the @@ numbers are counted from the body, so they always agree with it
+  const hunks = (path, list) => {
+    let shift = 0;
+    const out = ['--- a/' + path, '+++ b/' + path];
+    for (const [start, tail, body] of list) {
+      const olds = body.filter((l) => l[0] !== '+').length, news = body.filter((l) => l[0] !== '-').length;
+      out.push('@@ -' + start + ',' + olds + ' +' + (start + shift) + ',' + news + ' @@' + (tail ? ' ' + tail : ''), ...body);
+      shift += news - olds;
+    }
+    return out.join('\n');
+  };
+  const LOCKED = ['+    def _get_locked(self, key: str) -> dict:', '+        hit = self._data.get(key)', '+        if hit and time.monotonic() - hit[0] < self.ttl:', '+            return hit[1]',
+    '+        report = fetch_report(key)', '+        self._data[key] = (time.monotonic(), report)', '+        return report', '+',
+    '+    def put(self, key: str, report: dict) -> None:', '+        with self._lock:', '+            self._data[key] = (time.monotonic(), report)', '+',
+    '+    def get_cached(self, key: str) -> dict | None:', '+        hit = self._data.get(key)', '+        if hit and time.monotonic() - hit[0] < self.ttl:', '+            return hit[1]', '+        return None', '+'];
+  const CACHE_DIFF = hunks('src/reports/cache.py', [
+    [1, '', [' import time', '-from functools import lru_cache', '+from dataclasses import dataclass, field', '+from threading import Lock', ' ', ' from .db import fetch_report', ' ']],
+    [14, 'class ReportCache:', [' class ReportCache:', '-    """Cache without expiry."""', '+    """Report cache with a time to live (TTL) per entry."""', '+', '+    def __init__(self, ttl: float = 300.0):', '+        self.ttl = ttl',
+      '+        self._data: dict[str, tuple[float, dict]] = {}', '+        self._lock = Lock()', ' ', '-    def get(self, key):', '-        return fetch_report(key)', '+    def get(self, key: str) -> dict:', '+        with self._lock:', '+            return self._get_locked(key)', '+']
+      .concat(LOCKED, [' ', '     def clear(self):', '         self._data.clear()'])],
+  ]);
   const PYTEST = ['============================= test session starts ==============================', 'platform darwin -- Python 3.12.4, pytest-8.3.2', 'collected 14 items', '',
     'tests/test_cache.py ........                                            [ 57%]', 'tests/test_cache_ttl.py ......                                          [100%]', '',
     '---------- coverage: platform darwin, python 3.12.4 ----------', 'Name                      Stmts   Miss  Cover', 'src/reports/cache.py         41      2    95%', 'src/reports/db.py            18      0   100%',
@@ -367,22 +384,41 @@
     [300, 'a', { id: 'p1', name: 'TodoWrite', input: TODO(['done', 'done', 'done', 'done']), done: true, ok: true }],
     [500, 'answer', st],
   ];
-  function playLive(taskId, chatId, stream) {
+  const CI_YML = ['name: ci', 'on: [push, pull_request]', 'jobs:', '  lint:', '    runs-on: ubuntu-latest', '    steps:', '      - uses: actions/checkout@v4', '      - run: pip install ruff', '      - run: ruff check .'].join('\n');
+  const LINT_ANSWER = 'Проверил шаг линтера в CI.\n\nЗамечаний нет: `ruff check .` проходит локально, шаг стоит до тестов.\n\n**Что ждёт меня:** ничего.\n**Что найдено:** `ruff` не закреплён по версии - можно добавить позже.';
+  const LINT_SCRIPT = (st) => [
+    [500, 'a', { id: 'lr1', name: 'Read', input: { kind: 'read', path: '.github/workflows/ci.yml' }, done: false }],
+    [600, 'a', { id: 'lr1', name: 'Read', input: { kind: 'read', path: '.github/workflows/ci.yml' }, output: CI_YML, done: true, ok: true }],
+    [400, 'a', { id: 'lr2', name: 'Read', input: { kind: 'read', path: 'pyproject.toml' }, done: false }],
+    [500, 'a', { id: 'lr2', name: 'Read', input: { kind: 'read', path: 'pyproject.toml' }, output: '[tool.ruff]\nline-length = 100', done: true, ok: true }],
+    [400, 'a', { id: 'lg1', name: 'Grep', input: { kind: 'search', pattern: 'ruff', hits: 3 }, output: 'ci.yml\npyproject.toml\nREADME.md', done: true, ok: true }],
+    [600, 'a', { id: 'lb1', name: 'Bash', input: { kind: 'bash', command: 'ruff check .' }, done: false }],
+    [1800, 'a', { id: 'lb1', name: 'Bash', input: { kind: 'bash', command: 'ruff check .' }, output: 'All checks passed!', done: true, ok: true }],
+    [600, 'answer', st],
+  ];
+  // like the core: one action twice (start, result) as task-action, and its mirror in the chat as chat-action (same action id)
+  function playLive(taskId, chatId, stream, who) {
     if (!liveSpeed) return;
     let wait = 0;
-    const tk = byId(taskId);
-    for (const [ms, kind, a] of SCRIPT(stream)) {
+    const tk = byId(taskId), w = who || { role: 'worker', model: 'Opus 5.5', script: SCRIPT, answer: ANSWER };
+    const actMsg = {};
+    for (const [ms, kind, a] of w.script(stream)) {
       wait += ms * liveSpeed;
       setTimeout(() => {
-        if (kind === 'a') { (LOGS[taskId] = LOGS[taskId] || []).push({ at: iso(Date.now()), kind: 'tool', role: 'worker', model: 'Opus 5.5', text: a.name, action: a }); emit('task-action', { id: taskId, action: a }); return; }
+        if (kind === 'a') {
+          (LOGS[taskId] = LOGS[taskId] || []).push({ at: iso(Date.now()), kind: 'tool', role: w.role, model: w.model, text: a.name, action: a });
+          emit('task-action', { id: taskId, action: a });
+          emit('chat-action', { id: chatId, msgId: (actMsg[a.id] = actMsg[a.id] || 'am-' + a.id), action: Object.assign({}, a, { ok: !!a.ok }) });
+          return;
+        }
         const msgId = taskId + '-answer';
         const finish = () => {
-          pushMsg({ id: msgId, chat_id: chatId, at: iso(Date.now()), who: { role: 'worker' }, text: ANSWER, model: 'Opus 5.5', task_id: taskId });
+          pushMsg({ id: msgId, chat_id: chatId, at: iso(Date.now()), who: { role: w.role }, text: w.answer, model: w.model, task_id: taskId });
           setTimeout(() => { tk.status = 'done'; tk.finished_at = iso(Date.now()); tk.steps = steps('merge').map((p) => [p[0], 'done']); tk.runs = tk.runs.map((r) => Object.assign({}, r, { state: 'done' }));
-            tk.outcome = { summary: 'Влито в main: **кэш с TTL**, `ReportCache(ttl=300)`', commit: '7c1e0b2a9d', tests: { passed: true, tail: '14 passed' }, review: { approved: true, issues: [] } }; changed(tk); }, 900 * liveSpeed);
+            tk.outcome = { summary: 'Влито в main: **кэш с TTL**, `ReportCache(ttl=300)`.\n\nТест проверяет один случай.\n\n**Что ждёт меня:** ничего.\n**Что изменено:** `src/reports/cache.py`, `tests/test_cache_ttl.py`.', commit: '7c1e0b2a9d', tests: { passed: true, tail: '14 passed' }, review: { approved: true, issues: [] } }; changed(tk); }, 900 * liveSpeed);
         };
         if (!a) return finish();
-        const words = ANSWER.match(/\S+\s*/g);
+        const words = w.answer.match(/\S+\s*/g);
         let i = 0;
         const tick = () => { if (i >= words.length) return finish(); const piece = words.slice(i, i + 3).join(''); i += 3; emit('chat-delta', { id: chatId, msgId, text: piece }); setTimeout(tick, 70 * liveSpeed); };
         tick();
@@ -400,12 +436,15 @@
     };
     live('t-cache', 'cache', 'p1', 'Кэш для отчётов с TTL', 2);
     live('t-lint', 'lint', 'p2', 'Линтер в CI', 1);
+    // the second chat is at another step: the reviewer (Sonnet 5.5) checks the change - the card's roster and the live line say the same
+    Object.assign(byId('t-lint'), { status: 'reviewing', steps: steps('review'),
+      runs: [{ role: 'worker', model: 'Opus 5.5', state: 'done', started_at: ago(6), finished_at: ago(2) }, { role: 'reviewer', model: 'Sonnet 5.5', state: 'running', started_at: iso(now) }] });
     // a finished task whose actions come back from the log after a restart (story 230)
     LOGS['t-cur'] = LOGS['t-cur'].concat([
       { at: ago(176), kind: 'tool', role: 'worker', text: 'Read', action: { id: 'x1', name: 'Read', input: { kind: 'read', path: 'src/payments/models.py' }, output: 'a\nb\nc', done: true, ok: true } },
       { at: ago(175), kind: 'tool', role: 'worker', text: 'Edit', action: { id: 'x2', name: 'Edit', input: { kind: 'edit', path: 'src/payments/models.py', diff: '@@ -12,3 +12,4 @@ class Payment(Base):\n     amount = Column(Integer, nullable=False)\n+    currency = Column(String(3), nullable=False, default="RUB")\n     created_at = Column(DateTime)\n' }, done: true, ok: true } },
       { at: ago(174), kind: 'tool', role: 'worker', text: 'Bash', action: { id: 'x3', name: 'Bash', input: { kind: 'bash', command: 'alembic revision --autogenerate -m currency' }, output: 'Generating migrations/versions/4f2a_currency.py ... done', done: true, ok: true } }]);
-    window.addEventListener('ns-ready', () => setTimeout(() => { playLive('t-cache', 'cache', true); setTimeout(() => playLive('t-lint', 'lint', false), 1200 * liveSpeed); }, 400));
+    window.addEventListener('ns-ready', () => setTimeout(() => { playLive('t-cache', 'cache', true); setTimeout(() => playLive('t-lint', 'lint', false, { role: 'reviewer', model: 'Sonnet 5.5', script: LINT_SCRIPT, answer: LINT_ANSWER }), 1200 * liveSpeed); }, 400));
   }
 
   window.__TAURI__ = {

@@ -104,12 +104,8 @@
     }
     const runningRun = (task) => (task.runs || []).slice().reverse().find((r) => L.variant(r.state)[0] === 'running');
     const isLiveTask = (task) => !!task && L.kindOf(task) === 'run' && !!L.info(task.status).live;
-    function upsertAct(owner, action, at, role) {
-      if (!action || action.id == null) return;
-      const key = owner + ':' + action.id, prev = acts.get(key);
-      const merged = prev ? Object.assign({}, prev.action, action, { input: action.input || prev.action.input }) : action;
-      acts.set(key, { key, at: prev ? prev.at : at, role: prev ? prev.role : role, taskId: owner.startsWith('chat:') ? null : owner, action: merged });
-    }
+    // start and result of one action, and the chat's mirror of a task's action, are one row (V.upsertAction, selftested)
+    const upsertAct = (owner, action, at, role) => V.upsertAction(acts, owner, action, at, role);
     function humanNode(m, isPending) {
       const note = !isPending && m.task_id;
       const to = m.to ? ' · ' + (m.to === 'reviewer' ? t('swarm.to_reviewer') : t('swarm.to_variant', { v: m.to })) : '';     // a note to a swarm: who gets it (story 156)
@@ -251,7 +247,7 @@
         const run = runningRun(tk), rk = run && L.roleKey(run.role);
         const last = lastOf((e) => e.taskId === tk.id);
         const streaming = streams.size > 0 || typing.size > 0;
-        return live.set({ verbKey: V.actionVerb(last && last.action, streaming && (!last || last.action.done)), since: ts(run && run.started_at) || ts(tk.started_at),
+        return live.set({ verbKey: V.actionVerb(last && last.action, streaming && (!last || last.action.done), { role: rk, lastRole: last && last.role }), since: ts(run && run.started_at) || ts(tk.started_at),
           who: [rk ? t('role.' + rk) : null, run && run.model].filter(Boolean).join(' · '), plan: planOf((e) => e.taskId === tk.id) });
       }
       const queued = mine.find((x) => x.status === 'queued');

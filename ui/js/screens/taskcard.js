@@ -87,7 +87,7 @@
   function stateLine(task) {
     const o = task.outcome || {}, project = NS.store.project(task.project_id);
     if (task.status === 'done') {
-      return h('div', { class: 'tc-done' }, ic('i-check'), o.summary ? NS.renderMarkdown(o.summary) : (o.commit ? t('card.merged', { sha: o.commit.slice(0, 7) }) : t('st.done')),     // the agent's summary is markdown (story 228)
+      return h('div', { class: 'tc-done' + (o.summary ? ' sum' : '') }, ic('i-check'), o.summary ? NS.renderMarkdown(o.summary) : (o.commit ? t('card.merged', { sha: o.commit.slice(0, 7) }) : t('st.done')),     // the agent's summary is markdown (story 228)
         o.pr_url ? h('button', { type: 'button', class: 'linkb', text: t('card.open_pr'), onclick: () => call('open_path', { path: o.pr_url }) }) : null);
     }
     if (task.status === 'done_not_pushed') {

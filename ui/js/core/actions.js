@@ -113,18 +113,21 @@
       if (out.includes('\n')) body.push(outBlock(out.split('\n').slice(1).join('\n'), key + ':out', opts, true));
     } else if (inp.kind === 'edit') {
       if (inp.diff) { const d = diffBlock(inp.diff, inp.path, key + ':diff', opts); head.append(h('span', { class: 'act-stat' }, h('span', { class: 'plus', text: '+' + d.stat.add }), ' ', h('span', { class: 'minus', text: '−' + d.stat.del }))); body.push(d.el); }
-      else if (action.done) body.push(h('div', { class: 'act-l' }, h('span', { class: 'cn', text: '└' }), h('span', { text: out ? out.split('\n')[0] : t('act3.no_diff') })));
+      else if (action.done && out.trim()) body.push(h('div', { class: 'act-l' }, h('span', { class: 'cn', text: '└' }), h('span', { text: out.split('\n')[0] })));
     } else if (inp.kind === 'write') {
       const n = inp.lines != null ? Number(inp.lines) : String(inp.head || '').split('\n').length;
       head.append(h('span', { class: 'act-stat' }, h('span', { class: 'plus', text: '+' + n })));
       if (inp.head) body.push(writeBlock(inp));
     } else if (inp.kind === 'read') {
-      if (action.done) { const n = out ? out.replace(/\n$/, '').split('\n').length : 0; body.push(h('div', { class: 'act-l' }, h('span', { class: 'cn', text: '└' }), h('span', { text: n ? n + ' ' + pl(n, 'act3.line') : t('act3.no_output') }))); }
+      const n = out ? out.replace(/\n$/, '').split('\n').length : 0;
+      if (action.done && n) body.push(h('div', { class: 'act-l' }, h('span', { class: 'cn', text: '└' }), h('span', { text: n + ' ' + pl(n, 'act3.line') })));
     } else if (inp.kind === 'search') {
       if (action.done) { const n = inp.hits != null ? Number(inp.hits) : out ? out.replace(/\n$/, '').split('\n').length : 0; body.push(h('div', { class: 'act-l' }, h('span', { class: 'cn', text: '└' }), h('span', { text: t('act3.hits', { n, w: pl(n, 'act3.hit') }) }))); }
     } else if (inp.kind === 'bash' || inp.kind === 'web' || inp.kind === 'other') {
       if (running && inp.kind === 'bash') body.push(h('div', { class: 'act-l mute' }, h('span', { class: 'cn', text: '└' }), h('span', { text: t('act3.running') })));
-      else if (action.done) body.push(out ? outBlock(out, key + ':out', opts, false) : h('div', { class: 'act-l mute' }, h('span', { class: 'cn', text: '└' }), h('span', { text: t('act3.no_output') })));
+      // "(нет вывода)" means something only for a command; a fetch or another tool without output just has no line
+      else if (action.done && out) body.push(outBlock(out, key + ':out', opts, false));
+      else if (action.done && inp.kind === 'bash') body.push(h('div', { class: 'act-l mute' }, h('span', { class: 'cn', text: '└' }), h('span', { text: t('act3.no_output') })));
     }
     if (body.length) el.append(h('div', { class: 'act-b' }, body));
     return el;

@@ -88,6 +88,8 @@
 .older { align-self: center; }
 dialog.wide { max-width: min(900px, 92vw); width: 900px; }
 dialog.wide .act-log { max-height: 60vh; margin-bottom: 14px; border: 1px solid var(--line); border-radius: var(--r); padding: 8px 10px; }
-.tc-done .md { display: inline; }
-.tc-done .md > * { display: inline; margin: 0; }
+/* the summary keeps its paragraphs and line breaks (F3.8): a block next to the check mark, not inline text */
+.tc-done.sum { align-items: flex-start; }
+.tc-done.sum > .ic { margin-top: 2px; flex: none; }
+.tc-done .md { flex: 1; min-width: 0; }
 .msg-b > .md + .caret { margin-top: 2px; }

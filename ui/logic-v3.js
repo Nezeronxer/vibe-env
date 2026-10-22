@@ -173,16 +173,42 @@
     const input = l ? { kind: l[1], [l[2]]: tool.arg || '' } : { kind: 'other', summary: [tool.name, tool.arg].filter(Boolean).join(' ') };
     return { id, name: l ? l[0] : String(tool.name || ''), input, output: tool.result == null ? null : String(tool.result), ok: tool.ok !== false, done: true };
   }
+  // one action -> one feed row (G30). `acts`: Map key -> {key, at, role, taskId, action}; `owner`: a task id or 'chat:<id>'.
+  // The core sends an action twice (start, result) with one id, and mirrors a task's action into its chat (chat-action):
+  // all copies land in one row, the task's copy wins the owner and the role; a late start never undoes a result.
+  function upsertAction(acts, owner, action, at, role) {
+    if (!action || action.id == null) return null;
+    const id = String(action.id), isChat = String(owner).startsWith('chat:');
+    let key = owner + ':' + id, prev = acts.get(key);
+    if (!prev) {
+      for (const [k, e] of acts) {
+        if (String(e.action.id) !== id || (isChat ? !e.taskId : !!e.taskId)) continue;
+        prev = e;
+        if (isChat) key = k;                         // the mirror of a task's action: update the task's row
+        else acts.delete(k);                         // the mirror came first: the row moves under the task
+        break;
+      }
+    }
+    const fromTask = !isChat;
+    let merged = action;
+    if (prev) {
+      const late = prev.action.done && !action.done;
+      merged = late ? Object.assign({}, action, prev.action) : Object.assign({}, prev.action, action, { input: action.input || prev.action.input });
+    }
+    acts.set(key, { key, at: prev ? prev.at : at, role: prev && (prev.taskId || !fromTask) ? prev.role : role, taskId: fromTask ? owner : prev ? prev.taskId : null, action: merged });
+    return key;
+  }
   const GLUE = ['read', 'search'];
   // consecutive Read/Grep/Glob of one role -> one row (2+); everything else stays its own line
   function groupActions(entries) {
     const out = [];
     let run = [];
     const close = () => { if (run.length > 1) out.push({ type: 'group', items: run }); else if (run.length) out.push({ type: 'one', item: run[0] }); run = []; };
+    // a started action has ok=false until its result: only a finished failure breaks the run
+    const gluable = (e) => GLUE.includes(inputOf(e.action).kind) && !(e.action.done && e.action.ok === false);
     for (const e of entries) {
-      const k = inputOf(e.action).kind;
-      if (GLUE.includes(k) && e.action.ok !== false && (!run.length || run[0].role === e.role)) run.push(e);
-      else { close(); if (GLUE.includes(k) && e.action.ok !== false) run.push(e); else out.push({ type: 'one', item: e }); }
+      if (gluable(e) && (!run.length || run[0].role === e.role)) run.push(e);
+      else { close(); if (gluable(e)) run.push(e); else out.push({ type: 'one', item: e }); }
     }
     close();
     return out;
@@ -194,12 +220,17 @@
   }
 
   // ---------- the live line (story 227) ----------
-  function actionVerb(last, streaming) {
+  // who: {role, lastRole} - role keys of the running step and of the last action; reading roles never "write code"
+  const READERS = ['rev', 'crit', 'plan', 'gate', 'watch', 'coord'], WRITERS = ['exec', 'test', 'integ'];
+  function actionVerb(last, streaming, who) {
     if (streaming) return 'live.answering';
-    if (!last) return 'live.thinking';
-    const k = inputOf(last).kind;
-    if (!last.done) return { bash: 'live.running', edit: 'live.writing', write: 'live.writing', read: 'live.reading', search: 'live.reading', web: 'live.web', plan: 'live.planning' }[k] || 'live.thinking';
-    return k === 'edit' || k === 'write' ? 'live.writing' : 'live.thinking';
+    const role = who && who.role, reader = READERS.includes(role), idle = reader ? 'live.reviewing' : 'live.thinking';
+    if (last && role && who.lastRole && who.lastRole !== role) last = null;       // an action of the step before
+    if (!last) return idle;
+    const k = inputOf(last).kind, by = (who && who.lastRole) || role;
+    const writes = (k === 'edit' || k === 'write') && (!by || WRITERS.includes(by));
+    if (!last.done) return writes ? 'live.writing' : { bash: 'live.running', read: 'live.reading', search: 'live.reading', web: 'live.web', plan: 'live.planning' }[k] || idle;
+    return writes ? 'live.writing' : idle;
   }
   const planState = (s) => ({ pending: 'pending', active: 'active', inprogress: 'active', done: 'done', completed: 'done', dropped: 'dropped', cancelled: 'dropped' }[norm(s)] || 'pending');
   // more than 7 items: the current one ±2, the rest are counted above and below (story 242)
@@ -392,7 +423,7 @@
     return { text, note };
   }
 
-  const api = { safeHref, parseInline, parseMarkdown, langOf, fenceLang, tokenize, parseDiff, diffStat, foldLines, inputOf, toolToAction, groupActions, readSummary,
+  const api = { safeHref, parseInline, parseMarkdown, langOf, fenceLang, tokenize, parseDiff, diffStat, foldLines, inputOf, toolToAction, upsertAction, groupActions, readSummary,
     actionVerb, planView, planState, typePlan, MAX_PANELS, tabsEmpty, tabsOpen, tabsActivate, tabsClose, tabsMove, tabsSplit, tabsUnsplit, tabsFocusPanel, tabsSetChat,
     tabsSerialize, tabsRestore, tabKeyDefaults, fixedTabKeys, tabKeyAction, migrateSwitchEnv, keyConflicts, queueInfo, ENV_ORDER, pickEnv, modelDesc };
   if (typeof module !== 'undefined') module.exports = api;
