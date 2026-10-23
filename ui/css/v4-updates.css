@@ -2,12 +2,12 @@
 
 /* popups: new model, CLI updated / failed / available - they float, so they get the one shadow */
 .pops4 { position: fixed; right: 16px; bottom: 16px; z-index: 60; display: flex; flex-direction: column; gap: 8px; width: 340px; max-width: calc(100vw - 32px); pointer-events: none; }
-.pop4 { pointer-events: auto; padding: 12px 14px; border-radius: var(--radius-pane); background: var(--raised); color: var(--ink); box-shadow: var(--shadow);
+.pop4 { pointer-events: auto; padding: 12px 14px; border-radius: var(--radius-pane); background: var(--card-fx); color: var(--ink); box-shadow: var(--shadow);
   line-height: 1.45; animation: pop4-in 160ms var(--ease); transition: opacity 160ms var(--ease), transform 160ms var(--ease); }
 .pop4.bad { background: var(--bad-bg); }
 .pop4.out { opacity: 0; transform: translateY(4px); }
 .pop4 p { margin: 0; font-size: 13px; }
-.pop4 code { display: block; margin-top: 8px; padding: 6px 8px; border-radius: var(--radius-sm); background: var(--panel); font: 12px var(--mono); overflow-wrap: anywhere; user-select: all; }
+.pop4 code { display: block; margin-top: 8px; padding: 6px 8px; border-radius: var(--radius-sm); background: var(--bg); font: 12px var(--mono); overflow-wrap: anywhere; user-select: all; }
 .pop4-b { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
 .pop4-b .linkb { margin-left: auto; }
 @keyframes pop4-in { from { opacity: 0; transform: translateY(6px); } }
@@ -53,6 +53,6 @@
 .ports4 { margin: 0; display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; font: 12.5px var(--mono); }
 .ports4 small { color: var(--ink3); font-size: 11.5px; }
 .handoff4 h4 { margin: 6px 0 0; font-size: 12.5px; font-weight: 600; color: var(--ink2); }
-.handoff4-t { margin: 0; padding: 8px 10px; border-radius: var(--radius-sm); background: var(--panel); font: 12px/1.5 var(--mono); white-space: pre-wrap; max-height: 220px; overflow: auto; }
+.handoff4-t { margin: 0; padding: 8px 10px; border-radius: var(--radius-sm); background: var(--bg); font: 12px/1.5 var(--mono); white-space: pre-wrap; max-height: 220px; overflow: auto; }
 
 @media (prefers-reduced-motion: reduce) { .pop4, .ctx4-pop { animation: none; transition: none; } .ctx4-m i { transition: none; } }

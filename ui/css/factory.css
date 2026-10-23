@@ -1,6 +1,6 @@
 /* Factory: everything produced in ONE env, every agent its own run (story 162). Full width, no chat list. */
 .factory { flex: 1; min-height: 0; display: flex; flex-direction: column; }
-.fact-h { display: flex; align-items: center; gap: 28px; padding: 14px 22px; border-bottom: 1px solid var(--line); background: var(--panel); flex-wrap: wrap; }
+.fact-h { display: flex; align-items: center; gap: 28px; padding: 14px 22px; border-bottom: 1px solid var(--line); background: linear-gradient(180deg, color-mix(in srgb, var(--cream) 6%, transparent), transparent); flex-wrap: wrap; }
 .fact-h h1 { font-size: 20px; font-weight: 650; }
 .fact-sub { display: inline-flex; gap: 6px; align-items: center; color: var(--ink3); font-size: 12px; }
 .fact-sub img, .fact-sub svg { width: 13px; height: 13px; }
@@ -13,7 +13,7 @@
 .strip > span { display: inline-flex; gap: 7px; align-items: center; }
 .strip b { font-weight: 600; color: var(--c, var(--ink)); }
 .strip em { font-style: normal; font-weight: 600; color: var(--ink2); }
-.strip em.work { color: var(--exec); }
+.strip em.work { color: var(--onair); }
 .strip .none { color: var(--ink3); }
 .fact-grid { flex: 1; min-height: 0; display: grid; grid-template-columns: 1.5fr 1fr; }
 .fpanel { padding: 16px 22px; overflow: auto; border-right: 1px solid var(--line); min-width: 0; }
@@ -25,14 +25,14 @@
 .oneline input { flex: 1; min-width: 0; height: 32px; }
 .oneline select { max-width: 170px; }
 .convoys { display: grid; gap: 8px; margin-top: 12px; }
-.cv { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 10px 12px; text-align: left; cursor: pointer; display: block; width: 100%; }
+.cv { background: var(--card-fx); border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 10px 12px; text-align: left; cursor: pointer; display: block; width: 100%; }
 .cv:hover { border-color: var(--ink3); }
 .cv-h { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; }
 .cv-h b { font-weight: 650; }
 .prog { display: flex; gap: 3px; margin: 8px 0 0; }
 .prog i { flex: 1; height: 6px; background: var(--line2); border-radius: 1px; }
-.prog i.d { background: var(--ok); } .prog i.r { background: var(--exec); } .prog i.f { background: var(--bad); }
-.convo-bar { padding: 10px 24px; border-bottom: 1px solid var(--line); background: var(--panel); }
+.prog i.d { background: var(--ok); } .prog i.r { background: var(--onair); } .prog i.f { background: var(--bad); }
+.convo-bar { padding: 10px 24px; border-bottom: 1px solid var(--line); background: linear-gradient(180deg, color-mix(in srgb, var(--cream) 5%, transparent), transparent); }
 .empty-note { color: var(--ink3); padding: 6px 0; }
 .feed li { display: grid; grid-template-columns: 44px 16px minmax(0, 1fr); gap: 8px; padding: 9px 0; border-bottom: 1px solid var(--line); align-items: start; }
 .feed time { color: var(--ink3); font-size: 12px; font-variant-numeric: tabular-nums; padding-top: 1px; }

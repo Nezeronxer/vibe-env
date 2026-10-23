@@ -9,13 +9,13 @@
 .clawd-fps { font: 11px var(--mono); color: var(--ink3); white-space: nowrap; font-variant-numeric: tabular-nums; }
 
 .clawd-card { position: absolute; z-index: 40; top: calc(100% + 6px); right: 0; width: 360px; max-width: calc(100vw - 32px); padding: 16px 16px 14px;
-  border-radius: var(--radius-pane); background: var(--raised); box-shadow: var(--shadow); color: var(--ink); line-height: 1.5;
+  border-radius: var(--radius-pane); background: var(--card-fx); box-shadow: var(--shadow); color: var(--ink); line-height: 1.5;
   animation: clawd-in 160ms var(--ease); }
 .clawd-head { display: flex; align-items: center; gap: 14px; }
 .clawd-head h2 { margin: 0; font-size: 18px; font-weight: 650; letter-spacing: -0.01em; }
 .clawd-head small { color: var(--ink3); font-size: 12px; }
-.clawd-big { flex: none; padding: 6px; border-radius: var(--radius-sm); background: var(--panel); box-sizing: content-box; }
-.clawd-now { margin: 14px 0 0; padding: 8px 10px; border-radius: var(--radius-sm); background: var(--panel); font: 12.5px var(--mono); color: var(--ink); }
+.clawd-big { flex: none; padding: 6px; border-radius: var(--radius-sm); background: var(--card-fx); box-sizing: content-box; }
+.clawd-now { margin: 14px 0 0; padding: 8px 10px; border-radius: var(--radius-sm); background: var(--bg); font: 12.5px var(--mono); color: var(--ink); }
 .clawd-card h3 { margin: 14px 0 4px; font-size: 13px; font-weight: 600; color: var(--ink2); }
 .clawd-story { margin: 0; font-size: 13px; color: var(--ink); }
 .clawd-x { margin-top: 12px; }

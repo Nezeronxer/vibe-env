@@ -29,7 +29,8 @@
     const menuBtn = h('button', { type: 'button', class: 'btn sm menu-btn', 'aria-haspopup': 'menu', 'aria-label': t('chat.menu'), text: '⋯' });
     const projSel = h('select', { class: 'projsel', 'aria-label': t('chat.project') });
     // v4: this header is the pane's title row (tabs.js adds the registry slots and the pane tools); env, model and limits are in the bar
-    const header = h('header', { class: 'convo-h pane-h' }, h('span', { class: 'pane-ic' }, envIcon(env.custom ? 'custom' : envId)),
+    const lamp = h('span', { class: 'pane-lamp', role: 'img', hidden: true });     // the tally lamp: red = an agent of this chat is on air, amber = it calls you
+    const header = h('header', { class: 'convo-h pane-h' }, h('span', { class: 'pane-ic' }, envIcon(env.custom ? 'custom' : envId)), lamp,
       title, sub, isNew ? projSel : null, !isNew ? menuBtn : null);
     function fillProjects() {
       clear(projSel);
@@ -40,7 +41,17 @@
       if (projSel.value === '__add') { const p = await NS.projects.addByDialog(); if (!alive.v) return; if (p) selProject = p.id; fillProjects(); drawHeader(); return; }
       selProject = projSel.value; S.lastProject = selProject; drawHeader();
     };
+    function drawLamp() {
+      const tks = isNew ? [] : st.chatTasks(chatId);
+      const calling = tks.find((x) => L.kindOf(x) === 'wait'), onAir = tks.find((x) => L.kindOf(x) === 'run' && L.info(x.status).live), tk = calling || onAir;
+      lamp.hidden = !tk;
+      if (!tk) return;
+      lamp.className = 'pane-lamp' + (calling ? ' calling' : '');
+      lamp.setAttribute('aria-label', t(L.labelKey(tk)));
+      lamp.title = t(L.labelKey(tk));
+    }
     function drawHeader() {
+      drawLamp();
       const c = isNew ? null : st.findChat(chatId), tk = isNew ? null : st.chatTasks(chatId)[0];
       title.textContent = isNew ? t('tabs.new_chat') : (c && c.title) || (tk && tk.title) || t('chat.untitled');
       title.title = env.name + (NS.models.label(envId) ? ' · ' + NS.models.label(envId) : '');
@@ -441,6 +452,7 @@
           if (convoy) convoy.update();
           const c = cards.get(payload.id);
           if (c) c.update(payload);               // only this card is redrawn
+          drawLamp();
           if (payload.chat_id === chatId) schedule();   // a card that arrived after its "Это задача" line, the live line, action spinners
           pin();
         } else if (evt === 'chatmsg') {

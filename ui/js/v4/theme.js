@@ -6,30 +6,33 @@
   const THEMES = {
     dark: {
       name: 'Nightshift Dark', scheme: 'dark',
-      canvas: '#0b0c0e', panel: '#131417', raised: '#1a1c20', raised2: '#24272c', line: '#26292e', line2: '#353a41',
-      ink: '#e4e4e1', ink2: '#acaeb2', ink3: '#8b8f95', accent: '#8fb3d9', cursor: '#e4e4e1', selection: '#2f3a48',
-      human: '#f2b134', humanBg: '#2a2212', humanLine: '#5c4818', onHuman: '#1a1405',
-      ok: '#5dbb8a', okBg: '#15261e', bad: '#ef6b60', badBg: '#2b1a19', btn: '#e4e4e1', onBtn: '#131417',
-      roles: { plan: '#6aa4ee', crit: '#ef6b60', test: '#4cb894', exec: '#48bdc7', gate: '#a2c44f', rev: '#df84b2', integ: '#93a1b4', coord: '#d8d8d4', watch: '#c9a56b', queue: '#93a1b4' },
-      ansi: ['#1c1e22', '#e5675d', '#79bf86', '#d9b45f', '#6fa3e0', '#c38bc9', '#5fbfc0', '#c8c9c6',
-        '#4a4f57', '#f08a80', '#98d4a2', '#ebcb82', '#93bdf0', '#d6a8db', '#86d4d4', '#f1f1ee'],
-      // the terminal's own look (F7): a warm ground a step off the panel, soft text, muted but readable colours (text 12.6:1, colours 1-6 >= 5.9:1)
-      term: { background: '#1a1917', foreground: '#dedad2', cursor: '#dedad2', selection: 0.3,
-        ansi: ['#2b2a27', '#e0786c', '#8fc08a', '#d9b870', '#78a6dd', '#c692c6', '#6fbdb8', '#cfcbc2',
-          '#8a867d', '#ee998d', '#a9d4a3', '#e8cd92', '#9bc0ee', '#d9afd9', '#92d2cc', '#f3f0e8'] },
+      canvas: '#1f160e', panel: '#130e09', raised: '#261c13', raised2: '#32261a', line: '#392d1f', line2: '#5a4830', bg: '#0f0b08',
+      ink: '#f3eadb', ink2: '#d6c9b0', ink3: '#ad9e82', accent: '#f2a33a', cursor: '#f3eadb', selection: '#4d3a1c',
+      human: '#f6b445', humanBg: '#2d2110', humanLine: '#6e5120', onHuman: '#1d1405',
+      ok: '#86cb98', okBg: '#14241a', bad: '#f26a55', badBg: '#301814', btn: '#efe3c8', onBtn: '#2a1e12',
+      // the studio: the amber needle, the cream meter face, brass hairlines, the ON AIR red, walnut for the side list
+      studio: { amber: '#f2a33a', onAmber: '#231703', cream: '#efe3c8', creamDeep: '#d6c49b', creamInk: '#2d2114', brass: '#b8935a', needle: '#c4620d', onair: '#ff5d48', side: '#38230f', side2: '#27180a' },
+      roles: { plan: '#8aaedb', crit: '#ee7866', test: '#72c2a2', exec: '#62bcc2', gate: '#b5c668', rev: '#dc94b9', integ: '#ada594', coord: '#e8decb', watch: '#d3ab6c', queue: '#ada594' },
+      ansi: ['#241c14', '#e5675d', '#86c48e', '#e0b765', '#78a6dd', '#c691bd', '#69bdb7', '#d5cab4',
+        '#5a4e3c', '#f08a80', '#a2d6a8', '#efcf8f', '#9bbff0', '#dcaedc', '#8bd3cf', '#f6efde'],
+      // the terminal's own look (F7, F10): warm coal off the panel, cream text, muted amber / red / green (text 14:1, colours 1-6 >= 6.7:1)
+      term: { background: '#1b150f', foreground: '#ece1ca', cursor: '#f2a33a', selection: 0.3,
+        ansi: ['#2d251b', '#e47e70', '#98c78f', '#e2b668', '#82aadb', '#cc96bd', '#72c0b6', '#d8ceb8',
+          '#8f836b', '#f09d90', '#b2d9a8', '#f1cd8e', '#a7c4ea', '#deb4d3', '#96d4cb', '#f6efde'] },
     },
     light: {
       name: 'Nightshift Light', scheme: 'light',
-      canvas: '#dfe1e4', panel: '#f6f6f7', raised: '#ffffff', raised2: '#e9eaec', line: '#d9dbde', line2: '#c2c5ca',
-      ink: '#16171a', ink2: '#45474c', ink3: '#5f6268', accent: '#2f6db0', cursor: '#16171a', selection: '#c9d9ec',
-      human: '#b46f00', humanBg: '#fbf0d8', humanLine: '#e0b866', onHuman: '#ffffff',
-      ok: '#17794d', okBg: '#e3f3ea', bad: '#c2362b', badBg: '#fbe9e7', btn: '#16171a', onBtn: '#f6f6f7',
-      roles: { plan: '#2368c7', crit: '#c2362b', test: '#12805a', exec: '#0b7f8a', gate: '#5f7d12', rev: '#b8457f', integ: '#566478', coord: '#2b2c30', watch: '#8a6420', queue: '#566478' },
-      ansi: ['#16171a', '#c2362b', '#2d7d46', '#946a00', '#2f6db0', '#9a4a9c', '#16808a', '#d4d5d8',
-        '#5f6268', '#d9534a', '#3b9a59', '#b07f00', '#4a86c6', '#b465b6', '#2a9aa4', '#f6f6f7'],
-      term: { background: '#fbf9f4', foreground: '#2a2926', cursor: '#2a2926', selection: 0.22,
-        ansi: ['#2a2926', '#b8372c', '#2c7440', '#8a6200', '#2a62a8', '#8f4392', '#126f78', '#6b675f',
-          '#55524b', '#c0392e', '#2a7c46', '#8f6600', '#2f6db5', '#9a4c9d', '#137a84', '#2a2926'] },
+      canvas: '#e4d7bb', panel: '#f5ecd8', raised: '#fdf8ec', raised2: '#ebdfc4', line: '#d9caa6', line2: '#bca97c', bg: '#faf3e3',
+      ink: '#2b1f14', ink2: '#54432e', ink3: '#68563d', accent: '#8f5200', cursor: '#2b1f14', selection: '#f1d79f',
+      human: '#8a4f00', humanBg: '#fbeccb', humanLine: '#d9a54a', onHuman: '#ffffff',
+      ok: '#17693f', okBg: '#dfeedd', bad: '#b02a1a', badBg: '#f8e0d8', btn: '#2b1f14', onBtn: '#f5ecd8',
+      studio: { amber: '#f2a33a', onAmber: '#231703', cream: '#f8efd8', creamDeep: '#e6d6b0', creamInk: '#2b1f14', brass: '#9a7430', needle: '#b4580a', onair: '#c4311f', side: '#e8dbbd', side2: '#dfd0ad' },
+      roles: { plan: '#1f5cb3', crit: '#b02a1a', test: '#0f6e4e', exec: '#0a6c76', gate: '#52690f', rev: '#a63b70', integ: '#4f5d70', coord: '#2b1f14', watch: '#80591a', queue: '#4f5d70' },
+      ansi: ['#2b1f14', '#b02a1a', '#2d7d46', '#946a00', '#2f6db0', '#9a4a9c', '#16808a', '#d8cdb5',
+        '#68563d', '#c8402f', '#3b9a59', '#b07f00', '#4a86c6', '#b465b6', '#2a9aa4', '#f8f1e0'],
+      term: { background: '#fbf4e2', foreground: '#2b2015', cursor: '#8f5200', selection: 0.22,
+        ansi: ['#2b2015', '#b0301f', '#2a703c', '#8a5d00', '#2a62a8', '#8f4392', '#126f78', '#6b6050',
+          '#574c3b', '#bc3a28', '#2a7c46', '#8f6000', '#2f6db5', '#9a4c9d', '#137a84', '#2b2015'] },
     },
   };
   // the focused pane takes the colour of its env (story 247): from the vendor marks in icons/; mono marks follow the theme accent
@@ -75,7 +78,7 @@
     const accent = L.accent !== 'env' ? L.accent : ENV_ACCENT[env] || T.accent;
     const [rp, rs] = RADIUS[L.radius];
     const v = {
-      '--canvas': T.canvas, '--bg': T.canvas, '--panel': T.panel, '--raised': T.raised, '--raised2': T.raised2, '--line': T.line, '--line2': T.line2,
+      '--canvas': T.canvas, '--bg': T.bg, '--panel': T.panel, '--raised': T.raised, '--raised2': T.raised2, '--line': T.line, '--line2': T.line2,
       '--ink': T.ink, '--ink2': T.ink2, '--ink3': T.ink3, '--accent': accent, '--cursor': T.cursor, '--sel': T.selection,
       '--human': T.human, '--human-bg': T.humanBg, '--human-line': T.humanLine, '--on-human': T.onHuman,
       '--ok': T.ok, '--ok-bg': T.okBg, '--bad': T.bad, '--bad-bg': T.badBg, '--btn': T.btn, '--on-btn': T.onBtn,
@@ -83,6 +86,7 @@
       '--radius-pane': rp + 'px', '--radius-sm': rs + 'px', '--r': rs + 'px', '--gap': L.gap + 'px',
       '--mono': FONTS[L.font], '--sans': SANS, '--fs': L.font_px + 'px',
     };
+    for (const [k, c] of Object.entries(T.studio)) v['--' + k.replace(/[A-Z]/g, (m) => '-' + m.toLowerCase())] = c;
     for (const [k, c] of Object.entries(T.roles)) v['--' + k] = c;
     T.ansi.forEach((c, i) => { v['--ansi-' + i] = c; });
     return v;

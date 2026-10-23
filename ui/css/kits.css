@@ -9,7 +9,7 @@
 .kg summary { list-style: none; display: flex; gap: 10px; align-items: center; padding: 10px 14px; cursor: pointer; }
 .kg summary::-webkit-details-marker { display: none; }
 .kg summary small { margin-left: auto; }
-.kg input { accent-color: var(--ink); margin: 0; }
+.kg input { accent-color: var(--amber); margin: 0; }
 .kg ul { padding: 0 14px 10px 38px; display: grid; gap: 2px; color: var(--ink2); font-size: 12.5px; }
 .kg.off summary { opacity: .55; cursor: default; }
 .kg.off summary b { font-weight: 500; }
@@ -26,11 +26,11 @@
 .scope:last-child { border-bottom: 0; }
 .scope b { font-weight: 600; display: block; }
 .scope .d { color: var(--ink3); font-size: 12.5px; }
-.scope input { accent-color: var(--ink); }
+.scope input { accent-color: var(--amber); }
 .scope .note { grid-column: 1 / -1; color: var(--ink2); font-size: 12.5px; }
 .hook { display: flex; gap: 12px; align-items: flex-start; padding: 11px 14px; border-bottom: 1px solid var(--line); cursor: pointer; }
 .hook:last-child { border-bottom: 0; }
-.hook input { margin-top: 3px; accent-color: var(--ink); }
+.hook input { margin-top: 3px; accent-color: var(--amber); }
 .hook > div { display: grid; gap: 4px; min-width: 0; flex: 1; }
 .hook code, .hook pre { font: 12px var(--mono); background: var(--bg); border: 1px solid var(--line); border-radius: 3px; padding: 4px 8px; white-space: pre-wrap; word-break: break-all; }
 .hook pre { max-height: 240px; overflow: auto; margin: 0; }

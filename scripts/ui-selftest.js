@@ -18,6 +18,7 @@ if (!/ALL PASSED/.test(log) || /^FAIL /m.test(log)) process.exit(1);
 // ---------- v4 (task 22): checks on the stylesheets and, when a browser is at hand, on the drawn window ----------
 // no screen keeps its own colour: hex colours live only in tokens.css (and the theme table of js/v4/theme.js);
 // the first-paint values of tokens.css are the theme table; panes, cards and fields take their corners from the radius tokens.
+const rgbOf = (hex) => { const n = parseInt(String(hex).slice(1), 16); return { r: n >> 16, g: (n >> 8) & 255, b: n & 255 }; };
 const css = (f) => fs.readFileSync(path.join(ui, 'css', f), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
 const out4 = [];
 const check = (name, ok, detail) => out4.push((ok ? 'PASS ' : 'FAIL ') + name + (ok ? '' : ' ' + JSON.stringify(detail)));
@@ -34,6 +35,10 @@ for (const [name, got] of [['dark', darkCss], ['light', lightCss]]) {
   for (const [k, v] of Object.entries(want)) if (/^#/.test(v) && k !== '--pane-bg' && got[k] !== v && !(k === '--accent' && got[k])) drift.push(name + ' ' + k + ' ' + got[k] + ' != ' + v);
 }
 check('tokens.css carries the theme table of theme.js (Dark and Light)', !!T && !drift.length, drift.slice(0, 6));
+// F10: the window ground carries a radial gradient (the lamp), made of tokens; both themes define the studio tokens
+check('F10: tokens.css gives the window a radial-gradient ground (--window-fx) and .app paints it', /--window-fx:[^;]*radial-gradient/.test(tok) && /\.app\s*\{[^}]*var\(--window-fx\)/.test(css('shell.css')), null);
+check('F10: both themes carry the studio tokens (amber, cream, brass, needle, onair)', ['--amber', '--cream', '--brass', '--needle', '--onair'].every((k) => darkCss[k] && lightCss[k]), [darkCss['--cream'], lightCss['--cream']]);
+check('F10: the dark canvas is warm (R > B) and the light canvas is cream', ((c) => c.r > c.b)(rgbOf(darkCss['--canvas'])) && ((c) => c.r > c.b && c.r > 200)(rgbOf(lightCss['--canvas'])), [darkCss['--canvas'], lightCss['--canvas']]);
 const px = (v) => parseFloat(String(v || '').replace('var(--radius-pane)', darkCss['--radius-pane']).replace('var(--radius-sm)', darkCss['--radius-sm']).replace('var(--r)', darkCss['--radius-sm']));
 const all = sheets.map(css).join('\n');
 const radiusOf = (sel) => { const re = new RegExp('(^|[},\\s])' + sel.replace(/[.[\]=]/g, '\\$&') + '\\s*[,{][^}]*?border-radius:\\s*([^;}]+)', 'gm'); let m, last = null; while ((m = re.exec(all))) last = m[2].split(/\s/)[0]; return last; };
@@ -68,6 +73,8 @@ if (process.env.NS_PLAYWRIGHT) (async () => {
   await f8(b, 'http://127.0.0.1:' + srv.address().port, out);
   await b.close(); b = await launch();       // F9 in a fresh browser too
   await f9(b, 'http://127.0.0.1:' + srv.address().port, out);
+  await b.close(); b = await launch();       // F10 in a fresh browser too
+  await f10(b, 'http://127.0.0.1:' + srv.address().port, out);
   process.stdout.write(out.join('\n') + '\n');
   if (out.some((l) => l.startsWith('FAIL'))) process.exitCode = 1;
   await b.close(); srv.close();
@@ -312,4 +319,44 @@ async function f9(b, base, out) {
   const x1 = await r2.evaluate(() => [...document.querySelectorAll('.cfeed .stp.s-bad')].map((e) => !e.querySelector('.stp-b').hidden));
   ok('F9 3: a failed command that is not the last event is folded', x1.length >= 1 && x1.every((v) => !v), x1);
   await r2.close();
+}
+
+// F10 - the night radio studio: the ground, the tally lamps, the VU meters, the contrast of the drawn text (dev-mock)
+async function f10(b, base, out) {
+  const ok = (name, cond, detail) => out.push((cond ? 'PASS ' : 'FAIL ') + name + (cond ? '' : ' ' + JSON.stringify(detail)));
+  const mix = (css) => { const m = String(css).match(/[\d.]+/g) || []; return m.slice(0, 3).map(Number); };
+  const lum = (c) => c.map((v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); }).reduce((a, v, i) => a + v * [0.2126, 0.7152, 0.0722][i], 0);
+  const ratio = (a, c) => { const x = lum(a), y = lum(c); return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05); };
+  for (const scheme of ['dark', 'light']) {
+    const p = await b.newPage({ viewport: { width: 1440, height: 900 }, colorScheme: scheme });
+    await p.goto(base + '/index.html?lang=ru&platform=mac');
+    await p.waitForTimeout(1600);
+    const R = await p.evaluate(() => {
+      const cs = (el) => getComputedStyle(el), q = (s) => document.querySelector(s);
+      const bgOf = (el) => { for (let e = el; e; e = e.parentElement) { const c = cs(e).backgroundColor; if (c && !/rgba\(.*, 0\)|transparent/.test(c)) return c; } return cs(document.body).backgroundColor; };
+      const feed = q('.cfeed'), sec = q('.msg-h small') || q('.sysline'), pane = q('.pane');
+      const lampOn = q('.tasks a .lamp.on-air'), lampCall = q('.tasks a .lamp.calling');
+      const vu = q('.bm-lim svg.vu');
+      return { appBg: cs(q('.app')).backgroundImage, canvas: cs(document.documentElement).getPropertyValue('--canvas').trim(), theme: document.documentElement.getAttribute('data-theme'),
+        text: cs(feed).color, textBg: bgOf(feed), sec: sec && cs(sec).color, secBg: sec && bgOf(sec), paneBg: pane && cs(pane).backgroundColor,
+        lampOn: !!lampOn, lampCall: !!lampCall, callAnim: lampCall && cs(lampCall).animationName, onAirBg: lampOn && cs(lampOn).backgroundImage,
+        vu: !!vu, vuN: vu && vu.style.getPropertyValue('--n'), vuText: vu && vu.parentElement.textContent, needle: vu && !!vu.querySelector('.vu-needle'), arc: vu && !!vu.querySelector('.vu-arc'),
+        gauge: !!q('.bm-lim .gauge'), stations: document.querySelectorAll('.tc-steps li i').length };
+    });
+    ok('F10 1 ' + scheme + ': the window ground is a radial-gradient (the lamp) over a ' + (scheme === 'dark' ? 'warm' : 'cream') + ' canvas', /radial-gradient/.test(R.appBg) && R.theme === scheme, R);
+    const canvasRgb = (() => { const n = parseInt(R.canvas.slice(1), 16); return [n >> 16, (n >> 8) & 255, n & 255]; })();
+    ok('F10 1 ' + scheme + ': the canvas is ' + (scheme === 'dark' ? 'warm (R > B)' : 'cream (light, R > B)'), canvasRgb[0] > canvasRgb[2] && (scheme === 'dark' || canvasRgb[0] > 200), canvasRgb);
+    ok('F10 2 ' + scheme + ': the chat list has an on-air lamp (running) and an amber lamp for "Ждёт тебя" that pulses', R.lampOn && R.lampCall && R.callAnim && R.callAnim !== 'none' && /radial-gradient/.test(R.onAirBg), R);
+    ok('F10 3 ' + scheme + ': the limits in the status bar are VU meters (svg: needle, arc), the numbers stay, no flat gauge', R.vu && R.needle && R.arc && !R.gauge && /\d+%/.test(R.vuText) && +R.vuN >= 0 && +R.vuN <= 1, R);
+    ok('F10 4 ' + scheme + ': message text >= 7:1 and the quiet line >= 4.5:1 against what is drawn behind them', ratio(mix(R.text), mix(R.textBg)) >= 7 && (!R.sec || ratio(mix(R.sec), mix(R.secBg)) >= 4.5), { text: ratio(mix(R.text), mix(R.textBg)), sec: R.sec && ratio(mix(R.sec), mix(R.secBg)), R });
+    ok('F10 3 ' + scheme + ': the stages of the task card are one signal line of stations', R.stations >= 7, R.stations);
+    await p.close();
+  }
+  // 2: no pulse under prefers-reduced-motion
+  const q = await b.newPage({ viewport: { width: 1440, height: 900 }, reducedMotion: 'reduce' });
+  await q.goto(base + '/index.html?lang=ru&platform=mac');
+  await q.waitForTimeout(1600);
+  const rm = await q.evaluate(() => { const l = document.querySelector('.tasks a .lamp.calling'), p = document.querySelector('.pane-lamp.calling'); return { lamp: l && getComputedStyle(l).animationName, pane: p && getComputedStyle(p).animationName, t: getComputedStyle(document.documentElement).getPropertyValue('--t').trim() }; });
+  ok('F10 2: with prefers-reduced-motion the amber lamp does not pulse', rm.lamp === 'none' && (!rm.pane || rm.pane === 'none'), rm);
+  await q.close();
 }

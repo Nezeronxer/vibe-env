@@ -1,28 +1,39 @@
 /* v4 frame: the canvas holds rounded panels with a gap like a tiling WM - an optional chat list (⌘B), the workspace or a full
    screen, and the bar along the bottom. The canvas shows between them; nothing is drawn on it. */
-.app { display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) auto; gap: var(--gap); padding: var(--gap); height: 100vh; background: var(--canvas); }
+.app { display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) auto; gap: var(--gap); padding: var(--gap); height: 100vh; background: var(--window-fx), var(--canvas); }
 body.side-on:not(.is-empty) .app { grid-template-columns: 240px minmax(0, 1fr); }
 .side { display: none; }
 body.side-on:not(.is-empty) .side { display: flex; }
 body.is-empty .app { padding: 0; gap: 0; }
 body.is-empty .bar { display: none; }
 
-.side { background: var(--pane-bg); border: 1px solid var(--line); border-radius: var(--radius-pane); flex-direction: column; padding: 12px 8px; gap: 8px; overflow: auto; min-height: 0; }
+.side { background: var(--side-fx); border: 1px solid var(--line); border-radius: var(--radius-pane); flex-direction: column; padding: 12px 8px; gap: 8px; overflow: auto; min-height: 0;
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--cream) 8%, transparent), var(--shadow-sm); }
 .side-h { display: flex; align-items: center; gap: 8px; padding: 2px 8px; font-size: 14px; }
 .side-h .ic { width: 16px; height: 16px; }
 .side-h small { margin-left: auto; font-family: var(--mono); }
 .side-h .icw img, .side-h .icw svg { width: 16px; height: 16px; }
 .newtask { justify-content: flex-start; }
 .pgroup { margin-top: 6px; }
-.pgroup h3 { font-size: 12px; color: var(--ink3); font-weight: 600; padding: 4px 8px; }
-.tasks a { display: flex; align-items: flex-start; gap: 8px; padding: 6px 8px; border-radius: var(--radius-sm); color: var(--ink2); }
-.tasks a:hover { background: var(--raised); color: var(--ink); }
-.tasks a.on { background: var(--raised2); color: var(--ink); }
-.tasks a .ti { margin-top: 3px; }
+.pgroup h3 { font-size: 12px; color: var(--ink3); font-weight: 600; padding: 4px 8px; display: flex; align-items: center; gap: 8px; }
+.pgroup h3::after { content: ""; flex: 1; height: 1px; background: linear-gradient(90deg, var(--line2), transparent); }
+.tasks a { display: flex; align-items: flex-start; gap: 8px; padding: 6px 8px; border-radius: var(--radius-sm); color: var(--ink2); transition: background var(--t) ease-out; }
+.tasks a:hover { background: color-mix(in srgb, var(--cream) 7%, transparent); color: var(--ink); }
+.tasks a.on { background: linear-gradient(90deg, color-mix(in srgb, var(--amber) 16%, var(--raised2)), var(--raised2) 85%); color: var(--ink); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--brass) 40%, transparent); }
+/* the tally lamp of a chat: red = on air, amber blinking = calls you, green = done; a ring = nothing is happening */
+.lamp { flex: none; width: 10px; height: 10px; margin: 5px 3px 0 0; border-radius: 50%; border: 1.5px solid var(--ink3); background: transparent; position: relative; }
+.lamp.on-air { border-color: transparent; background: radial-gradient(circle at 35% 30%, color-mix(in srgb, var(--onair) 55%, white), var(--onair) 55%); box-shadow: 0 0 0 1px color-mix(in srgb, var(--onair) 45%, transparent), 0 0 9px 1px var(--glow-onair); }
+.lamp.calling { border-color: transparent; background: radial-gradient(circle at 35% 30%, color-mix(in srgb, var(--human) 55%, white), var(--human) 58%); box-shadow: 0 0 0 1px color-mix(in srgb, var(--human) 45%, transparent), 0 0 9px 1px color-mix(in srgb, var(--human) 60%, transparent); animation: lamp-ring 1.5s ease-in-out infinite; }
+.lamp.done { border-color: transparent; background: radial-gradient(circle at 35% 30%, color-mix(in srgb, var(--ok) 55%, white), var(--ok) 60%); box-shadow: 0 0 6px color-mix(in srgb, var(--ok) 40%, transparent); }
+.lamp.failed { border-color: var(--bad); }
+.lamp.failed::after { content: ""; position: absolute; left: 1px; right: 1px; top: 50%; height: 1.5px; margin-top: -.75px; background: var(--bad); border-radius: 1px; }
+.lamp.stamp { border-color: var(--ink3); border-style: dashed; }
+@keyframes lamp-ring { 0%, 100% { opacity: .5; box-shadow: 0 0 0 1px color-mix(in srgb, var(--human) 35%, transparent), 0 0 3px 0 color-mix(in srgb, var(--human) 40%, transparent); } 50% { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .lamp.calling { animation: none; } }
 .tasks .tx { flex: 1; min-width: 0; display: grid; }
 .tasks .tx span, .tasks .tx small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ti { width: 13px; height: 13px; flex: none; }
-.ti.run { color: var(--exec); } .ti.done { color: var(--ok); } .ti.fail { color: var(--bad); } .ti.queue, .ti.talk { color: var(--ink3); }
+.ti.run { color: var(--onair); } .ti.done { color: var(--ok); } .ti.fail { color: var(--bad); } .ti.queue, .ti.talk { color: var(--ink3); }
 .side-none { padding: 8px; color: var(--ink3); }
 .archive > summary { list-style: none; cursor: pointer; color: var(--ink3); padding: 6px 8px; border-radius: var(--radius-sm); }
 .archive > summary::-webkit-details-marker { display: none; }
@@ -35,7 +46,7 @@ body.is-empty .bar { display: none; }
 .screen > .convo, .screen > .ws, .screen > .settings, .screen > .factory { flex: 1; }
 .screen-scroll { overflow: auto; }
 /* a full screen (settings, factory, configs) is one panel over the workspace area; Esc or "←" goes back */
-body[data-layout="full"] .screen { background: var(--pane-bg); border: 1px solid var(--line); border-radius: var(--radius-pane); }
+body[data-layout="full"] .screen { background: var(--grain), var(--pane-fx), var(--pane-bg); box-shadow: var(--shadow-sm), inset 0 1px 0 color-mix(in srgb, var(--cream) 8%, transparent); border: 1px solid var(--line); border-radius: var(--radius-pane); }
 body[data-layout="bare"] .screen { background: var(--canvas); }
 .back4 { align-self: flex-start; display: inline-flex; gap: 8px; align-items: center; height: 30px; margin: 6px 8px 0; padding: 0 10px; border: 0; background: none;
   color: var(--ink3); font: 12px var(--mono); border-radius: var(--radius-sm); transition: color var(--t) ease-out; }
@@ -44,7 +55,8 @@ body[data-layout="bare"] .screen { background: var(--canvas); }
 
 /* the bar (story 296): modules on one rounded strip, monospace, quiet; a selected module gets the 1px accent line under its label */
 .bar { grid-column: 1 / -1; display: flex; align-items: center; justify-content: space-between; gap: 16px; height: 30px; padding: 0 6px;
-  background: var(--pane-bg); border: 1px solid var(--line); border-radius: var(--radius-pane); font: 12px var(--mono); color: var(--ink2); min-width: 0; }
+  background: linear-gradient(180deg, color-mix(in srgb, var(--cream) 5%, var(--panel)), var(--panel)); border: 1px solid var(--line); border-radius: var(--radius-pane); font: 12px var(--mono); color: var(--ink2); min-width: 0;
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--cream) 7%, transparent); }
 .bar-l, .bar-r { display: flex; align-items: center; gap: 4px; min-width: 0; }
 .bar-l { overflow: hidden; }
 .mod { display: flex; align-items: center; min-width: 0; }
@@ -62,10 +74,20 @@ body[data-layout="bare"] .screen { background: var(--canvas); }
 .bm-t .ic { width: 12px; height: 12px; color: var(--ink3); }
 .mute { color: var(--ink3); }
 .bm-lim { display: inline-flex; align-items: center; gap: 6px; padding: 0 8px; font-variant-numeric: tabular-nums; white-space: nowrap; }
-.gauge { width: 34px; height: 4px; border-radius: 2px; background: var(--line2); overflow: hidden; display: inline-block; }
-.gauge i { display: block; height: 100%; width: var(--w); background: var(--ink3); border-radius: 2px; }
-.bm-lim.warn .gauge i { background: var(--ink); }
-.bm-lim.exhausted { color: var(--bad); } .bm-lim.exhausted .gauge i { background: var(--bad); }
+/* a limit as a VU meter: cream face, ticks, a red zone at the end, the needle swings to the used share (--n is 0..1) */
+.vu { width: 38px; height: 22px; flex: none; display: block; overflow: visible; }
+.vu-s0 { stop-color: var(--cream); } .vu-s1 { stop-color: var(--cream-deep); }
+.vu-face { fill: var(--cream); stroke: color-mix(in srgb, var(--brass) 70%, var(--cream-ink)); stroke-width: 1; }
+.vu-glow { fill: var(--cream-deep); }
+.vu-tick { stroke: var(--cream-ink); stroke-width: 1; opacity: .55; }
+.vu-zone { fill: none; stroke: var(--bad); stroke-width: 1.7; opacity: .85; }
+.vu-arc { fill: none; stroke: var(--needle); stroke-width: 1.7; stroke-linecap: round; stroke-dasharray: calc(var(--n, 0) * 100) 100; opacity: .85; }
+.vu-needle { transform-box: view-box; transform-origin: 19px 19px; transform: rotate(calc(-52deg + var(--n, 0) * 104deg)); transition: transform .6s var(--ease); }
+.vu-needle line { stroke: var(--needle); stroke-width: 1.4; stroke-linecap: round; }
+.vu-pivot { fill: var(--cream-ink); }
+.bm-lim.warn .vu-face { stroke: var(--needle); }
+.bm-lim.exhausted { color: var(--bad); }
+@media (prefers-reduced-motion: reduce) { .vu-needle { transition: none; } }
 .barmenu { position: fixed; left: var(--x); bottom: var(--yb); min-width: 240px; }
 .barmenu button.on span { box-shadow: 0 1px 0 var(--accent); }
 .barmenu .ic, .barmenu img { width: 14px; height: 14px; }
@@ -73,7 +95,7 @@ body[data-layout="bare"] .screen { background: var(--canvas); }
 .barmenu .bn { font: 600 11px var(--mono); color: var(--on-human); background: var(--human); border-radius: 3px; padding: 0 4px; }
 body[data-preset="minimal"] .mod-branch, body[data-preset="minimal"] .mod-clock { display: none; }
 
-.toast { position: fixed; left: 50%; bottom: 52px; transform: translateX(-50%); z-index: 50; background: var(--btn); color: var(--on-btn); padding: 8px 14px; border-radius: var(--radius-sm); max-width: 60ch; box-shadow: var(--shadow); }
+.toast { border: 1px solid color-mix(in srgb, var(--btn) 60%, var(--brass)); position: fixed; left: 50%; bottom: 52px; transform: translateX(-50%); z-index: 50; background: var(--btn); color: var(--on-btn); padding: 8px 14px; border-radius: var(--radius-sm); max-width: 60ch; box-shadow: var(--shadow); }
 .toast.bad { background: var(--bad); color: var(--knob); }
 .placeholder { margin: auto; max-width: 46ch; padding: 24px; color: var(--ink2); text-align: center; }
 .placeholder h2 { color: var(--ink); font-size: 18px; margin-bottom: 6px; }
@@ -83,9 +105,9 @@ body[data-preset="minimal"] .mod-branch, body[data-preset="minimal"] .mod-clock 
   .mod-branch, .mod-clock { display: none; }
 }
 @media (max-width: 599px) { .mod-model, .bm-lim + .bm-lim, .bm .bn { display: none; } .bar { gap: 4px; } }
-dialog { background: var(--raised); color: var(--ink); border: 1px solid var(--line2); border-radius: var(--radius-pane); padding: 18px 20px; max-width: 460px; box-shadow: var(--shadow); }
+dialog { background: var(--card-fx); color: var(--ink); border: 1px solid var(--line2); border-radius: var(--radius-pane); padding: 18px 20px; max-width: 460px; box-shadow: var(--shadow); }
 dialog::backdrop { background: var(--scrim); }
 dialog h2 { font-size: 15px; margin-bottom: 6px; }
 dialog p { color: var(--ink2); margin-bottom: 14px; }
 .dlg-acts { display: flex; gap: 8px; justify-content: flex-end; }
-body.dragging::after { content: ""; position: fixed; inset: 6px; border: 2px dashed var(--ink3); border-radius: var(--radius-pane); pointer-events: none; z-index: 40; }
+body.dragging::after { content: ""; position: fixed; inset: 6px; border: 2px dashed var(--amber); border-radius: var(--radius-pane); pointer-events: none; z-index: 40; }

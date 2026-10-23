@@ -6,7 +6,7 @@
 .sw-chatcol .comp-row .envpick, .sw-chatcol .comp-row .vsep, .sw-chatcol .comp-row .tg, .sw-chatcol .comp-row #tune { display: none; }
 .sw-to { display: inline-flex; align-items: center; gap: 8px; color: var(--ink3); font-size: 12px; }
 .sw-to select { height: 26px; color: var(--ink); }
-.sw-panel { border-left: 1px solid var(--line); background: var(--panel); overflow: auto; min-width: 0; padding: 16px 18px 24px; display: flex; flex-direction: column; gap: 14px; }
+.sw-panel { border-left: 1px solid var(--line); background: var(--card-fx); overflow: auto; min-width: 0; padding: 16px 18px 24px; display: flex; flex-direction: column; gap: 14px; }
 .sw-panel.collapsed { padding: 10px 6px; align-items: center; gap: 10px; overflow: hidden; }
 .sw-panel .sw-mini { writing-mode: vertical-rl; transform: rotate(180deg); color: var(--ink2); font-size: 12.5px; white-space: nowrap; }
 .sw-ph { display: flex; gap: 10px; align-items: flex-start; justify-content: space-between; }
@@ -25,7 +25,7 @@
 .sw-race .track { margin-right: 24px; }
 .sw-tabs { display: flex; gap: 2px; border-bottom: 1px solid var(--line); }
 .sw-tabs button { background: none; border: 0; border-bottom: 2px solid transparent; padding: 8px 12px; color: var(--ink2); }
-.sw-tabs button.on { color: var(--ink); font-weight: 600; border-bottom-color: var(--ink); }
+.sw-tabs button.on { color: var(--ink); font-weight: 600; border-bottom-color: var(--amber); }
 .sw-tabs small { margin-left: 6px; }
 .variants { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 10px; }
 .var { background: var(--bg); border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 12px; display: flex; flex-direction: column; gap: 10px; min-width: 0; }

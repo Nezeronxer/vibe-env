@@ -3,7 +3,7 @@
 .nbar .ic { width: 15px; height: 15px; }
 .nbar p { flex: 1; min-width: 0; }
 .nbar code { font: 12px var(--mono); background: var(--bg); padding: 0 4px; border-radius: 3px; }
-.sum { border-bottom: 1px solid var(--line); background: var(--panel); padding: 10px 16px 12px; }
+.sum { border-bottom: 1px solid var(--line); background: var(--card-fx); padding: 10px 16px 12px; }
 .sum-h { display: flex; gap: 10px; align-items: baseline; margin-bottom: 6px; }
 .sum-h b { font-size: 13.5px; font-weight: 650; }
 .sum-rows { display: grid; gap: 0; max-height: 36vh; overflow: auto; }

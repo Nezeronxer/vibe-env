@@ -13,7 +13,9 @@
   const MAX_FILES = 200, MAX_LINES = 2000;
 
   function statusBadge(task) {
-    return h('span', { class: 'st ' + (L.info(task.status).warn ? 'st-bad' : KIND_CLASS[L.kindOf(task)]) }, ic('i-' + L.iconOf(task)), t(L.labelKey(task)));
+    const stamped = task.status === 'cancelled' || task.status === 'reverted';   // an undone task is stamped, never dropped
+    const hold = L.kindOf(task) === 'run' && !L.info(task.status).live;            // paused on a limit, blocked merge: not on air
+    return h('span', { class: 'st ' + (stamped ? 'st-stamp' : hold ? 'st-hold' : L.info(task.status).warn ? 'st-bad' : KIND_CLASS[L.kindOf(task)]) }, ic('i-' + L.iconOf(task)), t(L.labelKey(task)));
   }
   function elapsed(task) {
     const start = task.started_at && Date.parse(task.started_at);

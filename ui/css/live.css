@@ -55,7 +55,7 @@
 .md pre { margin: 6px 0; font: 12px/1.5 var(--mono); background: var(--bg); border: 1px solid var(--line); border-radius: var(--r); padding: 8px 10px; overflow-x: auto; white-space: pre; }
 .md pre code { background: none; padding: 0; }
 .md a.md-a { color: var(--plan); text-decoration: underline; text-underline-offset: 3px; }
-.md blockquote { border-left: 2px solid var(--line2); padding-left: 10px; color: var(--ink2); margin: 4px 0; }
+.md blockquote { border-left: 1px solid var(--brass); padding-left: 10px; color: var(--ink2); margin: 4px 0; }
 .md hr { border: 0; border-top: 1px solid var(--line); margin: 8px 0; }
 
 /* the live line at the bottom of the feed and the plan under it */

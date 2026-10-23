@@ -18,8 +18,8 @@
 .seg-b.proj { background: transparent; border: 1px dashed var(--line2); color: var(--ink3); font-weight: 500; }
 .seg-b.fail { background: color-mix(in srgb, var(--bad) 35%, var(--panel)); border-left-color: var(--bad); }
 .lane-now-wrap { position: absolute; left: calc(var(--lab) + 16px); right: 40px; top: 22px; bottom: 0; pointer-events: none; }
-.now { position: absolute; left: var(--l); top: -4px; bottom: 0; width: 2px; background: var(--ink); }
-.now span { position: absolute; top: -17px; left: 50%; transform: translateX(-50%); font-size: 11px; font-weight: 700; background: var(--ink); color: var(--bg); padding: 0 5px; border-radius: 2px; white-space: nowrap; }
+.now { position: absolute; left: var(--l); top: -4px; bottom: 0; width: 2px; background: var(--amber); box-shadow: 0 0 8px var(--glow); }
+.now span { position: absolute; top: -17px; left: 50%; transform: translateX(-50%); font-size: 11px; font-weight: 700; background: var(--amber); color: var(--on-amber); padding: 0 5px; border-radius: 2px; white-space: nowrap; }
 .lanes.flush { padding: 0; --lab: 170px; }
 .lanes.flush .lane-now-wrap { left: var(--lab); right: 24px; }
 .legend { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 12px; color: var(--ink2); margin: 14px 0 20px; }

@@ -162,6 +162,24 @@
     draw();
     return { update: (evt) => { if (['route', 'project', 'focus', 'chats'].includes(evt)) draw(); } };
   } });
+  // a limit as a VU meter: a cream face, an arc, a red zone at the end and a needle; --n (0..1) is the used share, the numbers beside it stay
+  let vuSeq = 0;
+  function vuMeter(pct) {
+    const SV = 'http://www.w3.org/2000/svg', id = 'vug' + (vuSeq++);
+    const e = (tag, a, kids) => { const x = document.createElementNS(SV, tag); for (const k in a) x.setAttribute(k, a[k]); for (const c of kids || []) x.append(c); return x; };
+    const ticks = [-52, -26, 0, 26, 52].map((deg) => { const r = deg * Math.PI / 180, sx = Math.sin(r), cx = Math.cos(r);
+      return e('line', { class: 'vu-tick', x1: (19 + 11 * sx).toFixed(2), y1: (19 - 11 * cx).toFixed(2), x2: (19 + 13.2 * sx).toFixed(2), y2: (19 - 13.2 * cx).toFixed(2) }); });
+    const svg = e('svg', { class: 'vu', viewBox: '0 0 38 22', 'aria-hidden': 'true', focusable: 'false' }, [
+      e('defs', {}, [e('linearGradient', { id, x1: '0', y1: '0', x2: '0', y2: '1' }, [e('stop', { offset: '0', class: 'vu-s0' }), e('stop', { offset: '1', class: 'vu-s1' })])]),
+      e('rect', { class: 'vu-face', x: '.5', y: '.5', width: '37', height: '21', rx: '3.5', fill: 'url(#' + id + ')' }),
+      e('path', { class: 'vu-zone', d: 'M26.77 6.18A15 15 0 0 1 30.82 9.76' }),
+      e('path', { class: 'vu-arc', d: 'M7.18 9.76A15 15 0 0 1 30.82 9.76', pathLength: '100' }),
+      ...ticks,
+      e('g', { class: 'vu-needle' }, [e('line', { x1: '19', y1: '19', x2: '19', y2: '6.2' })]),
+      e('circle', { class: 'vu-pivot', cx: '19', cy: '19', r: '1.8' })]);
+    svg.style.setProperty('--n', String(Math.max(0, Math.min(1, pct / 100))));
+    return svg;
+  }
   R.extend('bar', { id: 'limits', side: 'right', order: 10, render(el) {
     const draw = () => {
       const e = envNow();
@@ -173,7 +191,7 @@
       for (const w of L.pickWindows(v.windows, 2).shown) {
         const lvl = L.limitLevel(w, warnAt), pct = w.exhausted ? 100 : Math.round(w.used_pct || 0);
         el.append(h('span', { class: 'bm-lim ' + lvl, title: L.formatLimit(w, Date.now(), t) }, h('span', { class: 'mute', text: L.windowName(w, t) }),
-          NS.setVars(h('span', { class: 'gauge' }, h('i')), { '--w': pct + '%' }), h('span', { text: pct + '%' })));
+          vuMeter(pct), h('span', { text: pct + '%' })));
       }
     };
     draw();
@@ -211,14 +229,24 @@
     if (tk.status === 'done') return tk.outcome && tk.outcome.commit ? t('line.merged') : (tk.outcome && tk.outcome.summary) || t(L.labelKey(tk));
     return t(L.labelKey(tk));
   }
+  // the tally lamp of a row: on air (red) = an agent works, calls (amber, blinks) = waits for you, done (green), a ring = idle, a dashed ring = stamped
+  function lampOf(item) {
+    const tk = item.task, live = tk && L.info(tk.status).live;
+    if (tk && (tk.status === 'cancelled' || tk.status === 'reverted')) return 'stamp';
+    if (item.kind === 'wait') return 'calling';
+    if (item.kind === 'run') return live ? 'on-air' : 'idle';
+    if (item.kind === 'done') return 'done';
+    if (item.kind === 'fail') return 'failed';
+    return 'idle';
+  }
   function rowFor(item, active) {
     const c = item.chat, line = chatLine(item), icon = iconName(item);
-    const sig = [c.title, line, icon, item.kind, active].join('\u0001');
+    const sig = [c.title, line, icon, item.kind, active, item.task && item.task.status].join('\u0001');
     const hit = rowCache.get(c.id);
     if (hit && hit.sig === sig) return hit.li;
     const a = h('a', { href: '#c-' + c.id, class: active ? 'on' : '', 'aria-current': active ? 'page' : null,
         onclick: (ev) => { ev.preventDefault(); nav('env', { env: c.env, chat: c.id }); } },
-      ic('i-' + icon, 'ti ' + item.kind),
+      h('span', { class: 'lamp ' + lampOf(item), 'aria-hidden': 'true' }),
       h('div', { class: 'tx' }, h('span', { text: c.title || t('chat.untitled') }), h('small', { text: line }),
         item.task ? h('span', { class: 'sr-only', text: t(L.labelKey(item.task)) }) : null));
     const li = h('li', {}, a);

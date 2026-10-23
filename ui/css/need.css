@@ -1,19 +1,24 @@
-/* Amber (--human) lives ONLY in this file: it means "you are needed" (G19.1, G15). Every other file uses the other tokens.
+/* The calling amber (--human) lives ONLY in this file: it means "you are needed" (G19.1, G15); it is a lamp that blinks. The steady needle amber (--amber) is the app's one live accent elsewhere.
    Parts of the one component: status word, step on hold, the block with its buttons, counters, list marker. */
 .ic.amber { color: var(--human); }
-.btn.human { background: var(--human); color: var(--on-human); border-color: var(--human); font-weight: 600; }
-.st-wait { background: var(--human-bg); color: var(--human); }
+.btn.human { background: var(--amber-fx); color: var(--on-human); border-color: var(--human); font-weight: 600; box-shadow: 0 0 14px color-mix(in srgb, var(--human) 28%, transparent), inset 0 1px 0 color-mix(in srgb, white 40%, transparent); }
+.btn.human:hover { filter: brightness(1.06); background: var(--amber-fx); }
+.st-wait { background: var(--human-bg); color: var(--human); box-shadow: inset 0 0 0 1px var(--human-line); }
+.st-wait .ic { animation: lamp-ring 1.5s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) { .st-wait .ic { animation: none; } }
 .badge-n, .env-b .bn { min-width: 16px; height: 16px; line-height: 16px; padding: 0 4px; text-align: center; border-radius: 3px; background: var(--human); color: var(--on-human); font-size: 10.5px; font-weight: 700; }
 .env-b .bn { position: absolute; top: 3px; right: 6px; }
 .ti.wait { color: var(--human); }
-.tc-steps .w i { background: var(--human); }
+.tc-steps .w i::after { background: var(--human); border-color: var(--human); box-shadow: 0 0 8px 1px color-mix(in srgb, var(--human) 55%, transparent); animation: station-w 1.5s ease-in-out infinite; }
+@keyframes station-w { 50% { box-shadow: 0 0 2px 0 color-mix(in srgb, var(--human) 40%, transparent); } }
+@media (prefers-reduced-motion: reduce) { .tc-steps .w i::after { animation: none; } }
 .tc-steps .w span { color: var(--human); font-weight: 600; }
-.tc-need { margin-top: 12px; background: var(--human-bg); border-left: 3px solid var(--human); border-radius: 0 var(--r) var(--r) 0; padding: 10px 12px; }
+.tc-need { margin-top: 12px; background: linear-gradient(90deg, color-mix(in srgb, var(--human) 20%, var(--human-bg)), var(--human-bg) 55%); border: 1px solid var(--human-line); border-radius: var(--r); padding: 10px 12px; }
 .tc-need-h b { color: var(--human); display: inline-flex; gap: 5px; align-items: center; }
 .tc-need .ic { color: inherit; }
 
 /* ---- task 15: the same meaning on the new screens - "нужен ты" (amber only here) ---- */
-.seg-b.wait { background: var(--human-bg); border: 1px solid var(--human); border-left: 3px solid var(--human); color: var(--human); }
+.seg-b.wait { background: var(--human-bg); border: 1px solid var(--human); color: var(--human); }
 .lane-n small.need { color: var(--human); font-weight: 600; }
 .feed li.prob.warn { background: var(--human-bg); }
 .prog i.w { background: var(--human); }

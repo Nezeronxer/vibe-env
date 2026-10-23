@@ -582,13 +582,21 @@ eq('theme: Nightshift Dark - near-black canvas (not #000), panes one step lighte
   [TV['--canvas'] !== '#000000' && TV['--canvas'] !== TV['--panel'], TV['--accent'], TV['--radius-pane'], TV['--radius-sm'], TV['--gap']], [true, '#d97757', '12px', '8px', '6px']);
 eq('theme: 16 ANSI colours, cursor and selection in the variables', [Object.keys(TV).filter((k) => /^--ansi-\d+$/.test(k)).length, !!TV['--cursor'], !!TV['--sel']], [16, true, true]);
 eq('theme: the person\'s accent, radius "round", gap and opacity win', ((v) => [v['--accent'], v['--radius-pane'], v['--gap'], v['--pane-bg']])(NSTheme.vars('light', { accent: '#2f6db0', radius: 'round', gap: 10, opacity: 90 }, 'claude')),
-  ['#2f6db0', '18px', '10px', 'rgba(246, 246, 247, 0.9)']);
+  ['#2f6db0', '18px', '10px', 'rgba(245, 236, 216, 0.9)']);
 const XT = NSTheme.xterm('dark', {});
 eq('theme: xterm gets the terminal table (warm ground off the panel, soft text, 16 colours by name)', [XT.background, XT.foreground, XT.brightWhite, Object.keys(XT).length, XT.background !== NSTheme.THEMES.dark.panel], [NSTheme.THEMES.dark.term.background, NSTheme.THEMES.dark.term.foreground, NSTheme.THEMES.dark.term.ansi[15], 21, true]);
 // F7: contrast of the default terminal palette, WCAG: text >= 7:1, colours 1-6 >= 4.5:1 to the ground, both themes
 const lumOf = (hex) => { const n = parseInt(hex.slice(1), 16); return [n >> 16, (n >> 8) & 255, n & 255].map((v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); }).reduce((a, v, i) => a + v * [0.2126, 0.7152, 0.0722][i], 0); };
 const ratio = (a, b) => { const x = lumOf(a), y = lumOf(b); return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05); };
 for (const nm of ['dark', 'light']) { const X = NSTheme.THEMES[nm].term; eq('F7 terminal palette ' + nm + ': text >= 7:1, colours 1-6 >= 4.5:1', [ratio(X.foreground, X.background) >= 7, X.ansi.slice(1, 7).every((c) => ratio(c, X.background) >= 4.5)], [true, true]); }
+// F10: the studio look - text >= 7:1 and quiet text >= 4.5:1 on every surface of both themes; the dark ground is warm, the light one cream
+for (const nm of ['dark', 'light']) {
+  const T = NSTheme.THEMES[nm], grounds = [T.canvas, T.panel, T.raised, T.raised2];
+  eq('F10 ' + nm + ': ink >= 7:1 and ink2/ink3 >= 4.5:1 on canvas, panel, raised, raised2', [grounds.every((g) => ratio(T.ink, g) >= 7), grounds.every((g) => ratio(T.ink2, g) >= 4.5 && ratio(T.ink3, g) >= 4.5)], [true, true]);
+  eq('F10 ' + nm + ': the status words (ok, bad, calling amber) read >= 4.5:1 on the panel', [T.ok, T.bad, T.human, T.accent].every((c) => ratio(c, T.panel) >= 4.5), true);
+}
+const warm = (hex) => { const n = parseInt(hex.slice(1), 16); return (n >> 16) > (n & 255); };
+eq('F10 dark ground is warm (R > B) on canvas, panel and raised; the light ground is cream (R > B, light)', [['canvas', 'panel', 'raised'].every((k) => warm(NSTheme.THEMES.dark[k])), warm(NSTheme.THEMES.light.canvas), lumOf(NSTheme.THEMES.light.panel) > 0.8, lumOf(NSTheme.THEMES.dark.canvas) < 0.03], [true, true, true, true]);
 eq('theme: system follows the OS; out-of-range choices fall back', [NSTheme.resolve('system', true), NSTheme.resolve('system', false), NSTheme.resolve('light', true), ((l) => [l.gap, l.font_px, l.radius, l.accent])(NSTheme.look({ gap: 99, font_px: 'x', radius: 'blob', accent: 'red' }))],
   ['dark', 'light', 'light', [16, 13, 'soft', 'env']]);
 
