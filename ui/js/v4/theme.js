@@ -13,6 +13,10 @@
       roles: { plan: '#6aa4ee', crit: '#ef6b60', test: '#4cb894', exec: '#48bdc7', gate: '#a2c44f', rev: '#df84b2', integ: '#93a1b4', coord: '#d8d8d4', watch: '#c9a56b', queue: '#93a1b4' },
       ansi: ['#1c1e22', '#e5675d', '#79bf86', '#d9b45f', '#6fa3e0', '#c38bc9', '#5fbfc0', '#c8c9c6',
         '#4a4f57', '#f08a80', '#98d4a2', '#ebcb82', '#93bdf0', '#d6a8db', '#86d4d4', '#f1f1ee'],
+      // the terminal's own look (F7): a warm ground a step off the panel, soft text, muted but readable colours (text 12.6:1, colours 1-6 >= 5.9:1)
+      term: { background: '#1a1917', foreground: '#dedad2', cursor: '#dedad2', selection: 0.3,
+        ansi: ['#2b2a27', '#e0786c', '#8fc08a', '#d9b870', '#78a6dd', '#c692c6', '#6fbdb8', '#cfcbc2',
+          '#8a867d', '#ee998d', '#a9d4a3', '#e8cd92', '#9bc0ee', '#d9afd9', '#92d2cc', '#f3f0e8'] },
     },
     light: {
       name: 'Nightshift Light', scheme: 'light',
@@ -23,6 +27,9 @@
       roles: { plan: '#2368c7', crit: '#c2362b', test: '#12805a', exec: '#0b7f8a', gate: '#5f7d12', rev: '#b8457f', integ: '#566478', coord: '#2b2c30', watch: '#8a6420', queue: '#566478' },
       ansi: ['#16171a', '#c2362b', '#2d7d46', '#946a00', '#2f6db0', '#9a4a9c', '#16808a', '#d4d5d8',
         '#5f6268', '#d9534a', '#3b9a59', '#b07f00', '#4a86c6', '#b465b6', '#2a9aa4', '#f6f6f7'],
+      term: { background: '#fbf9f4', foreground: '#2a2926', cursor: '#2a2926', selection: 0.22,
+        ansi: ['#2a2926', '#b8372c', '#2c7440', '#8a6200', '#2a62a8', '#8f4392', '#126f78', '#6b675f',
+          '#55524b', '#c0392e', '#2a7c46', '#8f6600', '#2f6db5', '#9a4c9d', '#137a84', '#2a2926'] },
     },
   };
   // the focused pane takes the colour of its env (story 247): from the vendor marks in icons/; mono marks follow the theme accent
@@ -84,8 +91,9 @@
   // the theme object of xterm 6 (task 23 passes it to `new Terminal({ theme })` and to `term.options.theme` on a change)
   function xterm(name, lk) {
     const T = THEMES[name] || THEMES.dark, L = look(lk);
-    const o = { background: L.opacity >= 100 ? T.panel : rgba(T.panel, L.opacity / 100), foreground: T.ink, cursor: T.cursor, cursorAccent: T.panel, selectionBackground: T.selection };
-    T.ansi.forEach((c, i) => { o[(i >= 8 ? 'bright' + ANSI_NAMES[i - 8][0].toUpperCase() + ANSI_NAMES[i - 8].slice(1) : ANSI_NAMES[i])] = c; });
+    const X = T.term;   // selection = a translucent accent, so the text under it keeps its colour
+    const o = { background: L.opacity >= 100 ? X.background : rgba(X.background, L.opacity / 100), foreground: X.foreground, cursor: X.cursor, cursorAccent: X.background, selectionBackground: rgba(T.accent, X.selection) };
+    X.ansi.forEach((c, i) => { o[(i >= 8 ? 'bright' + ANSI_NAMES[i - 8][0].toUpperCase() + ANSI_NAMES[i - 8].slice(1) : ANSI_NAMES[i])] = c; });
     return o;
   }
   const xtermFont = (lk) => { const L = look(lk); return { fontFamily: FONTS[L.font], fontSize: L.font_px }; };

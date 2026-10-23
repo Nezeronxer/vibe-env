@@ -35,10 +35,10 @@
     const modebar = h('div', { class: 'modebar', hidden: true });
     const hint = h('p', { class: 'cmp-hint', role: 'alert', hidden: true });
     const swhint = h('small', { class: 'swhint', hidden: true });
-    const envText = h('span'), pickBtn = h('button', { type: 'button', class: 'envpick', 'aria-expanded': 'false', 'aria-controls': 'modelPop' + sfx }, h('span', { class: 'icw' }, envIcon(envId)), envText, ic('i-chev', 'chev'));
+    const envText = h('span'), pickBtn = h('button', { type: 'button', class: 'envpick', 'aria-expanded': 'false', 'aria-haspopup': 'listbox', 'aria-controls': 'modelPop' + sfx }, h('span', { class: 'icw' }, envIcon(envId)), envText, ic('i-chev', 'chev'));
     const sendBtn = h('button', { type: 'submit', class: 'send4', id: 'sendBtn' + sfx, 'aria-label': t('composer.send'), title: t('composer.send') + ' ↵' }, h('span', { 'aria-hidden': 'true', text: '↵' }));
     const tuneBtn = h('button', { type: 'button', class: 'tune4', id: 'tune' + sfx, 'aria-expanded': 'false', 'aria-controls': 'tunePanel' + sfx, 'aria-label': t('composer.tune'), title: t('composer.tune'), text: '⋯' });
-    const modelPop = h('div', { class: 'pop', id: 'modelPop' + sfx, hidden: true, role: 'dialog' });
+    const modelPop = h('div', { class: 'pop mmenu', id: 'modelPop' + sfx, hidden: true });
     const tunePanel = h('div', { class: 'pop', id: 'tunePanel' + sfx, hidden: true, role: 'dialog' });
     let quality, swarm, qSw, sSw;
 
@@ -124,26 +124,30 @@
     // ---- pops ----
     function closePops() {                         // -> true when something was open
       let was = false;
+      const back = !modelPop.hidden && modelPop.contains(document.activeElement);   // the focus must not fall to <body> with the menu
       for (const [btn, pop] of [[pickBtn, modelPop], [tuneBtn, tunePanel]]) { was = was || !pop.hidden; pop.hidden = true; btn.setAttribute('aria-expanded', 'false'); }
+      if (back) pickBtn.focus();
       return was;
     }
     function togglePop(btn, pop, draw) {
       const open = pop.hidden; closePops();
-      if (open) { draw(); pop.hidden = false; btn.setAttribute('aria-expanded', 'true'); }
+      if (open) { draw(); pop.hidden = false; btn.setAttribute('aria-expanded', 'true'); if (pop === modelPop) { place(); modelPop.firstChild.focusStart(); } }
     }
     pickBtn.onclick = (e) => { e.stopPropagation(); togglePop(pickBtn, modelPop, drawModelPop); };
     tuneBtn.onclick = (e) => { e.stopPropagation(); togglePop(tuneBtn, tunePanel, drawTune); };
     const onDoc = (e) => { if (e.target.isConnected && !form.contains(e.target)) closePops(); };
     const onKey = (e) => { if (e.key === 'Escape' && closePops()) e.preventDefault(); };
     document.addEventListener('click', onDoc); document.addEventListener('keydown', onKey);
+    const offSettings = st.on('settings', (id) => { if (id === envId || id == null) { const m = NS.models.label(envId); envText.textContent = m || st.env(envId).name; } });   // a model chosen in the palette
     form.addEventListener('click', (e) => { if (e.target.isConnected && !e.target.closest('.pop') && !e.target.closest('.envpick') && e.target !== tuneBtn) closePops(); });
 
+    // the menu hangs over the button: its right edge on the button's, never past the pane, and no taller than the room above it
+    function place() {
+      const f = form.getBoundingClientRect(), b = pickBtn.getBoundingClientRect(), w = modelPop.offsetWidth;
+      NS.setVars(modelPop, { '--mr': Math.max(0, Math.min(f.right - b.right, f.width - w)) + 'px', '--mh': Math.max(160, Math.min(360, b.top - 12)) + 'px' });
+    }
     function drawModelPop() {
-      const e = st.env(envId);
-      clear(modelPop).append(h('div', { class: 'pop-h' }, h('b', { text: t('model.title', { env: e.name }) })),
-        NS.models.picker(envId, () => refresh()),
-        h('div', { class: 'pop-f' }, h('span', { class: 'hint', text: t('model.other_env') }),
-          h('button', { type: 'button', class: 'linkb', text: t('model.default_in_settings'), onclick: () => NS.nav('settings', { section: 'env', env: envId }) })));
+      clear(modelPop).append(NS.models.menu(envId, { onDone: () => { closePops(); refresh(); } }));
     }
     function drawTune() {
       const q = quality;
@@ -181,7 +185,7 @@
     // an example from the empty chat goes into the field, it is not sent (story 239)
     function insert(text) { ta.value = text; ta.dispatchEvent(new Event('input')); ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); }
     return { el: form, ta, refresh, setMode, drawHint, focus: () => ta.focus(), closePops, insert,
-      destroy() { usedN.delete(n); document.removeEventListener('click', onDoc); document.removeEventListener('keydown', onKey); } };
+      destroy() { usedN.delete(n); offSettings(); document.removeEventListener('click', onDoc); document.removeEventListener('keydown', onKey); } };
   }
 
   NS.composer = { create };

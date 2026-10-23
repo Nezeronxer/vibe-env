@@ -77,8 +77,8 @@
 
   // ---------- the person's choices (settings.ui.tabs.look.term) ----------
   const CURSORS = ['block', 'bar', 'underline'];
-  const TERM0 = { theme: 'nightshift', custom: null, font: '', size: 0, line_height: 1.15, ligatures: false, cursor: 'block', blink: true,
-    scrollback: 10000, padding: 10, copy_select: true, osc52: false, notify_secs: 10, external: false, global_key: 'Ctrl+`', prefix: '' };
+  const TERM0 = { theme: 'nightshift', custom: null, font: '', size: 14, line_height: 1.35, ligatures: false, cursor: 'bar', blink: true,
+    scrollback: 10000, padding: 16, copy_select: true, osc52: false, notify_secs: 10, external: false, global_key: 'Ctrl+`', prefix: '' };
   const num = (v, lo, hi, d) => { const n = Number(v); return Number.isFinite(n) ? Math.max(lo, Math.min(hi, n)) : d; };
   function validTheme(x) {
     if (!x || typeof x !== 'object' || !hex(x.background) || !hex(x.foreground) || !Array.isArray(x.ansi) || x.ansi.length !== 16 || x.ansi.some((c) => !hex(c))) return null;
@@ -90,7 +90,7 @@
     o.custom = validTheme(o.custom);
     if (!(o.theme === 'nightshift' || (o.theme === 'custom' && o.custom) || THEMES[o.theme])) o.theme = 'nightshift';
     o.font = typeof o.font === 'string' ? o.font.replace(/[;{}<>]/g, '').slice(0, 80) : '';
-    o.size = o.size ? Math.round(num(o.size, 9, 28, 0)) : 0;               // 0 = the size of "Основное"
+    o.size = o.size ? Math.round(num(o.size, 9, 28, 0)) : 0;               // 0 = the size of "Основное"; the default is a point above it (F7)
     o.line_height = Math.round(num(o.line_height, 1, 2, TERM0.line_height) * 100) / 100;
     if (!CURSORS.includes(o.cursor)) o.cursor = TERM0.cursor;
     o.scrollback = Math.round(num(o.scrollback, 1000, 100000, TERM0.scrollback));
@@ -150,7 +150,7 @@
     el.style.setProperty('color-scheme', th.scheme);
   });
   // the Nightshift table in the shape of a terminal theme (the start of "свои цвета")
-  const nightshift = () => { const n = T.current ? T.current.name : 'dark', x = T.THEMES[n]; return { name: x.name, scheme: x.scheme, background: x.panel, foreground: x.ink, cursor: x.cursor, selection: x.selection, ansi: x.ansi.slice() }; };
+  const nightshift = () => { const n = T.current ? T.current.name : 'dark', x = T.THEMES[n]; const w = x.term; return { name: x.name, scheme: x.scheme, background: w.background, foreground: w.foreground, cursor: w.cursor, selection: x.selection, ansi: w.ansi.slice() }; };
   const save = (patch) => NS.settingsV4.setLook({ term: termLook(Object.assign({}, lookNow(), patch)) });
   const fail = (e) => NS.shell.toast(NS.errHuman(NS.api.errText(e)), true);
 

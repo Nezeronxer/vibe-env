@@ -54,7 +54,13 @@
   const keyText = (accel) => (accel ? window.NSLogic.keyLabel(accel, plat()).join('') : '');
   function commands(ctx) {
     return NS.registry.points('command').filter((c) => !c.when || c.when(ctx))
-      .map((c) => ({ id: c.id, label: c.label || t(c.labelKey), keywords: [c.group ? t(c.group) : '', c.keywordsKey ? t(c.keywordsKey) : ''].join(' '), group: c.group, keys: typeof c.keys === 'function' ? c.keys() : c.keys, def: c }));
+      .map((c) => ({ id: c.id, label: c.label || t(c.labelKey), keywords: [c.group ? t(c.group) : '', c.keywordsKey ? t(c.keywordsKey) : ''].join(' '), group: c.group, keys: typeof c.keys === 'function' ? c.keys() : c.keys, badge: null, def: c }))
+      .concat(modelCommands(ctx));
+  }
+  // one row per model of the env in focus; choosing saves the model for that env (F7)
+  function modelCommands() {
+    const e = NS.store.env(NS.store.s.route.env) || NS.store.env(NS.store.s.lastEnv) || NS.store.s.envs[0];
+    return e && e.state === 'ok' && NS.models ? NS.models.commands(e.id) : [];
   }
   function close() { if (!box) return; const prev = box.prevFocus; box.remove(); box = null; if (prev && prev.isConnected && prev.focus) prev.focus(); }
   function open(query) {
@@ -80,7 +86,7 @@
       if (!rows.length) list.append(h('li', { class: 'pal-none', text: t('pal.none') }));
       rows.forEach((r, i) => list.append(h('li', { role: 'option', id: 'pal-o' + i, class: 'pal-o' + (i === sel ? ' on' : ''), 'aria-selected': String(i === sel),
         onmousemove: () => { if (sel !== i) { sel = i; mark(); } }, onclick: () => run(r) },
-      h('span', { class: 'pal-t', text: r.cmd.label }), r.recent && !input.value.trim() ? h('small', { class: 'pal-r', text: t('pal.recent') }) : null,
+      h('span', { class: 'pal-t', text: r.cmd.label }), r.recent && !input.value.trim() ? h('small', { class: 'pal-r', text: t('pal.recent') }) : r.cmd.badge ? h('small', { class: 'pal-r', text: r.cmd.badge }) : null,
       r.cmd.keys ? h('kbd', { text: keyText(r.cmd.keys) }) : null)));
       mark();
     }

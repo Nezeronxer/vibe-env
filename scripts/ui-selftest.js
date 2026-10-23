@@ -62,6 +62,7 @@ if (process.env.NS_PLAYWRIGHT) (async () => {
   out.push((r.buttons <= 14 ? 'PASS ' : 'FAIL ') + 'main view: at most 14 visible buttons outside the feed (' + r.buttons + ')' + (r.buttons <= 14 ? '' : ' ' + JSON.stringify(r.names)));
   out.push((r.pane > 0 && r.card > 0 && r.field > 0 && r.bar > 0 ? 'PASS ' : 'FAIL ') + 'computed border-radius > 0: pane ' + r.pane + ', card ' + r.card + ', field ' + r.field + ', bar ' + r.bar);
   await f5(b, 'http://127.0.0.1:' + srv.address().port, out);
+  await f7(b, 'http://127.0.0.1:' + srv.address().port, out);
   process.stdout.write(out.join('\n') + '\n');
   if (out.some((l) => l.startsWith('FAIL'))) process.exitCode = 1;
   await b.close(); srv.close();
@@ -116,4 +117,51 @@ async function f5(b, base, out) {
   ok('F5 260: the button of the extra window speaks the language of the window («Вернуть в главное окно»)', win.label === 'Вернуть в главное окно', win.label);
   ok('F5 260: the terminal of the extra window gets the buffer of the session (its scrollback)', /history line 1\n[\s\S]*history line 80/.test(win.text), win.text.slice(0, 200));
   await w.close(); await p.close();
+}
+
+// F7 - the short model menu over the button (size, keys, version chips), the model rows in the palette, the terminal defaults
+async function f7(b, base, out) {
+  const ok = (name, cond, detail) => out.push((cond ? 'PASS ' : 'FAIL ') + name + (cond ? '' : ' ' + JSON.stringify(detail)));
+  const p = await b.newPage({ viewport: { width: 1440, height: 900 } });
+  await p.goto(base + '/index.html?lang=ru&platform=mac');
+  await p.waitForTimeout(1500);
+  const fam = () => p.evaluate(() => { const d = NS.store.envSettings('claude').default_model; return d && [d.family, d.version]; });
+  await p.evaluate(() => NS.store.saveEnvSettings('claude', { default_model: { family: 'opus', version: null } }));
+  await p.click('.composer .envpick'); await p.waitForTimeout(300);
+  const m = await p.evaluate(() => { const r = document.querySelector('.mmenu').getBoundingClientRect(), bt = document.querySelector('.composer .envpick').getBoundingClientRect();
+    return { w: r.width, in: r.left >= 0 && r.right <= innerWidth && r.top >= 0, above: r.bottom <= bt.top, rows: [...document.querySelectorAll('.mrow')].map((x) => x.getBoundingClientRect().height) }; });
+  ok('F7 1: the model menu is <= 320 px wide, inside the window, above the button; every model is one row <= 36 px', m.w <= 320 && m.in && m.above && m.rows.length >= 3 && m.rows.every((h) => h <= 36), m);
+  await p.keyboard.press('ArrowDown'); await p.keyboard.press('ArrowDown'); await p.keyboard.press('Enter'); await p.waitForTimeout(300);
+  const shut = await p.evaluate(() => document.querySelector('.mmenu').hidden);
+  ok('F7 2: ↓ ↓ Enter saves the second model and closes the menu', shut && (await fam())[0] === 'sonnet', [shut, await fam()]);
+  await p.click('.composer .envpick'); await p.waitForTimeout(200);
+  await p.keyboard.press('Escape'); await p.waitForTimeout(200);
+  const esc = await p.evaluate(() => ({ hidden: document.querySelector('.mmenu').hidden, onBtn: document.activeElement === document.querySelector('.composer .envpick') }));
+  ok('F7 2: Esc closes the menu and the focus is back on the button', esc.hidden && esc.onBtn, esc);
+  await p.click('.composer .envpick'); await p.waitForTimeout(200);
+  await p.click('.mmenu .vers .v >> text=4.6'); await p.waitForTimeout(300);
+  ok('F7 2: a version chip saves the version and closes the menu', JSON.stringify(await fam()) === '["sonnet","4.6"]' && await p.evaluate(() => document.querySelector('.mmenu').hidden), await fam());
+  // 3: the palette
+  await p.evaluate(() => NS.store.saveEnvSettings('claude', { default_model: { family: 'opus', version: null } }));
+  await p.evaluate(() => NS.palette.open('sonnet')); await p.waitForTimeout(200);
+  const rows = await p.evaluate(() => [...document.querySelectorAll('.pal-o .pal-t')].map((x) => x.textContent));
+  await p.keyboard.press('Enter'); await p.waitForTimeout(300);
+  ok('F7 3: "sonnet" in the palette gives "Модель: Sonnet 5.5"; Enter saves it for the env', rows[0] === 'Модель: Sonnet 5.5' && (await fam())[0] === 'sonnet', [rows, await fam()]);
+  ok('F7 3: the label in the input field follows a model chosen in the palette', (await p.textContent('.composer .envpick')).trim() === 'Sonnet 5.5', await p.textContent('.composer .envpick'));
+  // a long list gets search: opencode has 10 models
+  await p.evaluate(() => { const e = NS.store.s.envs.find((x) => x.id === 'opencode'); if (e) NS.shell.pickEnv('opencode'); }); await p.waitForTimeout(800);
+  await p.click('.composer .envpick'); await p.waitForTimeout(300);
+  const long = await p.evaluate(() => { const r = document.querySelector('.mmenu').getBoundingClientRect(); return { search: document.activeElement === document.querySelector('.mmenu .msearch'), h: r.height, top: r.top }; });
+  ok('F7 1: a long list opens with the focus in the search field, the menu stays <= 360 px and inside the window', long.search && long.h <= 361 && long.top >= 0, long);
+  await p.keyboard.type('qwen'); await p.waitForTimeout(200);
+  ok('F7 1: the search filters the rows as you type', (await p.evaluate(() => document.querySelectorAll('.mrow[role=option]').length)) <= 4, await p.evaluate(() => document.querySelectorAll('.mrow[role=option]').length));
+  // 4: terminal defaults, then the config wins
+  await p.goto(base + '/index.html?lang=ru&platform=mac&term=1'); await p.waitForTimeout(1800);
+  const o = () => p.evaluate(() => { const v = NS.term.views.get(NS.tabs.active.id), t = v.term.options; return { fontSize: t.fontSize, lineHeight: t.lineHeight, cursorStyle: t.cursorStyle }; });
+  const d = await o();
+  ok('F7 4: xterm defaults - fontSize >= 13, lineHeight >= 1.25, cursorStyle bar', d.fontSize >= 13 && d.lineHeight >= 1.25 && d.cursorStyle === 'bar', d);
+  await p.evaluate(() => { const st = NS.store.s.settings; st.ui = st.ui || {}; st.ui.tabs = st.ui.tabs || {}; st.ui.tabs.look = Object.assign({}, st.ui.tabs.look, { term: { size: 18, cursor: 'underline' } }); NS.term.views.get(NS.tabs.active.id).applyLook(); });
+  const c = await o();
+  ok('F7 4: size and cursor set in the config win over the defaults', c.fontSize === 18 && c.cursorStyle === 'underline', c);
+  await p.close();
 }

@@ -35,7 +35,7 @@
     // models
     'model.title': 'Модель {env}', 'model.default': 'по умолчанию', 'model.latest': 'последняя ({v})', 'model.newer': 'есть новее: {v}', 'model.version': 'Версия',
     'model.other_env': 'Другая среда - на левом краю окна.', 'model.default_in_settings': 'Модель по умолчанию - в настройках среды',
-    'model.own': 'Своя модель', 'model.own_d': 'Идентификатор модели, как его знает CLI.', 'model.own_ph': 'идентификатор', 'model.use': 'Взять',
+    'model.current': 'сейчас', 'model.own': 'Своя модель', 'model.own_d': 'Идентификатор модели, как его знает CLI.', 'model.own_ph': 'идентификатор', 'model.use': 'Взять',
     'model.cli_default': 'Как в CLI по умолчанию', 'model.cli_default_d': 'Запуск без флага модели.', 'model.search': 'Найти модель', 'model.none_found': 'Такой модели нет в списке.',
     'model.list_from': 'список от {date}', 'model.no_list': 'список моделей недоступен', 'model.refresh': 'Обновить список',
     // limits
@@ -112,7 +112,7 @@
     'swarm.race': 'Race', 'swarm.race_d': 'N variants, best by tests', 'swarm.crew': 'Crew', 'swarm.crew_d': 'Subtasks for different agents', 'swarm.council': 'Council', 'swarm.council_d': 'They argue and vote, one writes',
     'model.title': 'Model of {env}', 'model.default': 'default', 'model.latest': 'latest ({v})', 'model.newer': 'newer: {v}', 'model.version': 'Version',
     'model.other_env': 'Another environment - on the left edge of the window.', 'model.default_in_settings': 'Default model - in the environment settings',
-    'model.own': 'Own model', 'model.own_d': 'A model id as the CLI knows it.', 'model.own_ph': 'id', 'model.use': 'Use',
+    'model.current': 'current', 'model.own': 'Own model', 'model.own_d': 'A model id as the CLI knows it.', 'model.own_ph': 'id', 'model.use': 'Use',
     'model.cli_default': 'As the CLI default', 'model.cli_default_d': 'Runs without a model flag.', 'model.search': 'Find a model', 'model.none_found': 'No such model in the list.',
     'model.list_from': 'list from {date}', 'model.no_list': 'model list unavailable', 'model.refresh': 'Refresh list',
     'lim.label': 'Environment limits', 'lim.w5h': '5 h', 'lim.wweek': 'Week', 'lim.at': 'resets at {time}', 'lim.exhausted': 'exhausted', 'lim.left': '{n} left', 'lim.left_pct': '{n}% left',

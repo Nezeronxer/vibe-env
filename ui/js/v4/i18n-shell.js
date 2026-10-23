@@ -47,7 +47,7 @@
     'cmd.g.layout': 'раскладка', 'cmd.g.env': 'среда', 'cmd.g.view': 'вид',
     'cmd.palette': 'Палитра команд', 'cmd.new_agent': 'Новая сессия агента', 'cmd.new_tab': 'Новая вкладка',
     'cmd.split_right': 'Сплит вправо', 'cmd.split_down': 'Сплит вниз', 'cmd.close_pane': 'Закрыть панель', 'cmd.zoom': 'Развернуть панель / вернуть',
-    'cmd.equalize': 'Выровнять панели поровну', 'cmd.side': 'Показать / скрыть чаты', 'cmd.env': 'Среда: {env}', 'cmd.model': 'Модель: выбрать для {env}',
+    'cmd.equalize': 'Выровнять панели поровну', 'cmd.side': 'Показать / скрыть чаты', 'cmd.env': 'Среда: {env}', 'cmd.model': 'Модель: выбрать для {env}', 'cmd.model_row': 'Модель: {m}',
     'cmd.settings': 'Настройки', 'cmd.settings_adv': 'Настройки: расширенное', 'cmd.config': 'Открыть конфиг', 'cmd.factory': 'Фабрика',
     'cmd.theme': 'Тема: {name}', 'cmd.preset': 'Вид: {name}', 'cmd.clawd': 'Clawd: {mode}',
     // bar
@@ -82,7 +82,7 @@
     'cmd.g.layout': 'layout', 'cmd.g.env': 'environment', 'cmd.g.view': 'view',
     'cmd.palette': 'Command palette', 'cmd.new_agent': 'New agent session', 'cmd.new_tab': 'New tab',
     'cmd.split_right': 'Split right', 'cmd.split_down': 'Split down', 'cmd.close_pane': 'Close pane', 'cmd.zoom': 'Zoom pane / restore',
-    'cmd.equalize': 'Make panes equal', 'cmd.side': 'Show / hide chats', 'cmd.env': 'Environment: {env}', 'cmd.model': 'Model: pick for {env}',
+    'cmd.equalize': 'Make panes equal', 'cmd.side': 'Show / hide chats', 'cmd.env': 'Environment: {env}', 'cmd.model': 'Model: pick for {env}', 'cmd.model_row': 'Model: {m}',
     'cmd.settings': 'Settings', 'cmd.settings_adv': 'Settings: advanced', 'cmd.config': 'Open config', 'cmd.factory': 'Factory',
     'cmd.theme': 'Theme: {name}', 'cmd.preset': 'Look: {name}', 'cmd.clawd': 'Clawd: {mode}',
     'bar.label': 'Status bar', 'bar.env': 'Environment - pick (⌥⌘1…7)', 'bar.model': 'Model', 'bar.branch': 'Project branch', 'bar.limits': 'Limits',

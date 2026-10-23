@@ -324,9 +324,7 @@
     { id: 'shell.settings', labelKey: 'cmd.settings', order: 60, keys: mk('Cmd+,'), run: () => nav('settings', { env: s.lastEnv, section: 'basic' }) },
     { id: 'shell.settings_adv', labelKey: 'cmd.settings_adv', order: 61, run: () => nav('settings', { env: s.lastEnv, section: 'advanced' }) },
   ].forEach((c) => R.extend('command', c));
-  // the model command names the env in focus; env commands are made when the env list is known
-  R.extend('command', { id: 'shell.model', group: 'cmd.g.env', order: 45, get label() { const e = envNow(); return t('cmd.model', { env: e ? e.name : '' }); },
-    run: toWs(() => setTimeout(() => { const p = document.querySelector('.pane.focus .envpick'); if (p) p.click(); }, 30)) });
+  // model commands ("Модель: Opus 5.5"...) are built by the palette from NS.models.commands for the env in focus
   function envCommands() {
     const mod = plat() === 'mac' ? 'Alt+Cmd+' : 'Ctrl+Alt+';
     s.envs.forEach((e, i) => R.extend('command', { id: 'env.' + e.id, label: t('cmd.env', { env: e.name }), group: 'cmd.g.env', keys: i < 7 ? mod + (i + 1) : null, order: 40 + i / 100, run: () => pickEnv(e.id) }));

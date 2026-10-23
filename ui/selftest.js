@@ -584,7 +584,11 @@ eq('theme: 16 ANSI colours, cursor and selection in the variables', [Object.keys
 eq('theme: the person\'s accent, radius "round", gap and opacity win', ((v) => [v['--accent'], v['--radius-pane'], v['--gap'], v['--pane-bg']])(NSTheme.vars('light', { accent: '#2f6db0', radius: 'round', gap: 10, opacity: 90 }, 'claude')),
   ['#2f6db0', '18px', '10px', 'rgba(246, 246, 247, 0.9)']);
 const XT = NSTheme.xterm('dark', {});
-eq('theme: xterm gets the same table (background = pane, 16 colours by name)', [XT.background, XT.foreground, XT.brightWhite, Object.keys(XT).length], [NSTheme.THEMES.dark.panel, NSTheme.THEMES.dark.ink, NSTheme.THEMES.dark.ansi[15], 21]);
+eq('theme: xterm gets the terminal table (warm ground off the panel, soft text, 16 colours by name)', [XT.background, XT.foreground, XT.brightWhite, Object.keys(XT).length, XT.background !== NSTheme.THEMES.dark.panel], [NSTheme.THEMES.dark.term.background, NSTheme.THEMES.dark.term.foreground, NSTheme.THEMES.dark.term.ansi[15], 21, true]);
+// F7: contrast of the default terminal palette, WCAG: text >= 7:1, colours 1-6 >= 4.5:1 to the ground, both themes
+const lumOf = (hex) => { const n = parseInt(hex.slice(1), 16); return [n >> 16, (n >> 8) & 255, n & 255].map((v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); }).reduce((a, v, i) => a + v * [0.2126, 0.7152, 0.0722][i], 0); };
+const ratio = (a, b) => { const x = lumOf(a), y = lumOf(b); return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05); };
+for (const nm of ['dark', 'light']) { const X = NSTheme.THEMES[nm].term; eq('F7 terminal palette ' + nm + ': text >= 7:1, colours 1-6 >= 4.5:1', [ratio(X.foreground, X.background) >= 7, X.ansi.slice(1, 7).every((c) => ratio(c, X.background) >= 4.5)], [true, true]); }
 eq('theme: system follows the OS; out-of-range choices fall back', [NSTheme.resolve('system', true), NSTheme.resolve('system', false), NSTheme.resolve('light', true), ((l) => [l.gap, l.font_px, l.radius, l.accent])(NSTheme.look({ gap: 99, font_px: 'x', radius: 'blob', accent: 'red' }))],
   ['dark', 'light', 'light', [16, 13, 'soft', 'env']]);
 
@@ -617,8 +621,11 @@ eq('import iTerm2: components 0..1 -> hex (One Dark red #e06c75), a light ground
 eq('import: a foreign file is refused ("не похоже на тему"), nothing half-read comes back',
   [TS.parseTheme('{"name": "x", "colors": [1, 2]}'), TS.parseTheme('background #000000\nforeground #ffffff\ncolor0 #000000'), TS.parseTheme('<plist><dict></dict></plist>')].map((r) => r.ok ? 'ok' : r.error), ['not_theme', 'not_theme', 'not_theme']);
 eq('themes: Nightshift + 6 ready ones, each 16 valid colours', ['catppuccin-mocha', 'tokyo-night', 'gruvbox-dark', 'dracula', 'solarized-light', 'one-dark'].map((id) => !!TS.validTheme(TS.THEMES[id])), [true, true, true, true, true, true]);
+// F7: defaults of the terminal - a roomy size, a bar cursor, set values win
+eq('F7 terminal defaults: font >= 13, line height >= 1.25, cursor bar, padding >= 14', ((o) => [o.size >= 13, o.line_height >= 1.25, o.cursor, o.padding >= 14])(TS.termLook({})), [true, true, 'bar', true]);
+eq('F7 terminal: size and cursor from the config win over the defaults', ((o) => [o.size, o.cursor])(TS.termLook({ size: 18, cursor: 'underline' })), [18, 'underline']);
 eq('terminal settings: out-of-range values fall back, an unknown theme becomes Nightshift', ((o) => [o.theme, o.scrollback, o.padding, o.cursor, o.line_height, o.prefix])(TS.termLook({ theme: 'neon', scrollback: 5, padding: 99, cursor: 'x', line_height: 7, prefix: ' Ctrl+B ' })),
-  ['nightshift', 1000, 24, 'block', 2, 'ctrl+b']);
+  ['nightshift', 1000, 24, 'bar', 2, 'ctrl+b']);
 eq('a terminal theme paints the window: panel = its ground, text = its text, the 16 colours', ((v) => [v['--panel'], v['--ink'], v['--ansi-1'], v['--accent']])(TS.appVars(TS.THEMES.dracula)), ['#282a36', '#f8f8f2', '#ff5555', '#bd93f9']);
 
 // --- prefix mode (tmux): ctrl+b, then one key ---

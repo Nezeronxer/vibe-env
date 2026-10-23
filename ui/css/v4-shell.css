@@ -65,6 +65,27 @@
 .send4:hover:not(:disabled) { background: var(--raised2); }
 .send4:disabled { color: var(--ink3); opacity: .6; cursor: not-allowed; }
 .composer .pop { left: 0; right: 0; bottom: calc(100% + 6px); border-radius: var(--radius-pane); box-shadow: var(--shadow); }
+/* the model menu (F7): a short drop-down over the button, one line per model */
+.composer .pop.mmenu { left: auto; right: var(--mr, 0px); width: 280px; max-width: 100%; padding: 4px; max-height: var(--mh, 360px); display: flex; flex-direction: column; overflow: hidden; border-radius: var(--radius-sm); }
+.mmenu-in { display: flex; flex-direction: column; min-height: 0; outline: none; }
+.mmenu .msearch { margin: 2px 2px 4px; width: calc(100% - 4px); height: 28px; flex: none; }
+.mm-list { overflow: auto; min-height: 0; flex: 1 1 auto; }
+.mrow { display: flex; align-items: center; gap: 8px; height: 32px; padding: 0 8px; border-radius: 5px; cursor: pointer; color: var(--ink2); font-size: 13px; outline: none; }
+.mrow:hover, .mrow:focus { background: var(--raised2); color: var(--ink); }
+.mrow:focus-visible { box-shadow: inset 0 0 0 1px var(--accent); }
+.mrow.on { color: var(--ink); }
+.mrow .mn { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mrow small { flex: none; color: var(--ink3); font-size: 11px; max-width: 110px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mrow .mck { flex: none; width: 14px; height: 14px; color: var(--accent); }
+.mrow .mck .ic { width: 14px; height: 14px; }
+.mrow .mlogo { margin: 0; flex: none; }
+.mrow.own, .mrow.own:hover { cursor: default; background: none; }
+.mrow.own .mown { flex: 1; min-width: 0; height: 24px; }
+.mmenu .vers { margin: 0 8px 6px 29px; padding: 0; }
+.mmenu .vers .v { height: 20px; font-size: 11.5px; }
+.mmenu .mgroup { margin: 8px 8px 2px; font-size: 11px; font-weight: 600; }
+.mm-foot { flex: none; margin-top: 2px; padding-top: 2px; border-top: 1px solid var(--line); }
+.mm-foot .catline { margin: 4px 8px 4px; justify-content: space-between; font-size: 11.5px; }
 .modebar { font: 11.5px var(--mono); color: var(--ink2); }
 
 /* ---------- palette ⌘K (story 249) ---------- */

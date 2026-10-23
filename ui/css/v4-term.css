@@ -1,20 +1,26 @@
 /* v4 terminal (task 23): the pane, its strips, search and menu; an extra window; the settings section "Терминал".
    Colours are tokens only: the terminal theme itself reaches xterm from JS and the window through the same variables. */
 .t-pane { flex: 1; min-height: 0; display: flex; flex-direction: column; position: relative; container-type: inline-size; }
-.t-head { gap: 8px; }
+.t-pane { background: var(--t-bg, var(--pane-bg)); border-radius: inherit; }
+/* quiet header: the ground of the output, no rule under it, a small pale path */
+.t-head { gap: 8px; height: 30px; background: transparent; border-bottom: 0; }
 .t-head .ic, .t-head img { width: 13px; height: 13px; flex: none; }
 .t-glyph { font: 700 11px var(--mono); color: var(--ink3); flex: none; letter-spacing: -.04em; }
 .t-head[data-state="run"] .t-glyph { color: var(--exec); }
 .t-head[data-state="wait"] .t-glyph { color: var(--human); }
 .t-head[data-state="fail"] .t-glyph { color: var(--bad); }
-.t-cwd { flex: 1; min-width: 0; color: var(--ink3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font: 12px var(--mono); }
+.t-cwd { flex: 1; min-width: 0; color: var(--ink3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font: 11px var(--mono); opacity: .8; }
 .t-head > .btn { flex: none; }
 .t-body { flex: 1; min-height: 0; position: relative; display: flex; }
-.t-host { flex: 1; min-width: 0; min-height: 0; padding: var(--t-pad, 10px); padding-right: 2px; background: var(--pane-bg); border-radius: 0 0 var(--radius-pane) var(--radius-pane); overflow: hidden; }
+.t-host { flex: 1; min-width: 0; min-height: 0; padding: var(--t-pad, 16px); padding-top: calc(var(--t-pad, 16px) - 8px); padding-right: max(6px, calc(var(--t-pad, 16px) - 8px)); background: var(--t-bg, var(--pane-bg)); border-radius: 0 0 var(--radius-pane) var(--radius-pane); overflow: hidden; }
 .t-host .xterm { height: 100%; }
 .t-host .xterm-viewport { background: transparent !important; }
 .t-host.lig .xterm-rows { font-variant-ligatures: normal; font-feature-settings: "liga" 1, "calt" 1; }
 .t-host .xterm-screen canvas { border-radius: 0; }
+/* a thin scrollbar in the colours of the window (xterm 6 draws its own slider) */
+.t-host .xterm .xterm-scrollable-element > .scrollbar { width: 8px !important; }
+.t-host .xterm .xterm-scrollable-element > .scrollbar > .slider { background: var(--line2) !important; border-radius: 4px; width: 6px !important; left: 1px !important; opacity: .7; }
+.t-host .xterm .xterm-scrollable-element > .scrollbar > .slider:hover { background: var(--ink3) !important; }
 
 /* strips over the output: input to every pane (accent, never amber), the CLI was updated */
 .t-strips:empty { display: none; }

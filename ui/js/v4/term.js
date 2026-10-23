@@ -123,6 +123,7 @@
     const th = TS().themeOf(L);
     const theme = th ? TS().xterm(th) : (root.NSTheme.current ? root.NSTheme.current.xterm : root.NSTheme.xterm('dark', {}));
     const font = root.NSTheme.current ? root.NSTheme.current.font : root.NSTheme.xtermFont({});
+    NS.setVars(box, { '--t-bg': theme.background });   // the header and the padding around the output take the ground of the terminal
     const term = new root.Terminal({ allowProposedApi: true, theme, fontFamily: L.font ? '"' + L.font + '", ' + font.fontFamily : font.fontFamily, fontSize: L.size || font.fontSize,
       lineHeight: L.line_height, cursorStyle: L.cursor, cursorBlink: L.blink, scrollback: L.scrollback, macOptionIsMeta: false, rightClickSelectsWord: false });
     const fit = new root.FitAddon.FitAddon();
@@ -370,6 +371,7 @@
       applyLook() {
         const L2 = cfg(), th2 = TS().themeOf(L2), f2 = root.NSTheme.current ? root.NSTheme.current.font : font;
         term.options.theme = th2 ? TS().xterm(th2) : root.NSTheme.current.xterm;
+        NS.setVars(box, { '--t-bg': term.options.theme.background });
         Object.assign(term.options, { fontFamily: L2.font ? '"' + L2.font + '", ' + f2.fontFamily : f2.fontFamily, fontSize: L2.size || f2.fontSize, lineHeight: L2.line_height,
           cursorStyle: L2.cursor, cursorBlink: L2.blink, scrollback: L2.scrollback });
         renderer(L2.ligatures); setPad(L2.padding);
