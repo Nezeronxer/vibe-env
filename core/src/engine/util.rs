@@ -30,9 +30,9 @@ pub fn tail(s: &str, n: usize) -> String {
 }
 
 /// Runs `sh -c cmd` in `cwd` with stderr merged into stdout. None = cancelled (process group killed).
-pub fn sh(cwd: &Path, cmd: &str, cancel: &AtomicBool) -> Option<(bool, String)> {
+pub fn sh(cwd: &Path, cmd: &str, envs: &[(String, String)], cancel: &AtomicBool) -> Option<(bool, String)> {
     let mut c = Command::new("sh");
-    c.arg("-c").arg(format!("exec 2>&1\n{cmd}")).current_dir(cwd);
+    c.arg("-c").arg(format!("exec 2>&1\n{cmd}")).current_dir(cwd).envs(envs.iter().map(|(k, v)| (k, v)));
     let mut out = String::new();
     match crate::agent::run_lines(c, cancel, &mut |l| {
         out.push_str(&l);

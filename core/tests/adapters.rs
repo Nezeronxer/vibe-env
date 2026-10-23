@@ -80,7 +80,7 @@ fn claude_real_run_text_tool_and_done_with_session() {
     // fixture captured from `claude -p "run echo hi, then say ok" --output-format stream-json --verbose`
     let evs = replay(&Claude::new(), "claude.jsonl", true);
     let plain: Vec<AgentEvent> =
-        evs.into_iter().filter(|e| !matches!(e, AgentEvent::Usage(_) | AgentEvent::Cost(_))).collect();
+        evs.into_iter().filter(|e| !matches!(e, AgentEvent::Usage(_) | AgentEvent::Cost(_) | AgentEvent::Context { .. })).collect();
     assert_eq!(
         plain,
         vec![

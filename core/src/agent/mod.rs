@@ -1,5 +1,6 @@
 pub mod actions;
 pub mod adapters;
+pub mod tax;
 mod fake;
 pub use crate::model::{ActionInput, PlanItem, PlanState, ToolAction};
 pub use actions::{Scrub, DIFF_MAX, OUTPUT_MAX};
@@ -38,6 +39,8 @@ pub struct Run {
     pub max_budget_usd: Option<f64>,
     /// `EnvSettings.extra_args`: appended to the CLI as separate arguments, never through a shell.
     pub extra_args: Vec<String>,
+    /// Tools the role may use without asking (story 312), as the CLI names them; CLIs without such a flag ignore it.
+    pub allowed_tools: Vec<String>,
 }
 
 impl Run {
@@ -55,6 +58,7 @@ impl Run {
             json_schema: None,
             max_budget_usd: None,
             extra_args: vec![],
+            allowed_tools: vec![],
         }
     }
 
@@ -99,6 +103,20 @@ pub enum AgentEvent {
     ModelRejected(String),
     /// The CLI is not logged in.
     AuthRequired(String),
+    /// v4 (story 305): tokens the session's context holds now (`used`) and the model's window (`window`), each
+    /// when the CLI says it; the engine keeps the last of both.
+    Context { used: Option<u64>, window: Option<u64> },
+}
+
+/// Tools a role may use without asking (story 312), Claude Code names: readers read and search; writers also
+/// edit and run the project's checks (`checks`, the commands of the gates).
+pub fn default_tools(role: RoleKind, checks: &[String]) -> Vec<String> {
+    let mut t: Vec<String> = ["Read", "Grep", "Glob"].map(String::from).to_vec();
+    if matches!(role, RoleKind::Worker | RoleKind::TestAuthor | RoleKind::Integrator) {
+        t.extend(["Edit", "Write"].map(String::from));
+        t.extend(checks.iter().filter(|c| !c.trim().is_empty()).map(|c| format!("Bash({})", c.trim())));
+    }
+    t
 }
 
 /// Neutral SandboxInfo of an env with no protection of its own.
@@ -165,6 +183,16 @@ pub trait Adapter: Send + Sync {
     /// given, so an adapter never works out a location of its own. A folder set explicitly
     /// on the adapter (`Codex::with_schema_dir`) wins.
     fn set_private_dir(&self, _dir: &Path) {}
+    /// The prompt that compacts a resumed session keeping `keep` (story 305); None = the CLI has no such command
+    /// in its non-interactive mode, the engine starts a fresh session with a hand-off note instead.
+    fn compact_prompt(&self, _keep: &str) -> Option<String> {
+        None
+    }
+    /// The env's fast, cheap model family (story 310): the default of the Watcher, the Coordinator and the prompt
+    /// rewrite. None = the CLI's own default.
+    fn fast_model(&self) -> Option<String> {
+        None
+    }
 }
 
 /// Six built-in engines (at `EnvSettings.cli_path` when set), then every custom command from the settings.

@@ -259,7 +259,7 @@ impl Engine {
                         v.model = model;
                         v.next_prompt = None;
                         if !sig.body.is_empty() {
-                            v.summary = Some(sig.body.chars().take(500).collect());
+                            v.summary = Some(sig.body.chars().take(super::flow::SUMMARY_MAX).collect());
                         }
                     });
                     if let Some((q, options)) = sig.needs_human.clone() {
@@ -310,12 +310,11 @@ impl Engine {
     /// A fresh copy of a variant or a part gets what the task's own copy got: the files outside git and
     /// the project's setup. Ok(false) = cancelled.
     pub(super) fn setup_copy(&self, p: &Project, wt: &std::path::Path, cancel: &AtomicBool) -> Result<bool, String> {
-        let copied = util::copy_files(&p.path, wt, &p.copy_files);
-        if !copied.is_empty() {
-            git::hide_untracked(wt, &copied).map_err(gerr)?;
-        }
+        let mut copied = util::copy_files(&p.path, wt, &p.copy_files);
+        copied.push(super::practices::APP_DIR.to_string()); // raw output of failed checks lands there
+        git::hide_untracked(wt, &copied).map_err(gerr)?;
         if let Some(cmd) = p.setup_cmd.as_deref().filter(|c| !c.trim().is_empty()) {
-            let Some((ok, out)) = util::sh(wt, cmd, cancel) else { return Ok(false) };
+            let Some((ok, out)) = util::sh(wt, cmd, &[], cancel) else { return Ok(false) };
             if !ok {
                 return Err(format!("setup_failed: {cmd}\n{}", util::tail(&out, 20)));
             }

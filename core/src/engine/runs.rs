@@ -22,6 +22,8 @@ pub(crate) struct Folded {
     pub auth: Option<String>,
     /// session, text, is_error
     pub done: Option<(Option<String>, String, bool)>,
+    /// The last context in use and window the run reported (story 305); None = it reported neither.
+    pub context: Option<(Option<u64>, Option<u64>)>,
 }
 
 pub(crate) fn fold(events: &[AgentEvent]) -> Folded {
@@ -34,6 +36,11 @@ pub(crate) fn fold(events: &[AgentEvent]) -> Folded {
             AgentEvent::ModelRejected(m) => f.rejected = Some(m.clone()),
             AgentEvent::AuthRequired(m) => f.auth = Some(m.clone()),
             AgentEvent::Done { session, text, is_error } => f.done = Some((session.clone(), text.clone(), *is_error)),
+            AgentEvent::Context { used, window } => {
+                let c = f.context.get_or_insert((None, None));
+                c.0 = used.or(c.0);
+                c.1 = window.or(c.1);
+            }
             _ => {}
         }
     }

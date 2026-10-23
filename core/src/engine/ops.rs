@@ -359,6 +359,8 @@ impl Engine {
         for r in t.runs.iter_mut().filter(|r| matches!(r.state, StepState::Running)) {
             r.state = StepState::Failed("switched".into());
         }
+        let base = self.project(&t.project_id).map(|p| p.base_branch).unwrap_or_default();
+        self.write_handoff(&mut t, &base, role, "model_switch")?;
         self.save(&t)?;
         self.log(id, LogKind::Human, &format!("switch_model: {role:?} -> {}", choice.family));
         Ok(())

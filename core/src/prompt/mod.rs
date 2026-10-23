@@ -410,6 +410,54 @@ pub fn tests_failed_prompt(output: &str) -> String {
     )
 }
 
+/// Command output for an agent's context (story 308): a line rewritten with `\r` (a progress bar) keeps its last
+/// state, and a run of lines that differ only in digits becomes its last line with a counter `(×N)`.
+pub fn squeeze(output: &str) -> String {
+    let key = |l: &str| l.chars().map(|c| if c.is_ascii_digit() { '#' } else { c }).collect::<String>();
+    let mut out: Vec<String> = vec![];
+    let mut run: Option<(String, String, usize)> = None; // key, last line, count
+    let flush = |out: &mut Vec<String>, r: Option<(String, String, usize)>| {
+        if let Some((_, line, n)) = r {
+            out.push(if n > 1 { format!("{line}  (×{n})") } else { line });
+        }
+    };
+    for raw in output.lines() {
+        let line = raw.rsplit('\r').find(|p| !p.trim().is_empty()).unwrap_or("").to_string();
+        let k = key(&line);
+        match &mut run {
+            Some((rk, last, n)) if *rk == k => {
+                *last = line;
+                *n += 1;
+            }
+            _ => {
+                flush(&mut out, run.take());
+                run = Some((k, line, 1));
+            }
+        }
+    }
+    flush(&mut out, run);
+    out.join("\n")
+}
+
+/// The body of a task's commit (story 292): the first paragraph of the report; longer than 500 characters, it is
+/// cut after the last whole sentence that fits (else the last whole word) and ends with "…", never mid-word.
+pub fn commit_body(report: &str) -> String {
+    const MAX: usize = 500;
+    let text = report.replace("\r\n", "\n");
+    let para = text.split("\n\n").map(str::trim).find(|p| !p.is_empty()).unwrap_or("");
+    let chars: Vec<char> = para.chars().collect();
+    if chars.len() <= MAX {
+        return para.to_string();
+    }
+    let room = &chars[..MAX - 1];
+    let ends = |i: usize| ".!?…".contains(room[i]) && chars.get(i + 1).is_none_or(|c| c.is_whitespace());
+    let cut = (0..room.len()).rev().find(|&i| ends(i)).map(|i| i + 1).or_else(|| {
+        (0..room.len()).rev().find(|&i| chars[i + 1].is_whitespace() && !room[i].is_whitespace()).map(|i| i + 1)
+    });
+    let kept: String = room[..cut.unwrap_or(room.len())].iter().collect();
+    format!("{}…", kept.trim_end())
+}
+
 pub fn changes_prompt(issues: &[String]) -> String {
     let list: String = issues.iter().map(|i| format!("- {i}\n")).collect();
     format!("A reviewer asked for changes. Address every point:\n\n{}", fenced("REVIEW_NOTES", list.trim_end()))

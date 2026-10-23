@@ -31,6 +31,8 @@ pub enum FakeStep {
     Action(crate::model::ToolAction),
     /// v3: a piece of streamed text.
     Delta(String),
+    /// v4: context in use and the window, in tokens.
+    Context(u64, u64),
 }
 
 /// Which runs a role script answers: a role, and optionally one swarm variant.
@@ -168,6 +170,7 @@ impl Adapter for FakeAdapter {
                 FakeStep::Sleep(ms) => sh.push_str(&format!("sleep {}\n", ms as f64 / 1000.0)),
                 FakeStep::Action(a) => sh.push_str(&ev(serde_json::json!({"t":"action","action":a}))),
                 FakeStep::Delta(t) => sh.push_str(&ev(serde_json::json!({"t":"delta","text":t}))),
+                FakeStep::Context(u, w) => sh.push_str(&ev(serde_json::json!({"t":"context","used":u,"window":w}))),
             }
         }
         let mut c = Command::new("sh");
@@ -192,6 +195,7 @@ impl Adapter for FakeAdapter {
             Some("auth") => vec![AgentEvent::AuthRequired(s("text"))],
             Some("action") => serde_json::from_value(v["action"].clone()).map(AgentEvent::Action).into_iter().collect(),
             Some("delta") => vec![AgentEvent::TextDelta(s("text"))],
+            Some("context") => vec![AgentEvent::Context { used: v["used"].as_u64(), window: v["window"].as_u64() }],
             _ => vec![],
         }
     }
@@ -203,6 +207,9 @@ impl Adapter for FakeAdapter {
     }
     fn reports_cost(&self) -> bool {
         true
+    }
+    fn compact_prompt(&self, keep: &str) -> Option<String> {
+        Some(format!("/compact {keep}"))
     }
     fn finish(&self, exit_ok: bool, _all_text: &str) -> Vec<AgentEvent> {
         if exit_ok {

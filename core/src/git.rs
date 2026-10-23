@@ -585,6 +585,226 @@ pub fn pr_state(repo: &Path, url: &str) -> Result<String, GitError> {
     Ok(gh(repo, &["pr", "view", url, "--json", "state", "-q", ".state"])?.to_lowercase())
 }
 
+/// Why `publish` refused or failed. JSON `{kind, ...}` (kind snake_case) for the window, which translates it.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, thiserror::Error)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum PublishError {
+    #[error("gh_missing")]
+    GhMissing,
+    #[error("gh_not_logged_in")]
+    GhNotLoggedIn,
+    #[error("name_taken")]
+    NameTaken,
+    /// Not a GitHub repository name (letters, digits, `.`, `_`, `-`; up to 100).
+    #[error("bad_name")]
+    BadName,
+    /// A key or `.env` some commit of what would be pushed added (rule F1): nothing is sent.
+    #[error("protected_in_history: {}", paths.join(", "))]
+    ProtectedInHistory { paths: Vec<String> },
+    #[error("publish_failed: {detail}")]
+    Failed { detail: String },
+}
+
+fn repo_name_ok(name: &str) -> bool {
+    (1..=100).contains(&name.len()) && !name.starts_with(['-', '.']) && name.chars().all(|c| c.is_ascii_alphanumeric() || "._-".contains(c))
+}
+
+/// Secret-like files any commit reachable from HEAD added or changed: what `gh repo create --push` would send.
+pub fn protected_in_history(repo: &Path) -> Result<Vec<String>, GitError> {
+    if !has_commit(repo) {
+        return Ok(vec![]);
+    }
+    Ok(nul_list(&ok(repo, &["log", "--format=", "--name-only", "--no-renames", "--diff-filter=d", "-z", "HEAD"])?))
+}
+
+/// Creates the GitHub repository and pushes the current branch: `gh repo create <name> --private|--public
+/// --description --source <path> --push`. The history is checked for protected files first (F1); with one
+/// there, gh is never called. Returns the repository URL.
+pub fn publish(path: &Path, name: &str, private: bool, desc: &str) -> Result<String, PublishError> {
+    if !repo_name_ok(name) {
+        return Err(PublishError::BadName);
+    }
+    let paths = protected_in_history(path).map_err(|e| PublishError::Failed { detail: e.to_string() })?;
+    if !paths.is_empty() {
+        return Err(PublishError::ProtectedInHistory { paths });
+    }
+    if !has_commit(path) {
+        return Err(PublishError::Failed { detail: "no_commits".into() });
+    }
+    match gh_status(path) {
+        Ok(_) => {}
+        Err(GitError::Gh(m)) if m.starts_with("gh_not_installed") => return Err(PublishError::GhMissing),
+        Err(_) => return Err(PublishError::GhNotLoggedIn),
+    }
+    let vis = if private { "--private" } else { "--public" };
+    let desc = format!("--description={desc}"); // `=`: a description starting with `-` stays a value
+    let src = path.to_string_lossy();
+    match gh(path, &["repo", "create", name, vis, &desc, "--source", &src, "--push"]) {
+        Ok(out) => out
+            .lines()
+            .rev()
+            .map(str::trim)
+            .find(|l| l.starts_with("https://"))
+            .map(str::to_string)
+            .ok_or(PublishError::Failed { detail: format!("no repository url in gh output: {out}") }),
+        Err(GitError::Gh(m)) if m.contains("already exists") => Err(PublishError::NameTaken),
+        Err(e) => Err(PublishError::Failed { detail: e.to_string() }),
+    }
+}
+
+/// One row of the history page. `time` = author time, Unix seconds. `task` = the id from the
+/// `Nightshift-Task:` trailer of a task's commit, else the 8-char prefix of an `ns/<id>-…` branch on it.
+/// `lane` = column of the node; `edges` = lines from this row (lane here) to the next row (lane there).
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+pub struct CommitRow {
+    pub sha: String,
+    pub parents: Vec<String>,
+    pub author: String,
+    pub time: i64,
+    pub subject: String,
+    pub refs: Vec<String>,
+    pub task: Option<String>,
+    pub lane: u16,
+    pub edges: Vec<(u16, u16)>,
+}
+
+/// Trailer the merge of a task writes, so the history knows the commit.
+pub const TASK_TRAILER: &str = "Nightshift-Task";
+
+/// Lanes open after a row: the commit each one waits for and the lane of the row above it comes from.
+#[derive(Clone, Default, Debug)]
+struct Lanes {
+    slots: Vec<Option<String>>,
+    from: Vec<u16>,
+}
+
+impl Lanes {
+    /// Puts the next commit in a lane. Returns its lane and the edges of the row above into this one.
+    fn place(&mut self, sha: &str, parents: &[String]) -> (u16, Vec<(u16, u16)>) {
+        let first_free = |s: &Vec<Option<String>>| s.iter().position(Option::is_none).unwrap_or(s.len());
+        let node = self.slots.iter().position(|s| s.as_deref() == Some(sha)).unwrap_or_else(|| first_free(&self.slots));
+        let edges = self
+            .slots
+            .iter()
+            .enumerate()
+            .filter_map(|(i, s)| s.as_ref().map(|s| (self.from[i], if s == sha { node as u16 } else { i as u16 })))
+            .collect();
+        for (i, s) in self.slots.iter_mut().enumerate() {
+            if s.as_deref() == Some(sha) {
+                *s = None;
+            }
+            self.from[i] = i as u16;
+        }
+        if let Some(p0) = parents.first() {
+            self.put(node, p0, node);
+        }
+        for p in parents.iter().skip(1) {
+            let k = first_free(&self.slots);
+            self.put(k, p, node);
+        }
+        while self.slots.last().is_some_and(Option::is_none) {
+            self.slots.pop();
+            self.from.pop();
+        }
+        (node as u16, edges)
+    }
+    fn put(&mut self, k: usize, sha: &str, from: usize) {
+        if k >= self.slots.len() {
+            self.slots.resize(k + 1, None);
+            self.from.resize(k + 1, 0);
+        }
+        self.slots[k] = Some(sha.to_string());
+        self.from[k] = from as u16;
+    }
+}
+
+/// Same order for every page and every replay.
+const LOG_ORDER: [&str; 5] = ["--topo-order", "--branches", "--tags", "--remotes", "HEAD"];
+
+type LogCache = std::sync::Mutex<std::collections::HashMap<PathBuf, (String, usize, Lanes)>>;
+/// Per repository: (refs fingerprint, rows already placed, lanes after them), so the next page goes on from there.
+static LOG_CACHE: std::sync::OnceLock<LogCache> = std::sync::OnceLock::new();
+
+/// A page of the history (newest first) with the graph. Pages are computed one after another: the next
+/// page continues the lanes of the previous one while the refs stay the same; any other `skip` replays the
+/// first `skip` commits (their shas and parents only). An empty repository gives an empty page.
+pub fn log_page(path: &Path, skip: usize, limit: usize) -> Result<Vec<CommitRow>, GitError> {
+    if !has_commit(path) || limit == 0 {
+        return Ok(vec![]);
+    }
+    let fp = format!("{}\n{}", ok(path, &["rev-parse", "HEAD"])?, ok(path, &["for-each-ref", "--format=%(objectname) %(refname)", "refs/heads", "refs/tags", "refs/remotes"])?);
+    let key = path.to_path_buf();
+    let cache = LOG_CACHE.get_or_init(Default::default);
+    let cached = cache.lock().unwrap().get(&key).filter(|(f, n, _)| *f == fp && *n == skip).map(|c| c.2.clone());
+    let mut lanes = match cached {
+        Some(l) => l,
+        None => {
+            let mut l = Lanes::default();
+            if skip > 0 {
+                let mut args = vec!["log", "--format=%H %P"];
+                args.extend(LOG_ORDER);
+                let n = format!("-n{skip}");
+                args.push(&n);
+                for line in ok(path, &args)?.lines() {
+                    let mut it = line.split(' ').map(str::to_string);
+                    let sha = it.next().unwrap_or_default();
+                    l.place(&sha, &it.collect::<Vec<_>>());
+                }
+            }
+            l
+        }
+    };
+    let (skip_arg, n_arg) = (format!("--skip={skip}"), format!("-n{}", limit + 1));
+    let mut args = vec![
+        "log",
+        "--decorate-refs=refs/heads",
+        "--decorate-refs=refs/tags",
+        "--decorate-refs=refs/remotes",
+        "--format=%H%x1f%P%x1f%an%x1f%at%x1f%s%x1f%D%x1f%(trailers:key=Nightshift-Task,valueonly,separator=%x2C)%x1e",
+    ];
+    args.extend(LOG_ORDER);
+    args.extend([skip_arg.as_str(), n_arg.as_str()]);
+    let out = ok(path, &args)?;
+    let mut rows: Vec<CommitRow> = vec![];
+    for rec in out.split('\x1e').map(|r| r.trim_start_matches('\n')).filter(|r| !r.is_empty()) {
+        let f: Vec<&str> = rec.split('\x1f').collect();
+        let get = |i: usize| f.get(i).copied().unwrap_or("").trim();
+        let sha = get(0).to_string();
+        let parents: Vec<String> = get(1).split_whitespace().map(str::to_string).collect();
+        if rows.len() == limit {
+            // one commit past the page: only for the edges of its last row
+            let (_, e) = lanes.clone().place(&sha, &parents);
+            if let Some(last) = rows.last_mut() {
+                last.edges = e;
+            }
+            break;
+        }
+        let (lane, e) = lanes.place(&sha, &parents);
+        if let Some(last) = rows.last_mut() {
+            last.edges = e;
+        }
+        let refs: Vec<String> = get(5).split(", ").map(|r| r.trim_start_matches("HEAD -> ").to_string()).filter(|r| !r.is_empty() && r != "HEAD").collect();
+        let task = Some(get(6).split(',').next().unwrap_or("").trim().to_string()).filter(|s| !s.is_empty()).or_else(|| {
+            refs.iter().find_map(|r| r.rsplit("ns/").next().filter(|_| r.contains("ns/")).map(|x| x.chars().take(8).collect()))
+        });
+        rows.push(CommitRow { sha, parents, author: get(2).to_string(), time: get(3).parse().unwrap_or(0), subject: get(4).to_string(), refs, task, lane, edges: vec![] });
+    }
+    cache.lock().unwrap().insert(key, (fp, skip + rows.len(), lanes));
+    Ok(rows)
+}
+
+/// Undoes `sha` with a new commit on the current branch (`revert` rules: trees only, the working copy is
+/// moved only when clean). A merge is undone against its first parent. Returns the new commit.
+pub fn revert_commit(path: &Path, sha: &str) -> Result<String, GitError> {
+    let branch = repo_info(path).current_branch.ok_or_else(|| GitError::Other("detached_head".into()))?;
+    revert(path, &branch, sha)
+}
+
+/// The commit is on a remote-tracking branch: undoing it locally and pushing is an outward action (D01).
+pub fn is_pushed(path: &Path, sha: &str) -> bool {
+    try_out(path, &["branch", "-r", "--contains", sha]).is_some()
+}
+
 fn default_base(repo: &Path) -> Option<String> {
     repo_info(repo).base_branch
 }

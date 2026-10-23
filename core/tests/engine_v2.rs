@@ -352,7 +352,9 @@ fn when_the_spare_model_takes_over_the_prompt_is_made_by_the_template_of_its_ven
     assert!(w[0].prompt.contains("<request>") && !w[0].prompt.contains("# Instructions"), "{}", w[0].prompt);
     assert!(w[0].system.starts_with("You are a software engineer"));
     // the second: the template of OpenAI (Markdown headings, Identity / Instructions), a new session, the work so far fenced
-    assert!(w[1].prompt.starts_with("# Instructions"), "{}", w[1].prompt);
+    // after the hand-off note, which opens the prompt of the model that takes over (story 307)
+    let body = w[1].prompt.strip_prefix(t.handoff.as_deref().unwrap()).unwrap().trim_start();
+    assert!(body.starts_with("# Instructions"), "{}", w[1].prompt);
     assert!(w[1].system.starts_with("# Identity"), "{}", w[1].system);
     assert!(w[1].resume.is_none());
     assert!(w[1].prompt.contains("<<<DATA DIFF ") && w[1].prompt.contains("+half"), "{}", w[1].prompt);

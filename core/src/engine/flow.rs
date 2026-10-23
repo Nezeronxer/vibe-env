@@ -12,6 +12,9 @@ use crate::notify::NoticeKind;
 use crate::prompt::{self, Conflict, RoleInputs, Vendor};
 use chrono::{DateTime, Duration as CDuration, Local};
 use std::cell::RefCell;
+
+/// The most of the worker's report kept on the task (the commit takes its first paragraph, story 292).
+pub(super) const SUMMARY_MAX: usize = 4000;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 const MAX_AGENT_ERRORS: u32 = 3;
@@ -191,6 +194,7 @@ impl Engine {
     }
 
     fn prepare(&self, t: &mut Task, p: &Project, cancel: &AtomicBool) -> Res {
+        let began = std::time::Instant::now();
         t.started_at.get_or_insert(self.now());
         self.note_v1_settings(p);
         // put off by the agent (DEFERRED) and released: the copy and the session are as they were left
@@ -222,19 +226,26 @@ impl Engine {
         t.worktree = Some(wt.clone());
         self.save(t)?;
         self.log(&t.id, LogKind::Git, &format!("worktree {} on {}", wt.display(), t.branch));
-        let copied = util::copy_files(&p.path, &wt, &p.copy_files);
+        let mut copied = util::copy_files(&p.path, &wt, &p.copy_files);
         if !copied.is_empty() {
-            // never part of a commit, tracked by git ignore rules or not
-            git::hide_untracked(&wt, &copied).map_err(gerr)?;
             self.stage(t, &format!("copied {}", copied.join(", ")));
+        }
+        // never part of a commit, tracked by git ignore rules or not; the app's own folder too (hand-off, raw output)
+        copied.push(super::practices::APP_DIR.to_string());
+        git::hide_untracked(&wt, &copied).map_err(gerr)?;
+        // one step before the agent (story 311): files, ports and database, the setup command
+        self.alloc_ports(t, p)?;
+        if let (Some(port), Some(db)) = (t.port, &t.db_name) {
+            self.stage(t, &format!("ports: {port}, db: {db}"));
         }
         if let Some(cmd) = p.setup_cmd.as_deref().filter(|c| !c.trim().is_empty()) {
             self.stage(t, &format!("setup: {cmd}"));
-            let Some((ok, out)) = sh(&wt, cmd, cancel) else { return Ok(Flow::Stop) };
+            let Some((ok, out)) = sh(&wt, cmd, &Self::copy_env(t), cancel) else { return Ok(Flow::Stop) };
             if !ok {
                 return Err(format!("setup_failed: {cmd}\n{}", tail(&out, 60)));
             }
         }
+        self.stage(t, &format!("prepared_in: {}s", began.elapsed().as_secs()));
         self.set(t, Status::Working)?;
         Ok(Flow::Next)
     }
@@ -357,7 +368,7 @@ impl Engine {
         // the prompt is cleared below only once the next status is saved
         let sig = prompt::parse_signals(&text);
         if !sig.body.is_empty() {
-            t.outcome.summary = Some(sig.body.chars().take(500).collect());
+            t.outcome.summary = Some(sig.body.chars().take(SUMMARY_MAX).collect());
         }
         if self.g_uncommit(t, &wt, &p.base_branch).map_err(gerr)? {
             self.log(&t.id, LogKind::Git, "agent committed a copied local file or a key; its commits were folded back without it");
@@ -451,9 +462,15 @@ impl Engine {
         }
         checks.extend(p.extra_checks.iter().filter(|(_, c)| !c.trim().is_empty()).cloned());
         let mut results = vec![];
+        let envs = self.task(id).map(|t| Self::copy_env(&t)).unwrap_or_default();
         for (name, cmd) in checks {
             self.log(id, LogKind::Check, &format!("$ {cmd}"));
-            let (passed, out) = sh(wt, &cmd, cancel)?;
+            let (passed, out) = sh(wt, &cmd, &envs, cancel)?;
+            if !passed {
+                // the whole output stays in the copy: what the agent gets may be squeezed (story 308)
+                let f = super::practices::raw_output_path(wt, &name);
+                let _ = std::fs::create_dir_all(f.parent().unwrap_or(wt)).and_then(|_| std::fs::write(&f, &out));
+            }
             let tl = tail(&out, 60);
             self.log(id, LogKind::Check, &format!("{}\n{tl}", if passed { "passed" } else { "failed" }));
             results.push(GateResult { name, passed, tail: tl });
@@ -485,8 +502,32 @@ impl Engine {
         if t.attempts >= cap {
             return Err("tests_failed".into());
         }
-        let out: Vec<String> = t.outcome.gates.iter().filter(|g| !g.passed).map(|g| format!("{}:\n{}", g.name, g.tail)).collect();
-        self.next_prompt(t, prompt::tests_failed_prompt(&out.join("\n\n")))?;
+        let squeeze = super::lk(&self.store).settings().compress_output;
+        let wt = t.worktree.clone().unwrap_or_default();
+        let mut raw = vec![];
+        let out: Vec<String> = t
+            .outcome
+            .gates
+            .iter()
+            .filter(|g| !g.passed)
+            .map(|g| {
+                let f = super::practices::raw_output_path(&wt, &g.name);
+                let full = std::fs::read_to_string(&f).ok();
+                if full.is_some() {
+                    raw.push(format!("- {}: {}", g.name, f.display()));
+                }
+                let text = match full.filter(|_| squeeze) {
+                    Some(full) => tail(&prompt::squeeze(&full), 60),
+                    None => g.tail.clone(),
+                };
+                format!("{}:\n{text}", g.name)
+            })
+            .collect();
+        let mut msg = prompt::tests_failed_prompt(&out.join("\n\n"));
+        if !raw.is_empty() {
+            msg.push_str(&format!("\n\nThe full raw output of each failed check is in a file:\n{}", raw.join("\n")));
+        }
+        self.next_prompt(t, msg)?;
         self.back_to_code(t)?;
         Ok(Flow::Next)
     }
@@ -666,9 +707,10 @@ impl Engine {
                     merged = true; // the PR carries the branch; base is not touched locally
                     break;
                 }
-                let msg = match &t.outcome.summary {
-                    Some(s) => format!("{}\n\n{s}", t.title),
-                    None => t.title.clone(),
+                // the body: the report's first paragraph, cut at a sentence (story 292); the trailer marks a task's commit
+                let msg = match t.outcome.summary.as_deref().map(prompt::commit_body).filter(|b| !b.is_empty()) {
+                    Some(b) => format!("{}\n\n{b}\n\n{}: {}", t.title, git::TASK_TRAILER, t.id),
+                    None => format!("{}\n\n{}: {}", t.title, git::TASK_TRAILER, t.id),
                 };
                 match self.g_squash(&p.path, &wt, &p.base_branch, &msg) {
                     Ok(sha) => {

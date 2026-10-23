@@ -129,6 +129,10 @@ impl Adapter for Claude {
         if let Some(b) = run.max_budget_usd {
             c.args(["--max-budget-usd", &b.to_string()]);
         }
+        if !run.allowed_tools.is_empty() {
+            // one value per tool: a pattern like `Bash(cargo test)` keeps its space
+            c.arg("--allowedTools").args(&run.allowed_tools);
+        }
         c.envs(run.extra_env.iter().map(|(k, v)| (k, v)));
         c.args(&run.extra_args);
         if !run.system.trim().is_empty() {
@@ -145,9 +149,18 @@ impl Adapter for Claude {
         match j["type"].as_str() {
             Some("rate_limit_event") => rate_limit_events(&j["rate_limit_info"], Local::now()),
             Some("result") => {
-                // cost comes before Done, so the engine has it when the run ends
+                // cost (and the window) come before Done, so the engine has them when the run ends
                 let cost = j["total_cost_usd"].as_f64().map(AgentEvent::Cost);
-                cost.into_iter().chain(parse_line(line)).collect()
+                let window = j["modelUsage"].as_object().and_then(|m| m.values().filter_map(|u| u["contextWindow"].as_u64()).max());
+                let ctx = window.map(|w| AgentEvent::Context { used: None, window: Some(w) });
+                ctx.into_iter().chain(cost).chain(parse_line(line)).collect()
+            }
+            // what the model was sent this turn = what the context holds now (a subagent's turns are not the session's)
+            Some("assistant") if j["parent_tool_use_id"].is_null() && j["message"]["usage"].is_object() => {
+                let u = &j["message"]["usage"];
+                let n = |k: &str| u[k].as_u64().unwrap_or(0);
+                let used = n("input_tokens") + n("cache_read_input_tokens") + n("cache_creation_input_tokens");
+                parse_line(line).into_iter().chain([AgentEvent::Context { used: Some(used), window: None }]).collect()
             }
             _ => parse_line(line),
         }
@@ -157,6 +170,13 @@ impl Adapter for Claude {
     }
     fn reports_cost(&self) -> bool {
         true
+    }
+    /// `/compact <what to keep>` sent as the prompt of a `--resume` run. // unverified: the slash command in `-p` mode
+    fn compact_prompt(&self, keep: &str) -> Option<String> {
+        Some(format!("/compact {}", keep.trim()))
+    }
+    fn fast_model(&self) -> Option<String> {
+        Some("haiku".into())
     }
     fn read_only_native(&self) -> bool {
         true

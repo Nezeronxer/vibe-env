@@ -61,6 +61,11 @@ pub(super) struct RoleCall<'a> {
     pub shown: Option<&'a std::cell::RefCell<Option<(String, bool)>>>,
 }
 
+/// The commands of the project's checks (the gates): what a writer may run without asking (story 312).
+pub(super) fn check_cmds(p: &Project) -> Vec<String> {
+    p.check_cmd.iter().cloned().chain(p.extra_checks.iter().map(|(_, c)| c.clone())).collect()
+}
+
 /// Roles that only read.
 pub(super) fn is_read_only(role: RoleKind) -> bool {
     !matches!(role, RoleKind::Worker | RoleKind::TestAuthor | RoleKind::Integrator)
@@ -144,6 +149,33 @@ impl Engine {
             if role == RoleKind::Worker {
                 t.session = None;
             }
+            self.write_handoff(t, &p.base_branch, role, "limit_fallback")?;
+        }
+        // "Сжать" asked for (story 305): compact the session now, or go on in a fresh one with the hand-off note
+        if role == RoleKind::Worker && resume.is_some() {
+            if let Some(keep) = self.update_state(&t.id, |s| s.compact.take())? {
+                self.write_handoff(t, &p.base_branch, role, "compact")?;
+                match (a.compact_prompt(&keep), t.worktree.clone()) {
+                    (Some(cmd), Some(wt)) => {
+                        let mut run = Run::new(wt, cmd, String::new(), role);
+                        run.resume = resume.clone();
+                        run.model = pinned.as_ref().and_then(|p| p.cli_arg.clone());
+                        run.extra_env = self.env_vars_of(&env, Some(&t.id));
+                        let label = pinned.as_ref().map_or("default".to_string(), |p| p.label.clone());
+                        match self.run_agent(t, &*a, &run, (&label, None), &[], None, cancel) {
+                            Ran::Cancelled => return Ok(RoleEnd::Cancelled),
+                            Ran::Events(ev) => self.log(&t.id, LogKind::Stage, &format!("compacted: {}", if runs::fold(&ev).done.is_some_and(|d| !d.2) { "ok" } else { "failed" })),
+                            Ran::Stalled => {}
+                        }
+                    }
+                    _ => {
+                        resume = None;
+                        pinned = None;
+                        switched = true;
+                        t.session = None;
+                    }
+                }
+            }
         }
         let mut announced = false;
         let mut tried_fallback = false;
@@ -176,6 +208,7 @@ impl Engine {
             if !notes.is_empty() {
                 text = format!("{text}\n\n{}", prompt::notes_block(&notes.iter().map(|n| n.1.clone()).collect::<Vec<_>>()));
             }
+            let text = self.with_handoff(t, role, text)?;
             let system = prompt::system_for(vendor, role);
 
             // where it runs: writers in the task's copy; readers through the env's flag or in a throwaway copy
@@ -193,8 +226,10 @@ impl Engine {
             run.model = cli_arg.clone();
             run.read_only = ro;
             run.extra_env = self.env_vars_of(&env, Some(&t.id));
+            run.extra_env.extend(Self::copy_env(t));
             run.json_schema = call.schema.clone();
             run.extra_args = env_set.extra_args.clone();
+            run.allowed_tools = settings.role_tools.get(&role).cloned().unwrap_or_else(|| agent::default_tools(role, &check_cmds(p)));
             if a.reports_cost() {
                 // capped by what is left of the task and of the env's day, whichever is less
                 let day = lk(&self.store).day_spend(&env, self.now().date_naive());
@@ -266,6 +301,11 @@ impl Engine {
 
             // what the run reported, and what comes next: the same decision for every run of every role
             let f = runs::fold(&events);
+            if role == RoleKind::Worker {
+                if let (Some(used), Some(window)) = f.context.filter(|c| c.1.is_some_and(|w| w > 0)).unwrap_or_default() {
+                    t.context_pct = Some(((used as f64 * 100.0 / window as f64).min(100.0) * 10.0).round() as f32 / 10.0);
+                }
+            }
             let mut cx = runs::RunCx { task_id: &t.id, env: &env, role, cat: &cat, fallback: env_set.fallback.clone(), choice: choice.clone(), tried_fallback };
             let next = self.after_run(&mut cx, &label, &f);
             (choice, tried_fallback) = (cx.choice, cx.tried_fallback);
@@ -319,6 +359,7 @@ impl Engine {
                         if role == RoleKind::Worker {
                             t.session = None;
                         }
+                        self.write_handoff(t, &p.base_branch, role, "limit_fallback")?;
                     } else {
                         t.runs[idx].state = StepState::Failed("model_rejected".into()); // not an attempt (G18.4)
                     }
@@ -407,7 +448,7 @@ impl Engine {
                 AgentEvent::TextDelta(t) => self.emit(EngineEvent::TextDelta { task: id.clone(), role, text: t.clone() }),
                 AgentEvent::Done { text, is_error, .. } => tag(if *is_error { LogKind::Error } else { kind.clone() }, text),
                 AgentEvent::Limit { .. } => tag(LogKind::Stage, "usage limit reached"),
-                AgentEvent::Usage(_) | AgentEvent::Cost(_) => {}
+                AgentEvent::Usage(_) | AgentEvent::Cost(_) | AgentEvent::Context { .. } => {}
                 AgentEvent::ModelRejected(m) | AgentEvent::AuthRequired(m) => tag(LogKind::Error, m),
             }
         };

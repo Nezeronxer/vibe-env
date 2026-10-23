@@ -98,6 +98,9 @@ impl Adapter for Gemini {
     fn finish(&self, exit_ok: bool, all_text: &str) -> Vec<AgentEvent> {
         synth_done(scan, exit_ok, all_text)
     }
+    fn fast_model(&self) -> Option<String> {
+        Some("flash".into()) // the docs: "Fast and cheap"
+    }
     fn read_only_native(&self) -> bool {
         true
     }

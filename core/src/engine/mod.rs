@@ -14,6 +14,7 @@ mod edits;
 mod flow;
 mod lanes;
 mod ops;
+mod practices;
 mod race;
 mod roles;
 mod runs;
@@ -346,6 +347,12 @@ impl Engine {
         let mut models = env.roles.clone();
         if let Some(m) = t.model.clone().or(env.default_model.clone()) {
             models.insert(RoleKind::Worker, m);
+        }
+        // service roles default to the env's fast model (story 310); a choice in Settings → Roles wins
+        if let Some(fast) = self.adapter(&agent).and_then(|a| a.fast_model()) {
+            for r in [RoleKind::Watcher, RoleKind::Coordinator, RoleKind::Planner] {
+                models.entry(r).or_insert(ModelChoice { family: fast.clone(), version: None });
+            }
         }
         let quality = t.quality.clone().unwrap_or_else(|| settings.quality.clone());
         let mut task = Task {

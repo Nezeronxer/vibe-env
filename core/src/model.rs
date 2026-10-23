@@ -77,6 +77,9 @@ pub struct Project {
     pub extra_checks: Vec<(String, String)>,
     #[serde(default)]
     pub run_cmd: Option<String>,
+    /// Story 309: each task's copy gets its own ports (`PORT`, `NIGHTSHIFT_PORT_BASE`) and database name.
+    #[serde(default)]
+    pub isolate_ports: bool,
 }
 
 impl Project {
@@ -97,6 +100,7 @@ impl Project {
             fallback_agent: None,
             extra_checks: vec![],
             run_cmd: None,
+            isolate_ports: false,
         }
     }
 }
@@ -193,6 +197,19 @@ pub struct Task {
     pub cost_usd: Option<f64>,
     #[serde(default)]
     pub budget_usd: Option<f64>,
+    // v4 (stories 305, 307, 309)
+    /// Share of the worker session's context window in use, 0-100, from the CLI's own numbers; None = no data.
+    #[serde(default)]
+    pub context_pct: Option<f32>,
+    /// The last hand-off note (model switch, limit fallback, "Сжать"); also a file in the copy.
+    #[serde(default)]
+    pub handoff: Option<String>,
+    /// `PORT` / `NIGHTSHIFT_PORT_BASE` of the copy when the project isolates ports.
+    #[serde(default)]
+    pub port: Option<u16>,
+    /// `NIGHTSHIFT_DB_NAME` of the copy when the project isolates ports.
+    #[serde(default)]
+    pub db_name: Option<String>,
 }
 
 impl Default for Task {
@@ -228,6 +245,10 @@ impl Default for Task {
             rendered_prompt: None,
             cost_usd: None,
             budget_usd: None,
+            context_pct: None,
+            handoff: None,
+            port: None,
+            db_name: None,
         }
     }
 }
@@ -357,6 +378,11 @@ pub struct Settings {
     pub attempts: u32,
     pub review_rounds: u32,
     pub keep_awake: bool,
+    /// Story 308: command output the agent gets is squeezed (repeats, progress bars -> a counter).
+    pub compress_output: bool,
+    /// Story 312: tools a role may use without asking, as the CLI names them; a role not here gets
+    /// `agent::default_tools`.
+    pub role_tools: BTreeMap<RoleKind, Vec<String>>,
 }
 #[derive(Serialize, Deserialize, Clone, Debug, Default)]
 pub struct TelegramSettings {
@@ -493,6 +519,8 @@ impl Default for Settings {
             attempts: 3,
             review_rounds: 3,
             keep_awake: true,
+            compress_output: true,
+            role_tools: BTreeMap::new(),
         }
     }
 }

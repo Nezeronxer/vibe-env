@@ -75,6 +75,12 @@ pub(super) struct TaskState {
     /// The Watcher nudged the role in this call and waits for the second silence (G08.2).
     #[serde(default)]
     pub nudged: bool,
+    /// The hand-off note (`Task.handoff`) opens the next run of this role (story 307).
+    #[serde(default)]
+    pub handoff_for: Option<RoleKind>,
+    /// "Сжать" was asked with this text: done before the worker's next resumed run (story 305).
+    #[serde(default)]
+    pub compact: Option<String>,
 }
 
 /// Where a lane (a variant, a part of a crew) stands.
