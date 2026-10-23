@@ -73,12 +73,15 @@
     T('t-pf', 'p3', 'codex', 'pf', 'Поиск на Pagefind', 'failed', { attempts: 2, steps: steps('gates').map((p) => (p[0] === 'gates' ? ['gates', { failed: 'tests' }] : p)), started_at: ago(48), finished_at: ago(2), cost_usd: null, budget_usd: null,
       models: { worker: { family: 'gpt-codex', version: null } }, outcome: { error: 'tests still failing after 3 attempts', tests: RED } }),
     T('t-img', 'p2', 'gemini', 'img', 'Сжатие картинок', 'working', { started_at: ago(9), steps: steps('code'), cost_usd: null, models: {} }),
+    T('t-cxl', 'p1', 'claude', 'cxl', 'Удалить старые миграции', 'cancelled', { steps: steps('plan').map((p) => [p[0], 'pending']), finished_at: ago(200), started_at: ago(215), cost_usd: null }),
+    T('t-rev', 'p1', 'claude', 'rev', 'Логи запросов в stdout', 'reverted', { steps: steps('merge').map((p) => [p[0], p[1] === 'running' || p[1] === 'pending' ? 'done' : p[1]]), finished_at: ago(240), started_at: ago(260), cost_usd: null,
+      outcome: { summary: 'Откачено: main вернулся к a3f9c21d8e', files_changed: 2, insertions: 24, deletions: 3 } }),
     T('t-es', 'p2', 'gemini', 'es', 'Переводы на испанский', 'done', { steps: steps('merge').map((p) => [p[0], p[1] === 'running' || p[1] === 'pending' ? 'done' : p[1]]), finished_at: ago(300), started_at: ago(330), cost_usd: null,
       outcome: { summary: 'Смержено в main', commit: 'c02d55e1b7', files_changed: 3, insertions: 88, deletions: 0 } }),
   ];
   const C = (id, env, project_id, title, last, ageMin) => ({ id, env, project_id, title, last, session: null, convoy: false, created_at: ago(ageMin + 60), updated_at: ago(ageMin), archived: false });
   let chats = scenario === 'empty' ? [] : [C('inv', 'claude', 'p1', 'Пагинация в /invoices', '', 1), C('round', 'claude', 'p1', 'Округление в итогах', '', 7), C('how', 'claude', 'p1', 'Как устроен биллинг?', 'Три слоя: routes, service, repo', 20),
-    C('chlog', 'claude', 'p1', 'Changelog 2.4', '', 30), C('cur', 'claude', 'p1', 'Поле currency в payments', '', 160), C('hero', 'claude', 'p2', 'Герой на странице цен', '', 22),
+    C('chlog', 'claude', 'p1', 'Changelog 2.4', '', 30), C('cur', 'claude', 'p1', 'Поле currency в payments', '', 160), C('cxl', 'claude', 'p1', 'Удалить старые миграции', '', 200), C('rev', 'claude', 'p1', 'Логи запросов в stdout', '', 240), C('hero', 'claude', 'p2', 'Герой на странице цен', '', 22),
     C('acc', 'codex', 'p1', 'customer_id → account_id', '', 31), C('pf', 'codex', 'p3', 'Поиск на Pagefind', '', 2), C('img', 'gemini', 'p2', 'Сжатие картинок', '', 9),
     C('avif', 'gemini', 'p2', 'Что такое AVIF?', 'Формат картинок, меньше WebP', 40), C('es', 'gemini', 'p2', 'Переводы на испанский', '', 300), C('old', 'claude', 'p1', 'Старый разговор про CI', 'Лучше кэшировать node_modules', 60 * 24 * 9)];
   const M = (chat, id, hh, mm, who, text, extra) => Object.assign({ id: chat + '-' + id, chat_id: chat, at: today(hh, mm), who, text, task_id: null, delivered_at: null }, extra);
@@ -104,6 +107,8 @@
     how: [M('how', 1, 13, 40, 'human', 'Как устроен биллинг? Коротко.'), M('how', 9, 13, 40, 'system', '', { action: { id: 'h1', name: 'Grep', input: { kind: 'search', pattern: 'class .*Service', hits: 3 }, output: 'a\nb\nc', ok: true, done: true } }),
       M('how', 8, 13, 40, 'system', '', { action: { id: 'h2', name: 'Bash', input: { kind: 'bash', command: 'tree -L 2 src/billing' }, output: Array.from({ length: 12 }, (_, i) => 'src/billing/f' + i + '.py').join('\n') + '\n[output_truncated: 81234 bytes]', ok: true, done: true } }), M('how', 2, 13, 40, 'model', 'Три слоя: `routes` принимают запрос, `service` считает суммы и налоги, `repo` ходит в Postgres. Деньги хранятся в копейках, валюта в отдельном поле.', { model: 'Sonnet 5.5' })],
     round: [M('round', 1, 13, 50, 'human', 'Сделай: округление в итогах'), M('round', 2, 13, 50, 'system', '', { kind: 'task', task_id: 't-round' })],
+    cxl: [M('cxl', 1, 10, 40, 'human', 'Сделай: удалить старые миграции'), M('cxl', 2, 10, 40, 'system', '', { kind: 'task', task_id: 't-cxl' })],
+    rev: [M('rev', 1, 9, 50, 'human', 'Сделай: логи запросов в stdout'), M('rev', 2, 9, 50, 'system', '', { kind: 'task', task_id: 't-rev' })],
     hero: [M('hero', 1, 13, 30, 'human', 'Сделай героя на странице цен'), M('hero', 2, 13, 30, 'system', '', { kind: 'task', task_id: 't-hero' })],
     pf: [M('pf', 1, 13, 10, 'human', 'Сделай поиск на Pagefind'), M('pf', 2, 13, 10, 'system', '', { kind: 'task', task_id: 't-pf' })],
     acc: [M('acc', 1, 13, 20, 'human', 'Переименуй customer_id в account_id'), M('acc', 2, 13, 20, 'system', '', { kind: 'task', task_id: 't-acc' }),

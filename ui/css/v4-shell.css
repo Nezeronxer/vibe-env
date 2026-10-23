@@ -78,7 +78,7 @@
 @media (prefers-reduced-motion: reduce) { .stp.s-run .stp-g, .agrp-h .agrp-dot.run, .cfeed .lv-spin, .wb-dot { animation: none; } }
 /* the task card in the column: compact, one row of stages and the question */
 .cfeed .tcard { padding: 10px 14px 12px; border-color: var(--line2); border-radius: 12px; background: var(--card-fx); }
-.cfeed .tcard.pinned { top: 8px; }
+.cfeed .tcard.pinned { top: 0; }
 .cfeed .tc-h h2 { font-size: 14px; }
 .cfeed .tc-steps { margin-top: 8px; }
 .cfeed .tc-steps span { font: 11.5px var(--sans); }
@@ -91,8 +91,8 @@
 /* ---------- the input (F9): a rounded field, the controls in a row under the text, a round send button ---------- */
 .convo > .cmpbox { flex: none; width: calc(100% - 32px); max-width: var(--feed-w); margin: 0 auto 8px; }
 .cmpbox .composer { position: relative; width: auto; max-width: none; margin: 0; padding: 12px 12px 10px 16px; gap: 8px; border: 1px solid transparent; border-radius: 16px;
-  background: linear-gradient(180deg, color-mix(in srgb, var(--cream) 6%, var(--raised)), var(--raised)) padding-box, var(--rim) border-box;
-  box-shadow: var(--shadow-sm), inset 0 1px 0 color-mix(in srgb, var(--cream) 10%, transparent); transition: box-shadow var(--t) ease-out; }
+  background: linear-gradient(180deg, color-mix(in srgb, var(--cream) 12%, var(--raised2)), var(--raised2)) padding-box, linear-gradient(145deg, color-mix(in srgb, var(--cream) 58%, var(--brass)), color-mix(in srgb, var(--cream) 40%, var(--brass)) 45%, color-mix(in srgb, var(--brass) 70%, var(--line2))) border-box;
+  box-shadow: var(--shadow-sm), inset 0 1px 0 color-mix(in srgb, var(--cream) 30%, transparent), inset 0 12px 18px -14px color-mix(in srgb, var(--cream) 22%, transparent); transition: box-shadow var(--t) ease-out; }
 .cmpbox .composer:focus-within { border-color: transparent; box-shadow: 0 0 0 3px color-mix(in srgb, var(--amber) 22%, transparent), 0 0 26px color-mix(in srgb, var(--amber) 20%, transparent), var(--shadow-sm); }
 .cmp-line { display: block; min-width: 0; }
 .composer textarea { display: block; width: 100%; min-width: 0; height: 22px; min-height: 22px; max-height: 176px; padding: 0; margin: 0; border: 0; background: transparent; box-shadow: none;

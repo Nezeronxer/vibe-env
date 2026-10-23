@@ -93,3 +93,11 @@ dialog.wide .act-log { max-height: 60vh; margin-bottom: 14px; border: 1px solid 
 .tc-done.sum > .ic { margin-top: 2px; flex: none; }
 .tc-done .md { flex: 1; min-width: 0; }
 .msg-b > .md + .caret { margin-top: 2px; }
+/* the tally lamps keep their halo at rest; only the breathing stops under prefers-reduced-motion */
+.tdot { width: 8px; height: 8px; }
+.tdot.run { background: radial-gradient(circle at 35% 30%, color-mix(in srgb, var(--onair) 55%, white), var(--onair) 60%); box-shadow: 0 0 0 1.5px color-mix(in srgb, var(--onair) 28%, transparent), 0 0 9px 2px var(--glow-onair); animation: lamp-breathe 1.8s ease-in-out infinite; }
+.tdot.wait { box-shadow: 0 0 0 1.5px color-mix(in srgb, var(--human) 30%, transparent), 0 0 9px 2px color-mix(in srgb, var(--human) 55%, transparent); animation: lamp-breathe 1.5s ease-in-out infinite; }
+.tdot.done { box-shadow: 0 0 0 1.5px color-mix(in srgb, var(--ok) 25%, transparent), 0 0 8px 1px var(--glow-ok); }
+.pane-lamp { width: 10px; height: 10px; box-shadow: 0 0 0 2px color-mix(in srgb, var(--onair) 28%, transparent), 0 0 11px 2px var(--glow-onair); }
+.pane-lamp.calling { box-shadow: 0 0 0 2px color-mix(in srgb, var(--human) 30%, transparent), 0 0 11px 2px color-mix(in srgb, var(--human) 60%, transparent); }
+@keyframes lamp-breathe { 50% { filter: brightness(.8); } }

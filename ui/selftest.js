@@ -579,7 +579,7 @@ eq('palette: the recent list keeps 8, the newest first, no repeats', NSPalette.p
 // --- theme: one table -> CSS variables and xterm ---
 const TV = NSTheme.vars('dark', {}, 'claude');
 eq('theme: Nightshift Dark - near-black canvas (not #000), panes one step lighter, the focused pane takes the Claude colour #D97757',
-  [TV['--canvas'] !== '#000000' && TV['--canvas'] !== TV['--panel'], TV['--accent'], TV['--radius-pane'], TV['--radius-sm'], TV['--gap']], [true, '#d97757', '12px', '8px', '6px']);
+  [TV['--canvas'] !== '#000000' && TV['--canvas'] !== TV['--panel'], TV['--accent'], TV['--radius-pane'], TV['--radius-sm'], TV['--gap']], [true, '#f2a33a', '12px', '8px', '6px']);
 eq('theme: 16 ANSI colours, cursor and selection in the variables', [Object.keys(TV).filter((k) => /^--ansi-\d+$/.test(k)).length, !!TV['--cursor'], !!TV['--sel']], [16, true, true]);
 eq('theme: the person\'s accent, radius "round", gap and opacity win', ((v) => [v['--accent'], v['--radius-pane'], v['--gap'], v['--pane-bg']])(NSTheme.vars('light', { accent: '#2f6db0', radius: 'round', gap: 10, opacity: 90 }, 'claude')),
   ['#2f6db0', '18px', '10px', 'rgba(245, 236, 216, 0.9)']);

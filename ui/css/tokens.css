@@ -18,7 +18,7 @@
   --knob: #ffffff;
   --ease: cubic-bezier(.2, .7, .2, 1); --t: 140ms;
   --feed-w: 760px; --chat-fs: 14.5px; --chat-lh: 1.55; --bubble-r: 14px; --field-r: 16px;   /* F9: the chat column and its type */
-  --shadow: 0 14px 34px rgba(0, 0, 0, .5), 0 2px 6px rgba(0, 0, 0, .35); --shadow-sm: 0 3px 10px rgba(0, 0, 0, .4); --scrim: rgba(8, 5, 2, .62); --lamp-a: 26%; --lamp-b: 14%;
+  --shadow: 0 14px 34px rgba(0, 0, 0, .5), 0 2px 6px rgba(0, 0, 0, .35); --shadow-sm: 0 3px 10px rgba(0, 0, 0, .4); --scrim: rgba(8, 5, 2, .62); --lamp-a: 40%; --lamp-b: 18%;
 }
 @media (prefers-color-scheme: light) {
   :root:not([data-theme="dark"]) {
@@ -46,7 +46,7 @@
   --ansi-11: #b07f00; --ansi-12: #4a86c6; --ansi-13: #b465b6; --ansi-14: #2a9aa4; --ansi-15: #f8f1e0;
   --shadow: 0 14px 34px rgba(70, 48, 18, .22), 0 2px 6px rgba(70, 48, 18, .12); --shadow-sm: 0 3px 10px rgba(70, 48, 18, .18); --scrim: rgba(43, 31, 20, .38); --lamp-a: 30%; --lamp-b: 14%;
 }
-:root[data-theme="dark"] { color-scheme: dark; --shadow: 0 14px 34px rgba(0, 0, 0, .5), 0 2px 6px rgba(0, 0, 0, .35); --shadow-sm: 0 3px 10px rgba(0, 0, 0, .4); --scrim: rgba(8, 5, 2, .62); --lamp-a: 26%; --lamp-b: 14%; }
+:root[data-theme="dark"] { color-scheme: dark; --shadow: 0 14px 34px rgba(0, 0, 0, .5), 0 2px 6px rgba(0, 0, 0, .35); --shadow-sm: 0 3px 10px rgba(0, 0, 0, .4); --scrim: rgba(8, 5, 2, .62); --lamp-a: 40%; --lamp-b: 18%; }
 /* materials made of the tokens above: they follow whatever theme the table (or the person's terminal theme) sets */
 :root {
   --grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n' x='0' y='0'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' seed='7' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 .5 0 0 0 0 .42 0 0 0 0 .3 0 0 0 .55 0'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)' opacity='.5'/%3E%3C/svg%3E");
@@ -54,9 +54,9 @@
   --glow-onair: color-mix(in srgb, var(--onair) 60%, transparent);
   --glow-ok: color-mix(in srgb, var(--ok) 45%, transparent);
   /* the window: warm felt lit by a lamp from the top left, a brass reflection from the bottom right */
-  --window-fx: var(--grain), radial-gradient(1200px 760px at 6% -8%, color-mix(in srgb, var(--amber) var(--lamp-a), transparent), transparent 64%),
+  --window-fx: var(--grain), radial-gradient(1700px 1000px at 6% -10%, color-mix(in srgb, var(--amber) var(--lamp-a), transparent), transparent 64%),
     radial-gradient(900px 620px at 104% 112%, color-mix(in srgb, var(--brass) var(--lamp-b), transparent), transparent 62%);
-  --pane-fx: radial-gradient(85% 50% at 14% -6%, color-mix(in srgb, var(--amber) 17%, transparent), transparent 74%), radial-gradient(60% 40% at 100% 100%, color-mix(in srgb, var(--brass) 7%, transparent), transparent 70%);
+  --pane-fx: linear-gradient(180deg, color-mix(in srgb, var(--cream) 8%, transparent), transparent 140px), radial-gradient(110% 62% at 14% -8%, color-mix(in srgb, var(--amber) 22%, transparent), transparent 76%), radial-gradient(60% 40% at 100% 100%, color-mix(in srgb, var(--brass) 7%, transparent), transparent 70%);
   --side-fx: var(--grain), linear-gradient(180deg, var(--side), var(--side2));
   --card-fx: linear-gradient(180deg, color-mix(in srgb, var(--cream) 7%, var(--raised)), var(--raised));
   --face-fx2: linear-gradient(180deg, var(--cream), var(--cream-deep));

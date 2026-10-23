@@ -109,6 +109,8 @@
 /* карточка задачи в ленте */
 .tcard { background: var(--card-fx); border: 1px solid var(--line2); border-radius: var(--radius-sm); padding: 12px 14px; box-shadow: var(--shadow-sm), inset 0 1px 0 color-mix(in srgb, var(--cream) 9%, transparent); }
 .tcard.pinned { position: sticky; top: 0; z-index: 3; box-shadow: var(--shadow); }
+.tcard.pinned::after { content: ""; position: absolute; left: 0; right: 0; top: 100%; height: 16px; background: linear-gradient(180deg, color-mix(in srgb, var(--pane-bg) 85%, transparent), transparent); pointer-events: none; }
+.tcard.pinned::before { content: ""; position: absolute; left: -1px; right: -1px; top: -24px; height: 24px; background: linear-gradient(180deg, var(--pane-bg) 60%, transparent); pointer-events: none; }
 .tcard.open { position: static; border-radius: var(--radius-sm); border-top-color: var(--line2); }
 .tc-h { display: flex; align-items: center; gap: 10px; }
 .tc-h h2 { font-size: 14.5px; font-weight: 650; }

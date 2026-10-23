@@ -36,7 +36,7 @@
     },
   };
   // the focused pane takes the colour of its env (story 247): from the vendor marks in icons/; mono marks follow the theme accent
-  const ENV_ACCENT = { claude: '#d97757', gemini: '#3186ff' };
+  const ENV_ACCENT = { gemini: '#3186ff' };   // claude takes the theme's amber: one live accent
   const RADIUS = { sharp: [4, 3], soft: [12, 8], round: [18, 12] };
   const FONTS = {
     system: 'ui-monospace, SFMono-Regular, Menlo, Consolas, "DejaVu Sans Mono", monospace',
