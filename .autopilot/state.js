@@ -5,11 +5,11 @@ window.STATE =
   "mode": "semi",
   "depth": "deep",
   "polish": null,
-  "tier": "T3",
+  "tier": "T2",
   "briefFile": "2026-10-21-brief.md",
   "memoryFile": "CLAUDE.md",
   "startedAt": "2026-10-21T08:41:14+03:00",
-  "updatedAt": "2026-10-23T02:05:55+03:00",
+  "updatedAt": "2026-10-23T17:42:57+03:00",
   "finishedAt": null,
   "stages": [
     {
@@ -22,35 +22,35 @@ window.STATE =
       "id": "manifest",
       "status": "done",
       "startedAt": "2026-10-21T08:42:22+03:00",
-      "finishedAt": "2026-10-21T08:42:22+03:00"
+      "finishedAt": "2026-10-23T00:59:59+03:00"
     },
     {
       "id": "briefing",
-      "status": "skipped",
+      "status": "done",
       "startedAt": "2026-10-21T08:42:22+03:00",
-      "finishedAt": "2026-10-23T01:14:43+03:00",
-      "note": "v4 (бриф 23.10): вопросы отклонены пользователем («продолжи Автопилот») — развилки решены как ASSUMPTION в манифесте"
+      "finishedAt": "2026-10-23T17:42:35+03:00",
+      "note": "v6: 3 развилки + чат и терминал"
     },
     {
       "id": "spec",
       "status": "done",
       "startedAt": "2026-10-21T12:15:27+03:00",
-      "note": "v4: истории 243-312, G2 - 7 находок, 5 закрыто в спеке, 2 уже покрыты",
-      "finishedAt": "2026-10-23T02:00:30+03:00"
+      "note": "v6: истории 313-359, G2 - 6 находок, все закрыты",
+      "finishedAt": "2026-10-23T17:42:35+03:00"
     },
     {
       "id": "plan",
       "status": "done",
       "startedAt": "2026-10-21T13:22:54+03:00",
       "note": "v4: 9 тасков (18-26) в волны 12-15, ~21K строк",
-      "finishedAt": "2026-10-23T02:05:55+03:00"
+      "finishedAt": "2026-10-23T00:59:59+03:00"
     },
     {
       "id": "build",
       "status": "done",
       "startedAt": "2026-10-21T09:02:22+03:00",
       "note": "все 14 тасков готовы; ремонт ядра: исполнитель прошлой сессии пропал, 22.10 18:30 - свежий исполнитель доводит (наборы, 5 нестабильных тестов, диапазоны)",
-      "finishedAt": "2026-10-21T10:07:22+03:00"
+      "finishedAt": "2026-10-23T00:59:59+03:00"
     },
     {
       "id": "review",
@@ -66,13 +66,13 @@ window.STATE =
     }
   ],
   "requirements": {
-    "total": 80,
-    "done": 7,
-    "inTicket": 72,
+    "total": 107,
+    "done": 40,
+    "inTicket": 63,
     "inSpec": 0,
     "placeholder": 0,
-    "deferred": 0,
-    "dropped": 1
+    "deferred": 1,
+    "dropped": 3
   },
   "tickets": [
     {
@@ -1116,9 +1116,19 @@ window.STATE =
       ],
       "review": "да - фундамент (PTY, процессы пользователя, окна)",
       "model": "сильная",
-      "status": "pending",
+      "status": "done",
+      "startedAt": "2026-10-23T02:06:02+03:00",
+      "finishedAt": "2026-10-23T02:52:59+03:00",
       "retries": 0,
-      "repairs": 0
+      "repairs": 2,
+      "repairFindings": [
+        "выход процесса PTY при открытом окне не вешает приложение"
+      ],
+      "tests": {
+        "passed": 453,
+        "failed": 0
+      },
+      "commit": "a5276dc"
     },
     {
       "id": "19",
@@ -1142,9 +1152,16 @@ window.STATE =
       ],
       "review": "да - загрузка и установка исполняемого кода из сети",
       "model": "сильная",
-      "status": "pending",
+      "status": "done",
+      "startedAt": "2026-10-23T02:43:56+03:00",
+      "finishedAt": "2026-10-23T03:25:57+03:00",
       "retries": 0,
-      "repairs": 0
+      "repairs": 0,
+      "tests": {
+        "passed": 485,
+        "failed": 0
+      },
+      "commit": "55d8fa7"
     },
     {
       "id": "20",
@@ -1170,9 +1187,16 @@ window.STATE =
       ],
       "review": "нет",
       "model": "сильная",
-      "status": "pending",
+      "status": "done",
+      "startedAt": "2026-10-23T03:18:40+03:00",
+      "finishedAt": "2026-10-23T03:46:43+03:00",
       "retries": 0,
-      "repairs": 0
+      "repairs": 0,
+      "tests": {
+        "passed": 500,
+        "failed": 0
+      },
+      "commit": "1b6875b"
     },
     {
       "id": "21",
@@ -1199,9 +1223,20 @@ window.STATE =
       ],
       "review": "да - публикация наружу",
       "model": "сильная",
-      "status": "pending",
+      "status": "done",
+      "startedAt": "2026-10-23T02:43:56+03:00",
+      "finishedAt": "2026-10-23T03:41:39+03:00",
       "retries": 0,
-      "repairs": 0
+      "repairs": 2,
+      "repairFindings": [
+        "файл только в коммите слияния даёт protected_in_history",
+        "revert_commit нестабилен: AdvanceBlocked main has uncommitted changes в ~1/3 прогонов"
+      ],
+      "tests": {
+        "passed": 500,
+        "failed": 0
+      },
+      "commit": "f7e5066"
     },
     {
       "id": "22",
@@ -1260,9 +1295,16 @@ window.STATE =
       ],
       "review": "да - главный экран, все экраны перекрашиваются",
       "model": "сильная",
-      "status": "pending",
+      "status": "done",
+      "startedAt": "2026-10-23T02:43:56+03:00",
+      "finishedAt": "2026-10-23T03:23:06+03:00",
       "retries": 0,
-      "repairs": 0
+      "repairs": 0,
+      "tests": {
+        "passed": 230,
+        "failed": 0
+      },
+      "commit": "ea0ec02"
     },
     {
       "id": "23",
@@ -1293,9 +1335,16 @@ window.STATE =
       ],
       "review": "нет",
       "model": "сильная",
-      "status": "pending",
+      "status": "done",
+      "startedAt": "2026-10-23T03:19:23+03:00",
+      "finishedAt": "2026-10-23T03:57:14+03:00",
       "retries": 0,
-      "repairs": 0
+      "repairs": 0,
+      "tests": {
+        "passed": 248,
+        "failed": 0
+      },
+      "commit": "bebf0f5"
     },
     {
       "id": "24",
@@ -1322,9 +1371,16 @@ window.STATE =
       ],
       "review": "нет",
       "model": "обычная",
-      "status": "pending",
+      "status": "done",
+      "startedAt": "2026-10-23T03:41:40+03:00",
+      "finishedAt": "2026-10-23T03:58:58+03:00",
       "retries": 0,
-      "repairs": 0
+      "repairs": 0,
+      "tests": {
+        "passed": 276,
+        "failed": 1
+      },
+      "commit": "f9a7769"
     },
     {
       "id": "25",
@@ -1349,13 +1405,21 @@ window.STATE =
         "ui/css/v4-clawd.css",
         "ui/css/v4-updates.css",
         "README.md",
-        "docs/clawd.md"
+        "docs/clawd.md",
+        "app/src/gitcmds.rs"
       ],
       "review": "нет",
       "model": "сильная",
-      "status": "pending",
+      "status": "done",
+      "startedAt": "2026-10-23T07:42:56+03:00",
+      "finishedAt": "2026-10-23T07:57:53+03:00",
       "retries": 0,
-      "repairs": 0
+      "repairs": 0,
+      "tests": {
+        "passed": 501,
+        "failed": 0
+      },
+      "commit": "ac9ff9b"
     },
     {
       "id": "26",
@@ -1374,6 +1438,233 @@ window.STATE =
       ],
       "wave": 15,
       "zone": [
+        "docs/security.md"
+      ],
+      "review": "нет",
+      "model": "сильная",
+      "status": "in-progress",
+      "startedAt": "2026-10-23T07:57:58+03:00",
+      "retries": 0,
+      "repairs": 0
+    },
+    {
+      "id": "27",
+      "title": "Чат надёжный и живой: очередь на диске, «думает», плавный текст",
+      "requirements": [
+        "G62",
+        "G80",
+        "G81",
+        "G84"
+      ],
+      "blockedBy": [],
+      "wave": 30,
+      "zone": [
+        "core/src/chat/",
+        "core/src/agent/mod.rs",
+        "core/src/agent/adapters/claude.rs",
+        "ui_hints",
+        "core/tests/chat*.rs",
+        "app/src/hub.rs",
+        "ui/js/screens/chat.js",
+        "ui/js/screens/composer.js",
+        "ui/js/core/actions.js",
+        "ui/js/core/reveal.js",
+        "ui/css/live.css",
+        "ui/js/v4/i18n-chat6.js",
+        "app/src/main.rs",
+        "ui/js/core/api.js",
+        "ui/index.html",
+        "ui/dev-mock.js",
+        "scripts/ui-selftest.js"
+      ],
+      "review": "нет",
+      "model": "сильная",
+      "status": "pending",
+      "retries": 0,
+      "repairs": 0
+    },
+    {
+      "id": "28",
+      "title": "Рой без общей паузы, расходы по дням, отчёт об ошибке, плашка обновления",
+      "requirements": [
+        "G64",
+        "G69",
+        "G70",
+        "G71",
+        "G71.1"
+      ],
+      "blockedBy": [],
+      "wave": 30,
+      "zone": [
+        "core/src/swarm/",
+        "core/src/engine/lanes.rs",
+        "core/src/store.rs",
+        "core/src/engine/runs.rs",
+        "roles.rs",
+        "core/src/diag.rs",
+        "core/src/scrub.rs",
+        "kits/scrub.rs",
+        "core/src/net/",
+        "core/tests/engine_swarm_lanes.rs",
+        "app/src/diag.rs",
+        "ui/js/v4/spend.js",
+        "ui/js/v4/about.js",
+        "ui/js/v4/i18n-ops6.js",
+        "core/src/model.rs",
+        "Settings.release_feed",
+        "core/src/lib.rs",
+        "app/src/main.rs",
+        "ui/js/core/api.js",
+        "ui/index.html",
+        "ui/dev-mock.js",
+        "scripts/ui-selftest.js"
+      ],
+      "review": "да — секреты (сборщик отчёта об ошибке)",
+      "model": "сильная",
+      "status": "pending",
+      "retries": 0,
+      "repairs": 0
+    },
+    {
+      "id": "29",
+      "title": "Чат как оболочка CLI: «/», «В терминале» для всех сред, картинки",
+      "requirements": [
+        "G65",
+        "G65.1",
+        "G82",
+        "G83",
+        "G85"
+      ],
+      "blockedBy": [
+        "27"
+      ],
+      "wave": 31,
+      "zone": [
+        "core/src/agent/",
+        "inventory",
+        "resume_argv",
+        "supports_images",
+        "core/src/chat/",
+        "core/tests/chat_shell.rs",
+        "app/src/",
+        "ui/js/screens/composer.js",
+        "ui/js/screens/chat.js",
+        "ui/js/v4/slash.js",
+        "ui/js/v4/i18n-shell6.js",
+        "ui/css/chat.css",
+        "app/src/main.rs",
+        "ui/js/core/api.js",
+        "ui/index.html",
+        "ui/dev-mock.js",
+        "scripts/ui-selftest.js",
+        "ui/js/v4/term.js"
+      ],
+      "review": "нет",
+      "model": "сильная",
+      "status": "pending",
+      "retries": 0,
+      "repairs": 0
+    },
+    {
+      "id": "30",
+      "title": "Задачи из GitHub Issues и сессии из терминала",
+      "requirements": [
+        "G67",
+        "G67.1",
+        "G68",
+        "G68.1"
+      ],
+      "blockedBy": [],
+      "wave": 30,
+      "zone": [
+        "core/src/suggest.rs",
+        "core/src/sessions.rs",
+        "core/src/ci.rs",
+        "Gh",
+        "core/src/engine/mod.rs",
+        "resume_session",
+        "core/tests/issues_sessions.rs",
+        "app/src/auto.rs",
+        "app/src/sessions.rs",
+        "ui/js/v4/automation.js",
+        "ui/js/v4/sessions.js",
+        "ui/js/v4/i18n-issues6.js",
+        "core/src/lib.rs",
+        "core/src/model.rs",
+        "app/src/main.rs",
+        "ui/js/core/api.js",
+        "ui/index.html",
+        "ui/dev-mock.js",
+        "scripts/ui-selftest.js"
+      ],
+      "review": "нет",
+      "model": "обычная",
+      "status": "pending",
+      "retries": 0,
+      "repairs": 0
+    },
+    {
+      "id": "31",
+      "title": "Чистая программа для скачавших и чистая копия для публикации",
+      "requirements": [
+        "G76",
+        "G77",
+        "G77i",
+        "G74",
+        "G75.1",
+        "G63"
+      ],
+      "blockedBy": [
+        "27",
+        "28",
+        "29",
+        "30"
+      ],
+      "wave": 32,
+      "zone": [
+        "ui/",
+        "scripts/ui-selftest.js",
+        "ui/selftest.*",
+        "app/tauri.conf.json",
+        "Cargo.toml",
+        "[profile.release]",
+        ".cargo/config.toml",
+        "LICENSE",
+        "scripts/check-clean-build.sh",
+        "scripts/make-public-copy.sh",
+        ".github/workflows/release.yml",
+        "README.md",
+        "README.ru.md",
+        "core/src/engine/roles.rs",
+        "core/src/chat/",
+        "extra_env",
+        "NIGHTSHIFT_PROJECT",
+        "NIGHTSHIFT_PROJECT_NAME",
+        "~/Dropbox/…/claude-shared/once/linux/",
+        "claude-shared/claude/needs-sudo.linux.txt"
+      ],
+      "review": "да — утечка данных автора",
+      "model": "сильная",
+      "status": "pending",
+      "retries": 0,
+      "repairs": 0
+    },
+    {
+      "id": "32",
+      "title": "Живой прогон в режиме пользователя и полный аудит безопасности v6",
+      "requirements": [
+        "G60",
+        "G75",
+        "G78",
+        "G79"
+      ],
+      "blockedBy": [
+        "31"
+      ],
+      "wave": 33,
+      "zone": [
+        ".autopilot/vibe-env/live-v6.md",
+        ".autopilot/vibe-env/research-v6.md",
         "docs/security.md"
       ],
       "review": "нет",
@@ -1424,6 +1715,205 @@ window.STATE =
       "commit": "724f2c8"
     },
     {
+      "id": "F10",
+      "title": "Вид «Ночная радиостудия»: тёплые градиенты, кремовые шкалы, лампы «в эфире»",
+      "requirements": [
+        "G06",
+        "23.10"
+      ],
+      "blockedBy": [
+        "09"
+      ],
+      "wave": 20,
+      "zone": [
+        "ui/css/*.css",
+        "ui/js/v4/theme.js",
+        "ui/js/screens/chat.js",
+        "ui/js/shell.js",
+        "ui/js/screens/tabs.js",
+        "ui/icons/",
+        "scripts/ui-selftest.js",
+        "ui/selftest.js"
+      ],
+      "review": "да (финальный ревьюер impeccable)",
+      "model": "сильная",
+      "status": "done",
+      "startedAt": "2026-10-23T14:34:49+03:00",
+      "finishedAt": "2026-10-23T15:40:00+03:00",
+      "retries": 0,
+      "repairs": 0,
+      "tests": {
+        "passed": 315,
+        "failed": 315
+      },
+      "commit": "423846e"
+    },
+    {
+      "id": "F11",
+      "title": "Проект выбирается явно: открыть папку из Finder или создать новый",
+      "requirements": [
+        "G07",
+        "23.10"
+      ],
+      "blockedBy": [
+        "10"
+      ],
+      "wave": 21,
+      "zone": [
+        "ui/js/core/projects.js",
+        "ui/js/screens/chat.js",
+        "ui/js/v4/term.js",
+        "ui/js/v4/publish.js",
+        "ui/js/v4/history.js",
+        "ui/js/shell.js",
+        "projects[0]",
+        "app/src/proj.rs",
+        "app/src/main.rs",
+        "ui/js/core/api.js",
+        "ui/dev-mock.js",
+        "ui/css/chat.css",
+        "app/",
+        "scripts/ui-selftest.js",
+        "ui/selftest.js"
+      ],
+      "review": "да",
+      "model": "сильная",
+      "status": "done",
+      "startedAt": "2026-10-23T15:11:45+03:00",
+      "finishedAt": "2026-10-23T15:32:55+03:00",
+      "retries": 0,
+      "repairs": 0,
+      "tests": {
+        "passed": 512,
+        "failed": 512
+      },
+      "commit": "a8598fd"
+    },
+    {
+      "id": "F12",
+      "title": "Чат: очередь сообщений и «Сразу», боковой вопрос, подсказка следующего шага, «Выполнить» у команды; ошибка остановленного запуска",
+      "requirements": [],
+      "blockedBy": [],
+      "wave": null,
+      "zone": [
+        "ui/js/screens/chat.js",
+        "ui/js/screens/composer.js",
+        "ui/js/core/actions.js",
+        "ui/css/chat.css",
+        "ui/css/live.css",
+        "ui/js/v4/sidechat.js",
+        "ui/js/v4/i18n-chatx.js",
+        "core/src/chat/",
+        "app/src/main.rs"
+      ],
+      "review": null,
+      "model": null,
+      "status": "done",
+      "startedAt": "2026-10-23T15:44:15+03:00",
+      "finishedAt": "2026-10-23T16:35:04+03:00",
+      "retries": 0,
+      "repairs": 0,
+      "tests": {
+        "passed": 551,
+        "failed": 0
+      },
+      "commit": "38b0a7b"
+    },
+    {
+      "id": "F13",
+      "title": "Задача: откат на любой ход, чек-лист перед мержем, «Забрать к себе / Отдать агенту»",
+      "requirements": [],
+      "blockedBy": [],
+      "wave": null,
+      "zone": [
+        "core/src/engine/",
+        "core/src/git.rs",
+        "core/src/model.rs",
+        "core/src/store.rs",
+        "app/src/main.rs",
+        "ui/js/screens/taskcard.js",
+        "ui/js/screens/chat.js",
+        "ui/css/need.css",
+        "ui/js/v4/i18n-task.js"
+      ],
+      "review": null,
+      "model": null,
+      "status": "done",
+      "startedAt": "2026-10-23T15:44:15+03:00",
+      "finishedAt": "2026-10-23T16:35:04+03:00",
+      "retries": 0,
+      "repairs": 0,
+      "tests": {
+        "passed": 551,
+        "failed": 0
+      },
+      "commit": "38b0a7b"
+    },
+    {
+      "id": "F14",
+      "title": "Автоматика: расписание задач, предложенные задачи, сторож красного CI",
+      "requirements": [],
+      "blockedBy": [],
+      "wave": null,
+      "zone": [
+        "core/src/schedule/",
+        "core/src/suggest/",
+        "core/src/ci/",
+        "app/src/",
+        "presence.rs",
+        "updates",
+        "core/src/lib.rs",
+        "model.rs",
+        "app/src/main.rs",
+        "ui/js/v4/automation.js",
+        "ui/css/v4-automation.css",
+        "ui/js/v4/i18n-auto.js",
+        "ui/js/shell.js"
+      ],
+      "review": null,
+      "model": null,
+      "status": "done",
+      "startedAt": "2026-10-23T15:44:15+03:00",
+      "finishedAt": "2026-10-23T16:35:04+03:00",
+      "retries": 0,
+      "repairs": 0,
+      "tests": {
+        "passed": 551,
+        "failed": 0
+      },
+      "commit": "38b0a7b"
+    },
+    {
+      "id": "F15",
+      "title": "Доказательство работы и превью приложения с инспектором",
+      "requirements": [],
+      "blockedBy": [],
+      "wave": null,
+      "zone": [
+        "core/src/engine/",
+        "app/src/",
+        "ui/js/v4/preview.js",
+        "ui/css/v4-preview.css",
+        "ui/js/screens/taskcard.js",
+        "ui/js/v4/i18n-preview.js",
+        "app/src/main.rs",
+        "api.js",
+        "index.html"
+      ],
+      "review": null,
+      "model": null,
+      "status": "done",
+      "startedAt": "2026-10-23T16:35:26+03:00",
+      "finishedAt": "2026-10-23T17:42:12+03:00",
+      "retries": 0,
+      "repairs": 0,
+      "tests": {
+        "passed": 562,
+        "failed": 0
+      },
+      "commit": "d5219d5"
+    },
+    {
       "id": "F2",
       "title": "Ядро и приложение: секреты в ленте до конца, пути проекта, служебные инструменты, меню и ⌘W",
       "requirements": [
@@ -1448,13 +1938,13 @@ window.STATE =
       ],
       "review": "да - путь секретов в окно",
       "model": "сильная",
-      "status": "review",
+      "status": "done",
       "startedAt": "2026-10-23T00:37:59+03:00",
-      "finishedAt": "2026-10-23T00:51:58+03:00",
+      "finishedAt": "2026-10-23T10:41:52+03:00",
       "retries": 0,
       "repairs": 0,
       "tests": {
-        "passed": 444,
+        "passed": 511,
         "failed": 0
       },
       "commit": "4040785"
@@ -1491,11 +1981,250 @@ window.STATE =
         "failed": 0
       },
       "commit": "3db28ec"
+    },
+    {
+      "id": "F4",
+      "title": "Безопасность v4: подтверждённые находки аудита, docs/security.md, лимит кнопок",
+      "requirements": [
+        "G04",
+        "G46"
+      ],
+      "blockedBy": [
+        "25"
+      ],
+      "wave": 16,
+      "zone": [
+        "core/src/models/radar.rs",
+        "core/src/agent/adapters/",
+        "-m",
+        "--model",
+        "core/src/kits/units.rs",
+        "app/src/ptycmds.rs",
+        "core/src/term/mod.rs",
+        "core/src/git.rs",
+        "log_page",
+        "scripts/ui-selftest.js",
+        "docs/security.md",
+        "core/tests/",
+        "app/"
+      ],
+      "review": "да - путь недоверенных данных из каталогов",
+      "model": "сильная",
+      "status": "done",
+      "startedAt": "2026-10-23T08:05:06+03:00",
+      "finishedAt": "2026-10-23T09:51:34+03:00",
+      "retries": 0,
+      "repairs": 1,
+      "tests": {
+        "passed": 509,
+        "failed": 0
+      },
+      "commit": "bdd02bf"
+    },
+    {
+      "id": "F5",
+      "title": "Живой прогон v4: палитра, закрытие панели, вынесенное окно, выход",
+      "requirements": [
+        "G48.1",
+        "G35.3",
+        "G38",
+        "G58.2",
+        "G59"
+      ],
+      "blockedBy": [
+        "04"
+      ],
+      "wave": 16,
+      "zone": [
+        "ui/js/v4/",
+        "ui/js/shell.js",
+        "app/src/main.rs",
+        "quit",
+        "app/tauri.conf.json",
+        "app/Info.plist",
+        "ui/selftest.js",
+        "app/"
+      ],
+      "review": "нет",
+      "model": "сильная",
+      "status": "done",
+      "startedAt": "2026-10-23T09:56:07+03:00",
+      "finishedAt": "2026-10-23T10:11:17+03:00",
+      "retries": 0,
+      "repairs": 0,
+      "tests": {
+        "passed": 511,
+        "failed": 0
+      },
+      "commit": "d4fb5b1"
+    },
+    {
+      "id": "F6",
+      "title": "Слепая приёмка v4: gitleaks без ложных срабатываний, честные лимиты на dev-mock",
+      "requirements": [
+        "G04",
+        "G26"
+      ],
+      "blockedBy": [
+        "05"
+      ],
+      "wave": 17,
+      "zone": [
+        ".gitleaks.toml",
+        "ui/dev-mock.js",
+        "ui/js/v4/mock-*.js",
+        "docs/security.md",
+        "ui/selftest.js"
+      ],
+      "review": "нет",
+      "model": "обычная",
+      "status": "done",
+      "startedAt": "2026-10-23T10:24:06+03:00",
+      "finishedAt": "2026-10-23T10:41:40+03:00",
+      "retries": 0,
+      "repairs": 0,
+      "tests": {
+        "passed": 511,
+        "failed": 0
+      },
+      "commit": "7ae7103"
+    },
+    {
+      "id": "F7",
+      "title": "Выбор модели короткой менюшкой, терминал красивее",
+      "requirements": [
+        "G35",
+        "G36"
+      ],
+      "blockedBy": [
+        "05"
+      ],
+      "wave": 17,
+      "zone": [
+        "ui/js/screens/modelpop.js",
+        "ui/js/screens/composer.js",
+        "ui/js/v4/palette.js",
+        "ui/js/v4/term.js",
+        "ui/js/v4/term-settings.js",
+        "ui/js/v4/theme.js",
+        "ui/css/chat.css",
+        "ui/css/v4-shell.css",
+        "ui/css/v4-term.css",
+        "ui/js/v4/i18n-*.js",
+        "ui/i18n*.js",
+        "scripts/ui-selftest.js",
+        "ui/selftest.js",
+        "ui/dev-mock.js"
+      ],
+      "review": "да",
+      "model": "сильная",
+      "status": "done",
+      "startedAt": "2026-10-23T11:48:13+03:00",
+      "finishedAt": "2026-10-23T12:01:57+03:00",
+      "retries": 0,
+      "repairs": 0,
+      "tests": {
+        "passed": 310,
+        "failed": 310
+      },
+      "commit": "feda8fc"
+    },
+    {
+      "id": "F8",
+      "title": "Понятность: видимые переключатели, вход в настройки и фабрику, чат и терминал различимы",
+      "requirements": [
+        "G19",
+        "G35",
+        "246",
+        "23.10"
+      ],
+      "blockedBy": [
+        "07"
+      ],
+      "wave": 18,
+      "zone": [
+        "ui/js/screens/composer.js",
+        "ui/js/shell.js",
+        "ui/js/v4/tabs*.js",
+        "panes.js",
+        "ui/js/v4/term.js",
+        "ui/css/v4-shell.css",
+        "ui/css/v4-term.css",
+        "ui/css/chat.css",
+        "ui/selftest.js",
+        "scripts/ui-selftest.js",
+        "ui/dev-mock.js"
+      ],
+      "review": "да",
+      "model": "сильная",
+      "status": "done",
+      "startedAt": "2026-10-23T12:39:28+03:00",
+      "finishedAt": "2026-10-23T13:09:57+03:00",
+      "retries": 0,
+      "repairs": 0,
+      "tests": {
+        "passed": 310,
+        "failed": 310
+      },
+      "commit": "3f45eb4"
+    },
+    {
+      "id": "F9",
+      "title": "Главный вид: минимальный красивый чат",
+      "requirements": [
+        "G19",
+        "G05",
+        "G21",
+        "246",
+        "23.10"
+      ],
+      "blockedBy": [
+        "08"
+      ],
+      "wave": 19,
+      "zone": [
+        "ui/js/screens/chat.js",
+        "ui/js/screens/composer.js",
+        "ui/js/shell.js",
+        "ui/css/chat.css",
+        "ui/css/v4-shell.css",
+        "ui/css/shell.css",
+        ".side",
+        "ui/css/tokens.css",
+        "ui/dev-mock.js",
+        "ui/selftest.js",
+        "scripts/ui-selftest.js"
+      ],
+      "review": "да",
+      "model": "сильная",
+      "status": "done",
+      "startedAt": "2026-10-23T13:55:32+03:00",
+      "finishedAt": "2026-10-23T14:33:46+03:00",
+      "retries": 0,
+      "repairs": 0,
+      "tests": {
+        "passed": 310,
+        "failed": 310
+      },
+      "commit": "be03fb4"
+    },
+    {
+      "id": "_v5",
+      "title": "# Общее для F12-F15 (фишки v5, просьба 23.10: «Делай все фишки из таблицы»)",
+      "requirements": [],
+      "blockedBy": [],
+      "wave": null,
+      "zone": [],
+      "review": null,
+      "model": null,
+      "status": "pending",
+      "retries": 0,
+      "repairs": 0
     }
   ],
   "singlePass": null,
   "tests": {
-    "passed": 202,
+    "passed": 562,
     "failed": 0
   },
   "debt": {
@@ -1519,13 +2248,21 @@ window.STATE =
     "A08 ночная очередь - старт, когда тебя нет или сбросился лимит - ради R05"
   ],
   "coverage": {
-    "found": 7,
-    "fixed": 5,
+    "found": 6,
+    "fixed": 6,
     "deferred": 0,
     "items": []
   },
-  "blind": null,
-  "rev": 92,
+  "blind": {
+    "checked": 43,
+    "matched": 40,
+    "mismatches": [
+      "G04: gitleaks по истории даёт 91 ложное срабатывание, файла-исключения нет - «gitleaks clean» не выполнен",
+      "G26: dev-mock рисует у Gemini «День 85%», README говорит, что настоящие лимиты есть только у Claude Code",
+      "G40: в каталоге нет живого источника модов, моды ставятся только «По ссылке»"
+    ]
+  },
+  "rev": 234,
   "beats": [
     "2026-10-22T19:03:58+03:00",
     "2026-10-22T19:04:35+03:00",
@@ -1590,7 +2327,68 @@ window.STATE =
     "2026-10-23T02:05:40+03:00",
     "2026-10-23T02:05:46+03:00",
     "2026-10-23T02:05:54+03:00",
-    "2026-10-23T02:05:55+03:00"
+    "2026-10-23T02:05:55+03:00",
+    "2026-10-23T02:06:02+03:00",
+    "2026-10-23T02:43:56+03:00",
+    "2026-10-23T02:46:01+03:00",
+    "2026-10-23T02:46:08+03:00",
+    "2026-10-23T02:52:59+03:00",
+    "2026-10-23T03:18:40+03:00",
+    "2026-10-23T03:19:23+03:00",
+    "2026-10-23T03:19:36+03:00",
+    "2026-10-23T03:22:41+03:00",
+    "2026-10-23T03:22:42+03:00",
+    "2026-10-23T03:23:06+03:00",
+    "2026-10-23T03:25:56+03:00",
+    "2026-10-23T03:25:57+03:00",
+    "2026-10-23T03:27:33+03:00",
+    "2026-10-23T03:28:17+03:00",
+    "2026-10-23T03:28:26+03:00",
+    "2026-10-23T03:41:39+03:00",
+    "2026-10-23T03:41:40+03:00",
+    "2026-10-23T03:46:43+03:00",
+    "2026-10-23T03:57:14+03:00",
+    "2026-10-23T03:58:58+03:00",
+    "2026-10-23T07:42:56+03:00",
+    "2026-10-23T07:57:53+03:00",
+    "2026-10-23T07:57:58+03:00",
+    "2026-10-23T08:05:06+03:00",
+    "2026-10-23T08:20:39+03:00",
+    "2026-10-23T08:20:45+03:00",
+    "2026-10-23T09:42:58+03:00",
+    "2026-10-23T09:51:34+03:00",
+    "2026-10-23T09:56:07+03:00",
+    "2026-10-23T10:11:17+03:00",
+    "2026-10-23T10:16:17+03:00",
+    "2026-10-23T10:24:06+03:00",
+    "2026-10-23T10:41:40+03:00",
+    "2026-10-23T10:41:52+03:00",
+    "2026-10-23T11:48:13+03:00",
+    "2026-10-23T12:01:57+03:00",
+    "2026-10-23T12:39:28+03:00",
+    "2026-10-23T13:09:57+03:00",
+    "2026-10-23T13:55:32+03:00",
+    "2026-10-23T14:33:46+03:00",
+    "2026-10-23T14:34:49+03:00",
+    "2026-10-23T15:11:45+03:00",
+    "2026-10-23T15:32:55+03:00",
+    "2026-10-23T15:40:00+03:00",
+    "2026-10-23T15:44:15+03:00",
+    "2026-10-23T16:29:09+03:00",
+    "2026-10-23T16:35:04+03:00",
+    "2026-10-23T16:35:26+03:00",
+    "2026-10-23T16:36:18+03:00",
+    "2026-10-23T16:37:26+03:00",
+    "2026-10-23T16:39:14+03:00",
+    "2026-10-23T16:40:39+03:00",
+    "2026-10-23T16:41:37+03:00",
+    "2026-10-23T17:01:48+03:00",
+    "2026-10-23T17:42:12+03:00",
+    "2026-10-23T17:42:35+03:00",
+    "2026-10-23T17:42:36+03:00",
+    "2026-10-23T17:42:48+03:00",
+    "2026-10-23T17:42:49+03:00",
+    "2026-10-23T17:42:57+03:00"
   ],
   "log": [
     {
@@ -2077,6 +2875,1005 @@ window.STATE =
       "k": "stage",
       "id": "plan",
       "act": "done"
+    },
+    {
+      "t": "2026-10-23T02:06:02+03:00",
+      "k": "stage",
+      "id": "build",
+      "act": "start"
+    },
+    {
+      "t": "2026-10-23T02:06:02+03:00",
+      "k": "ticket",
+      "ids": [
+        "18"
+      ],
+      "act": "start"
+    },
+    {
+      "t": "2026-10-23T02:43:56+03:00",
+      "k": "ticket",
+      "ids": [
+        "18"
+      ],
+      "act": "done",
+      "tests": {
+        "passed": 452,
+        "failed": 0
+      }
+    },
+    {
+      "t": "2026-10-23T02:43:56+03:00",
+      "k": "ticket",
+      "ids": [
+        "18"
+      ],
+      "act": "review"
+    },
+    {
+      "t": "2026-10-23T02:43:56+03:00",
+      "k": "ticket",
+      "ids": [
+        "22",
+        "19",
+        "21"
+      ],
+      "act": "start"
+    },
+    {
+      "t": "2026-10-23T02:46:01+03:00",
+      "k": "ticket",
+      "ids": [
+        "18"
+      ],
+      "act": "repair"
+    },
+    {
+      "t": "2026-10-23T02:46:08+03:00",
+      "k": "ticket",
+      "ids": [
+        "18"
+      ],
+      "act": "repair",
+      "note": "выход процесса PTY при открытом окне не вешает приложение"
+    },
+    {
+      "t": "2026-10-23T02:46:08+03:00",
+      "k": "add",
+      "key": "concerns",
+      "n": 1
+    },
+    {
+      "t": "2026-10-23T02:46:08+03:00",
+      "k": "add",
+      "key": "concerns",
+      "n": 1
+    },
+    {
+      "t": "2026-10-23T02:46:08+03:00",
+      "k": "add",
+      "key": "concerns",
+      "n": 1
+    },
+    {
+      "t": "2026-10-23T02:46:08+03:00",
+      "k": "add",
+      "key": "concerns",
+      "n": 1
+    },
+    {
+      "t": "2026-10-23T02:52:59+03:00",
+      "k": "add",
+      "key": "concerns",
+      "n": 1
+    },
+    {
+      "t": "2026-10-23T02:52:59+03:00",
+      "k": "add",
+      "key": "concerns",
+      "n": 1
+    },
+    {
+      "t": "2026-10-23T02:52:59+03:00",
+      "k": "ticket",
+      "ids": [
+        "18"
+      ],
+      "act": "done",
+      "tests": {
+        "passed": 453,
+        "failed": 0
+      }
+    },
+    {
+      "t": "2026-10-23T03:18:40+03:00",
+      "k": "ticket",
+      "ids": [
+        "21"
+      ],
+      "act": "done",
+      "tests": {
+        "passed": 485,
+        "failed": 0
+      }
+    },
+    {
+      "t": "2026-10-23T03:18:40+03:00",
+      "k": "ticket",
+      "ids": [
+        "21"
+      ],
+      "act": "review"
+    },
+    {
+      "t": "2026-10-23T03:18:40+03:00",
+      "k": "ticket",
+      "ids": [
+        "20"
+      ],
+      "act": "start"
+    },
+    {
+      "t": "2026-10-23T03:18:40+03:00",
+      "k": "add",
+      "key": "concerns",
+      "n": 1
+    },
+    {
+      "t": "2026-10-23T03:18:40+03:00",
+      "k": "add",
+      "key": "concerns",
+      "n": 1
+    },
+    {
+      "t": "2026-10-23T03:18:40+03:00",
+      "k": "add",
+      "key": "concerns",
+      "n": 1
+    },
+    {
+      "t": "2026-10-23T03:18:40+03:00",
+      "k": "add",
+      "key": "concerns",
+      "n": 1
+    },
+    {
+      "t": "2026-10-23T03:19:23+03:00",
+      "k": "ticket",
+      "ids": [
+        "22"
+      ],
+      "act": "done",
+      "tests": {
+        "passed": 230,
+        "failed": 0
+      }
+    },
+    {
+      "t": "2026-10-23T03:19:23+03:00",
+      "k": "ticket",
+      "ids": [
+        "22"
+      ],
+      "act": "review"
+    },
+    {
+      "t": "2026-10-23T03:19:23+03:00",
+      "k": "ticket",
+      "ids": [
+        "23"
+      ],
+      "act": "start"
+    },
+    {
+      "t": "2026-10-23T03:19:36+03:00",
+      "k": "add",
+      "key": "concerns",
+      "n": 1
+    },
+    {
+      "t": "2026-10-23T03:19:36+03:00",
+      "k": "add",
+      "key": "concerns",
+      "n": 1
+    },
+    {
+      "t": "2026-10-23T03:22:41+03:00",
+      "k": "ticket",
+      "ids": [
+        "19"
+      ],
+      "act": "done",
+      "tests": {
+        "passed": 485,
+        "failed": 0
+      }
+    },
+    {
+      "t": "2026-10-23T03:22:41+03:00",
+      "k": "ticket",
+      "ids": [
+        "19"
+      ],
+      "act": "review"
+    },
+    {
+      "t": "2026-10-23T03:22:41+03:00",
+      "k": "ticket",
+      "ids": [
+        "21"
+      ],
+      "act": "repair",
+      "note": "файл только в коммите слияния даёт protected_in_history"
+    },
+    {
+      "t": "2026-10-23T03:22:41+03:00",
+      "k": "add",
+      "key": "concerns",
+      "n": 1
+    },
+    {
+      "t": "2026-10-23T03:22:41+03:00",
+      "k": "add",
+      "key": "concerns",
+      "n": 1
+    },
+    {
+      "t": "2026-10-23T03:22:42+03:00",
+      "k": "add",
+      "key": "concerns",
+      "n": 1
+    },
+    {
+      "t": "2026-10-23T03:22:42+03:00",
+      "k": "add",
+      "key": "concerns",
+      "n": 1
+    },
+    {
+      "t": "2026-10-23T03:22:42+03:00",
+      "k": "add",
+      "key": "concerns",
+      "n": 1
+    },
+    {
+      "t": "2026-10-23T03:22:42+03:00",
+      "k": "add",
+      "key": "concerns",
+      "n": 1
+    },
+    {
+      "t": "2026-10-23T03:23:06+03:00",
+      "k": "add",
+      "key": "concerns",
+      "n": 1
+    },
+    {
+      "t": "2026-10-23T03:23:06+03:00",
+      "k": "add",
+      "key": "concerns",
+      "n": 1
+    },
+    {
+      "t": "2026-10-23T03:23:06+03:00",
+      "k": "add",
+      "key": "concerns",
+      "n": 1
+    },
+    {
+      "t": "2026-10-23T03:23:06+03:00",
+      "k": "add",
+      "key": "concerns",
+      "n": 1
+    },
+    {
+      "t": "2026-10-23T03:23:06+03:00",
+      "k": "add",
+      "key": "concerns",
+      "n": 1
+    },
+    {
+      "t": "2026-10-23T03:23:06+03:00",
+      "k": "add",
+      "key": "concerns",
+      "n": 1
+    },
+    {
+      "t": "2026-10-23T03:23:06+03:00",
+      "k": "ticket",
+      "ids": [
+        "22"
+      ],
+      "act": "done",
+      "tests": {
+        "passed": 230,
+        "failed": 0
+      }
+    },
+    {
+      "t": "2026-10-23T03:25:56+03:00",
+      "k": "add",
+      "key": "concerns",
+      "n": 1
+    },
+    {
+      "t": "2026-10-23T03:25:57+03:00",
+      "k": "add",
+      "key": "concerns",
+      "n": 1
+    },
+    {
+      "t": "2026-10-23T03:25:57+03:00",
+      "k": "add",
+      "key": "concerns",
+      "n": 1
+    },
+    {
+      "t": "2026-10-23T03:25:57+03:00",
+      "k": "add",
+      "key": "concerns",
+      "n": 1
+    },
+    {
+      "t": "2026-10-23T03:25:57+03:00",
+      "k": "ticket",
+      "ids": [
+        "19"
+      ],
+      "act": "done",
+      "tests": {
+        "passed": 485,
+        "failed": 0
+      }
+    },
+    {
+      "t": "2026-10-23T03:27:33+03:00",
+      "k": "add",
+      "key": "concerns",
+      "n": 1
+    },
+    {
+      "t": "2026-10-23T03:27:33+03:00",
+      "k": "ticket",
+      "ids": [
+        "24"
+      ],
+      "act": "start"
+    },
+    {
+      "t": "2026-10-23T03:28:17+03:00",
+      "k": "ticket",
+      "ids": [
+        "21"
+      ],
+      "act": "repair",
+      "note": "revert_commit нестабилен: AdvanceBlocked main has uncommitted changes в ~1/3 прогонов"
+    },
+    {
+      "t": "2026-10-23T03:28:26+03:00",
+      "k": "ticket",
+      "ids": [
+        "24"
+      ],
+      "act": "reset"
+    },
+    {
+      "t": "2026-10-23T03:41:39+03:00",
+      "k": "ticket",
+      "ids": [
+        "21"
+      ],
+      "act": "done",
+      "tests": {
+        "passed": 500,
+        "failed": 0
+      }
+    },
+    {
+      "t": "2026-10-23T03:41:39+03:00",
+      "k": "add",
+      "key": "concerns",
+      "n": 1
+    },
+    {
+      "t": "2026-10-23T03:41:40+03:00",
+      "k": "ticket",
+      "ids": [
+        "24"
+      ],
+      "act": "start"
+    },
+    {
+      "t": "2026-10-23T03:46:43+03:00",
+      "k": "ticket",
+      "ids": [
+        "20"
+      ],
+      "act": "done",
+      "tests": {
+        "passed": 500,
+        "failed": 0
+      }
+    },
+    {
+      "t": "2026-10-23T03:46:43+03:00",
+      "k": "ticket",
+      "ids": [
+        "25"
+      ],
+      "act": "start"
+    },
+    {
+      "t": "2026-10-23T03:46:43+03:00",
+      "k": "add",
+      "key": "concerns",
+      "n": 1
+    },
+    {
+      "t": "2026-10-23T03:46:43+03:00",
+      "k": "add",
+      "key": "concerns",
+      "n": 1
+    },
+    {
+      "t": "2026-10-23T03:46:43+03:00",
+      "k": "add",
+      "key": "concerns",
+      "n": 1
+    },
+    {
+      "t": "2026-10-23T03:46:43+03:00",
+      "k": "add",
+      "key": "concerns",
+      "n": 1
+    },
+    {
+      "t": "2026-10-23T03:57:14+03:00",
+      "k": "ticket",
+      "ids": [
+        "23"
+      ],
+      "act": "done",
+      "tests": {
+        "passed": 248,
+        "failed": 0
+      }
+    },
+    {
+      "t": "2026-10-23T03:57:14+03:00",
+      "k": "add",
+      "key": "concerns",
+      "n": 1
+    },
+    {
+      "t": "2026-10-23T03:57:14+03:00",
+      "k": "add",
+      "key": "concerns",
+      "n": 1
+    },
+    {
+      "t": "2026-10-23T03:57:14+03:00",
+      "k": "add",
+      "key": "concerns",
+      "n": 1
+    },
+    {
+      "t": "2026-10-23T03:57:14+03:00",
+      "k": "add",
+      "key": "concerns",
+      "n": 1
+    },
+    {
+      "t": "2026-10-23T03:58:58+03:00",
+      "k": "ticket",
+      "ids": [
+        "24"
+      ],
+      "act": "done",
+      "tests": {
+        "passed": 276,
+        "failed": 1
+      }
+    },
+    {
+      "t": "2026-10-23T03:58:58+03:00",
+      "k": "add",
+      "key": "concerns",
+      "n": 1
+    },
+    {
+      "t": "2026-10-23T07:42:56+03:00",
+      "k": "ticket",
+      "ids": [
+        "25"
+      ],
+      "act": "reset"
+    },
+    {
+      "t": "2026-10-23T07:42:56+03:00",
+      "k": "ticket",
+      "ids": [
+        "25"
+      ],
+      "act": "start"
+    },
+    {
+      "t": "2026-10-23T07:57:53+03:00",
+      "k": "ticket",
+      "ids": [
+        "25"
+      ],
+      "act": "done",
+      "tests": {
+        "passed": 501,
+        "failed": 0
+      }
+    },
+    {
+      "t": "2026-10-23T07:57:53+03:00",
+      "k": "add",
+      "key": "concerns",
+      "n": 1
+    },
+    {
+      "t": "2026-10-23T07:57:58+03:00",
+      "k": "ticket",
+      "ids": [
+        "26"
+      ],
+      "act": "start"
+    },
+    {
+      "t": "2026-10-23T08:05:06+03:00",
+      "k": "tickets",
+      "n": 30
+    },
+    {
+      "t": "2026-10-23T08:05:06+03:00",
+      "k": "ticket",
+      "ids": [
+        "F4"
+      ],
+      "act": "start"
+    },
+    {
+      "t": "2026-10-23T08:20:39+03:00",
+      "k": "ticket",
+      "ids": [
+        "F4"
+      ],
+      "act": "done",
+      "tests": {
+        "passed": 506,
+        "failed": 0
+      }
+    },
+    {
+      "t": "2026-10-23T08:20:39+03:00",
+      "k": "add",
+      "key": "concerns",
+      "n": 1
+    },
+    {
+      "t": "2026-10-23T08:20:45+03:00",
+      "k": "ticket",
+      "ids": [
+        "F4"
+      ],
+      "act": "review"
+    },
+    {
+      "t": "2026-10-23T09:42:58+03:00",
+      "k": "ticket",
+      "ids": [
+        "F4"
+      ],
+      "act": "repair"
+    },
+    {
+      "t": "2026-10-23T09:51:34+03:00",
+      "k": "ticket",
+      "ids": [
+        "F4"
+      ],
+      "act": "done",
+      "tests": {
+        "passed": 509,
+        "failed": 0
+      }
+    },
+    {
+      "t": "2026-10-23T09:56:07+03:00",
+      "k": "tickets",
+      "n": 31
+    },
+    {
+      "t": "2026-10-23T09:56:07+03:00",
+      "k": "ticket",
+      "ids": [
+        "F5"
+      ],
+      "act": "start"
+    },
+    {
+      "t": "2026-10-23T10:11:17+03:00",
+      "k": "ticket",
+      "ids": [
+        "F5"
+      ],
+      "act": "done",
+      "tests": {
+        "passed": 511,
+        "failed": 0
+      }
+    },
+    {
+      "t": "2026-10-23T10:16:17+03:00",
+      "k": "add",
+      "key": "report",
+      "n": 1
+    },
+    {
+      "t": "2026-10-23T10:24:06+03:00",
+      "k": "gate",
+      "g": "G4",
+      "ok": false,
+      "checked": 43,
+      "matched": 40
+    },
+    {
+      "t": "2026-10-23T10:24:06+03:00",
+      "k": "add",
+      "key": "report",
+      "n": 1
+    },
+    {
+      "t": "2026-10-23T10:24:06+03:00",
+      "k": "tickets",
+      "n": 32
+    },
+    {
+      "t": "2026-10-23T10:24:06+03:00",
+      "k": "ticket",
+      "ids": [
+        "F6"
+      ],
+      "act": "start"
+    },
+    {
+      "t": "2026-10-23T10:41:40+03:00",
+      "k": "ticket",
+      "ids": [
+        "F6"
+      ],
+      "act": "done",
+      "tests": {
+        "passed": 511,
+        "failed": 0
+      }
+    },
+    {
+      "t": "2026-10-23T10:41:40+03:00",
+      "k": "tests",
+      "passed": 511,
+      "failed": 0
+    },
+    {
+      "t": "2026-10-23T10:41:52+03:00",
+      "k": "ticket",
+      "ids": [
+        "F2"
+      ],
+      "act": "done",
+      "tests": {
+        "passed": 511,
+        "failed": 0
+      }
+    },
+    {
+      "t": "2026-10-23T11:48:13+03:00",
+      "k": "tickets",
+      "n": 33
+    },
+    {
+      "t": "2026-10-23T11:48:13+03:00",
+      "k": "ticket",
+      "ids": [
+        "F7"
+      ],
+      "act": "start"
+    },
+    {
+      "t": "2026-10-23T12:01:57+03:00",
+      "k": "ticket",
+      "ids": [
+        "F7"
+      ],
+      "act": "done",
+      "tests": {
+        "passed": 310,
+        "failed": 310
+      }
+    },
+    {
+      "t": "2026-10-23T12:39:28+03:00",
+      "k": "tickets",
+      "n": 34
+    },
+    {
+      "t": "2026-10-23T12:39:28+03:00",
+      "k": "ticket",
+      "ids": [
+        "F8"
+      ],
+      "act": "start"
+    },
+    {
+      "t": "2026-10-23T13:09:57+03:00",
+      "k": "ticket",
+      "ids": [
+        "F8"
+      ],
+      "act": "done",
+      "tests": {
+        "passed": 310,
+        "failed": 310
+      }
+    },
+    {
+      "t": "2026-10-23T13:55:32+03:00",
+      "k": "tickets",
+      "n": 35
+    },
+    {
+      "t": "2026-10-23T13:55:32+03:00",
+      "k": "ticket",
+      "ids": [
+        "F9"
+      ],
+      "act": "start"
+    },
+    {
+      "t": "2026-10-23T14:33:46+03:00",
+      "k": "ticket",
+      "ids": [
+        "F9"
+      ],
+      "act": "done",
+      "tests": {
+        "passed": 310,
+        "failed": 310
+      }
+    },
+    {
+      "t": "2026-10-23T14:34:49+03:00",
+      "k": "tickets",
+      "n": 36
+    },
+    {
+      "t": "2026-10-23T14:34:49+03:00",
+      "k": "ticket",
+      "ids": [
+        "F10"
+      ],
+      "act": "start"
+    },
+    {
+      "t": "2026-10-23T15:11:45+03:00",
+      "k": "tickets",
+      "n": 37
+    },
+    {
+      "t": "2026-10-23T15:11:45+03:00",
+      "k": "ticket",
+      "ids": [
+        "F11"
+      ],
+      "act": "start"
+    },
+    {
+      "t": "2026-10-23T15:32:55+03:00",
+      "k": "ticket",
+      "ids": [
+        "F11"
+      ],
+      "act": "done",
+      "tests": {
+        "passed": 512,
+        "failed": 512
+      }
+    },
+    {
+      "t": "2026-10-23T15:40:00+03:00",
+      "k": "ticket",
+      "ids": [
+        "F10"
+      ],
+      "act": "done",
+      "tests": {
+        "passed": 315,
+        "failed": 315
+      }
+    },
+    {
+      "t": "2026-10-23T15:44:15+03:00",
+      "k": "tickets",
+      "n": 42
+    },
+    {
+      "t": "2026-10-23T15:44:15+03:00",
+      "k": "ticket",
+      "ids": [
+        "F12"
+      ],
+      "act": "start"
+    },
+    {
+      "t": "2026-10-23T15:44:15+03:00",
+      "k": "ticket",
+      "ids": [
+        "F13"
+      ],
+      "act": "start"
+    },
+    {
+      "t": "2026-10-23T15:44:15+03:00",
+      "k": "ticket",
+      "ids": [
+        "F14"
+      ],
+      "act": "start"
+    },
+    {
+      "t": "2026-10-23T16:35:04+03:00",
+      "k": "ticket",
+      "ids": [
+        "F12",
+        "F13",
+        "F14"
+      ],
+      "act": "done",
+      "tests": {
+        "passed": 551,
+        "failed": 0
+      }
+    },
+    {
+      "t": "2026-10-23T16:35:26+03:00",
+      "k": "ticket",
+      "ids": [
+        "F15"
+      ],
+      "act": "start"
+    },
+    {
+      "t": "2026-10-23T16:36:18+03:00",
+      "k": "stage",
+      "id": "manifest",
+      "act": "start"
+    },
+    {
+      "t": "2026-10-23T16:37:26+03:00",
+      "k": "ask",
+      "kind": "briefing",
+      "note": "три вопроса - что публиковать, какие CLI проверять, вид «думает»"
+    },
+    {
+      "t": "2026-10-23T16:39:14+03:00",
+      "k": "answered",
+      "kind": "briefing"
+    },
+    {
+      "t": "2026-10-23T16:40:39+03:00",
+      "k": "ask",
+      "kind": "briefing",
+      "note": "один вопрос - чат поверх терминала и моды"
+    },
+    {
+      "t": "2026-10-23T16:41:37+03:00",
+      "k": "answered",
+      "kind": "briefing"
+    },
+    {
+      "t": "2026-10-23T17:01:48+03:00",
+      "k": "gate",
+      "g": "G2",
+      "ok": true,
+      "found": 6,
+      "fixed": 6,
+      "deferred": 0
+    },
+    {
+      "t": "2026-10-23T17:42:12+03:00",
+      "k": "ticket",
+      "ids": [
+        "F15"
+      ],
+      "act": "done",
+      "tests": {
+        "passed": 562,
+        "failed": 0
+      }
+    },
+    {
+      "t": "2026-10-23T17:42:12+03:00",
+      "k": "add",
+      "key": "concerns",
+      "n": 2
+    },
+    {
+      "t": "2026-10-23T17:42:35+03:00",
+      "k": "stage",
+      "id": "briefing",
+      "act": "done"
+    },
+    {
+      "t": "2026-10-23T17:42:35+03:00",
+      "k": "gate",
+      "g": "G1",
+      "ok": true,
+      "open": 0,
+      "total": 107
+    },
+    {
+      "t": "2026-10-23T17:42:35+03:00",
+      "k": "stage",
+      "id": "spec",
+      "act": "done"
+    },
+    {
+      "t": "2026-10-23T17:42:35+03:00",
+      "k": "stage",
+      "id": "plan",
+      "act": "start"
+    },
+    {
+      "t": "2026-10-23T17:42:36+03:00",
+      "k": "tier",
+      "v": "T2"
+    },
+    {
+      "t": "2026-10-23T17:42:36+03:00",
+      "k": "tickets",
+      "n": 48
+    },
+    {
+      "t": "2026-10-23T17:42:36+03:00",
+      "k": "gate",
+      "g": "G3",
+      "ok": false,
+      "problems": 162
+    },
+    {
+      "t": "2026-10-23T17:42:48+03:00",
+      "k": "tickets",
+      "n": 48
+    },
+    {
+      "t": "2026-10-23T17:42:49+03:00",
+      "k": "gate",
+      "g": "G3",
+      "ok": false,
+      "problems": 95
+    },
+    {
+      "t": "2026-10-23T17:42:57+03:00",
+      "k": "tickets",
+      "n": 48
+    },
+    {
+      "t": "2026-10-23T17:42:57+03:00",
+      "k": "gate",
+      "g": "G3",
+      "ok": false,
+      "problems": 48
+    },
+    {
+      "t": "2026-10-23T17:42:57+03:00",
+      "k": "gate",
+      "g": "G3",
+      "ok": false,
+      "problems": 48
     }
   ],
   "note": "ремонт ядра: исполнитель работает (отметка 01:04)",
@@ -2108,7 +3905,50 @@ window.STATE =
     "F2: common.rs:326 summarize режет 120 символов до scrub",
     "actions.rs:42 многострочный секрет в диффе не заменяется из-за префиксов +/- (было и раньше)",
     "tabs.js:58-73 — persist() при отложенном restore() затирает сохранённые вкладки (сейчас недостижимо)",
-    "selftest.js:428 — тест абзацев проверяет парсер, а баг был в CSS; нужен тест на display блоков"
+    "selftest.js:428 — тест абзацев проверяет парсер, а баг был в CSS; нужен тест на display блоков",
+    "T18: пауза flow control навсегда при перезагрузке окна без Destroyed (term/mod.rs:704)",
+    "T18: close шлёт сигнал только shell - потомок держит slave, поток и master не освобождаются (term/mod.rs:767)",
+    "T18: terms.json с выводом до 2 МБ пишется 0644 - нужен 0600 (ptycmds.rs:265)",
+    "T18: все команды app доступны любому окну, нет манифеста команд по окнам (build.rs)",
+    "T18 (повторное ревью): detach во время отправки Exit отменяется - is_none возвращает старый sink, Channel висит до attach/close (term/mod.rs:226)",
+    "T18: двойной term-exit, если attach попал между снятием sink и Exit (было и до ремонта)",
+    "T21: /compact в режиме -p у Claude не сверен; --allowedTools только у Claude",
+    "T21: порты, записка и разрешённые инструменты не доходят до полос роя (run_lane); варианты гонки делят порт",
+    "T21: сжимается только вывод проверок в промпте, команды агента - нет (нужен прокси вроде RTK)",
+    "T21: стартовый налог MCP - только число серверов, без размера схем",
+    "T22: закреплённая карточка задачи наезжает на ленту - из-под неё видны обрезанные строки (скриншот shots-22/dark-0.png)",
+    "T22: taste FAIL - текст у края на 390px (обрезанный аргумент команды); ❯ принят как требование 244",
+    "T19: мод в ~/.claude/mods Claude Code сам не грузит - у пользователя CLAUDE_CODE_PLUGIN_DIRS; нужен шаг подключения или подсказка",
+    "T19: не сделано - вывод claude plugin validate, предупреждение о похожем имени (правило 9), copy_files при установке в проект",
+    "T19: скиллы Codex/Gemini через catalog-skills/ по документации, на установленных CLI не проверено",
+    "Флаки: 2 теста engine_swarm_watch упали в одном прогоне, на повторе прошли",
+    "T21: git_revert_commit вызывает git::is_pushed в async без spawn_blocking",
+    "T21: тело PR и промпт сравнения вариантов берут summary до 4000 символов",
+    "T22: нет переименования вкладки двойным кликом (история 259, tabs.js:243)",
+    "T22: закреплённая карточка задачи - видны обрезанные строки ленты над и под ней (chat.css:111)",
+    "T22: сплит из сохранения v3 (panels) восстанавливается отдельными вкладками, не сплитом (panes.js:177)",
+    "T22: старый раздел «Внешний вид» дублирует тему и шрифт из «Основное» (settings.js:343)",
+    "T22: caret-shape: block - проверить в WKWebView, иначе рисованный курсор (v4-shell.css:53)",
+    "T22: в dev-mock осталась строка «Вливать пока нельзя»",
+    "T19: мод ставится в проект (.claude/mods проекта), а research правило 5 - в проект не предлагать (market/mod.rs:497)",
+    "T19: второй распаковщик zip слабее kits/source.rs - 20000 файлов против 5000, нет лимита 10 МБ на файл (market/build.rs:34)",
+    "T19 безопасность: curl без -q и --globoff - ~/.curlrc с -k отключает TLS, {a,b} в адресе своего источника даёт много запросов (net/mod.rs:69)",
+    "T19: server_key MCP по последнему сегменту имени - разные io.github.a/x и io.github.b/x молча заменяют друг друга (market/build.rs:375)",
+    "ПРИОРИТЕТ T21: та же дыра в protected_committed - git log диапазона ветки задачи без -m не видит .env из коммита слияния перед push/PR",
+    "ВАЖНО: глобальный init.templatedir=~/.git-templates ставит хук graphify в каждый git init; хук пишет graphify-out/ после коммита - на реальных проектах пользователя merge Nightshift может получать AdvanceBlocked (main грязная). Нужна устойчивость: игнор graphify-out или тесты core/tests/common с --template=",
+    "T20: очередь новых запусков на время обновления CLI к движку не подключена; занятость смотрит только задачи, не чаты",
+    "T20: отката нет для brew и нативных Qwen/Codex/Cursor - только событие с командой; системного уведомления нет",
+    "T20+T22: вид (тема, шрифт, акцент) живёт в settings.ui.tabs.look, а конфиг-файл ui не пишет - G51 «всё конфигом» не закрыт для вида",
+    "T20: лишняя фикстура core/tests/fixtures/updates/codex_version.txt",
+    "T23: пункт меню чата «Продолжить в терминале» (chat.js) ведёт в системный терминал, встроенный - только из палитры",
+    "T23: лигатуры только на DOM-рендерере, аддона ligatures нет",
+    "T23: вкладка помечается MutationObserver-обходом tabs.js - хрупко",
+    "T23: на главном виде 14 кнопок - ровно предел",
+    "T24: REDPROOF нарушен - тесты написаны после кода; критерии проверены только на mock",
+    "T25: рисованная проверка UI считает 15 кнопок при лимите 14 (кнопка Clawd) - решить в ремонте по таску 26",
+    "F4: NS_PLAYWRIGHT=1 в scripts/ui-selftest.js делает require('1') и виснет (сервер не закрывается в catch); рисованная проверка работает только с путём к playwright-core",
+    "app/src/preview.rs - скрипт «Указать элемент» исполняется в контексте страницы превью: страница может подсунуть свой выбор (текст только вставляется в поле); в docs/security.md нужна строка про окно preview (без capabilities, переходы только localhost)",
+    "core/src/engine/proof.rs - файлы, оставленные run_cmd в копии и не в .gitignore, попадут в коммит (как у шага e2e)"
   ],
   "report": [
     "Аудит безопасности: 6 находок, 4 подтверждены (3 разные дыры) - в таск F1; 2 опровергнуты: имя ветки из origin/HEAD как опция git (не доходит до опасных вызовов), session_id без проверки в --resume (вход не контролирует атакующий)",
@@ -2119,7 +3959,9 @@ window.STATE =
     "Лента: в очень долгом чате каждое новое действие перебирает все прошлые (logic-v3.js:179) - может тормозить на тысячах действий",
     "Linux: Ctrl+D и Ctrl+W в поле ввода заняты вкладками - при Emacs-раскладке GTK пропадают «удалить символ/слово»",
     "Упавшее чтение файла показывает «N строк» вместо текста ошибки (actions.js:122)",
-    "F2: чтение .env проверяет размер, а потом читает без лимита (подмена между вызовами); путь <копия>/../x показывается как ../x; StructuredOutput без начала попадёт в ленту; меню не перестраивается при смене языка"
+    "F2: чтение .env проверяет размер, а потом читает без лимита (подмена между вызовами); путь <копия>/../x показывается как ../x; StructuredOutput без начала попадёт в ленту; меню не перестраивается при смене языка",
+    "Словарь: в CONTEXT.md «Набор» стоит среди запрещённых слов (правило 289), а спека и интерфейс до сих пор говорят «Наборы». Нужно решить, какое слово оставить",
+    "Моды: публичного каталога модов Claude Code не нашлось - вкладка «Моды» показывает встроенные источники, живые моды ставятся «По ссылке» (git, zip, папка)"
   ],
   "dir": "vibe-env",
   "reqList": [
@@ -2252,17 +4094,17 @@ window.STATE =
     {
       "id": "G05",
       "text": "«А где мне переписываться с самим агентом?»",
-      "status": "in-ticket"
+      "status": "done"
     },
     {
       "id": "G06",
       "text": "«возьми референсы интерфейсов таких приложений, допустим, на Pinterest какие-то ещё более-менее уникальные штуки»",
-      "status": "in-ticket"
+      "status": "done"
     },
     {
       "id": "G07",
       "text": "«где можно, допустим, роль агентов запустить»",
-      "status": "in-ticket"
+      "status": "done"
     },
     {
       "id": "G08",
@@ -2322,7 +4164,7 @@ window.STATE =
     {
       "id": "G19",
       "text": "«сейчас всё это намешано, очень сильно нагружен интерфейс, пользователь будет непонятно… отторгает сильно»",
-      "status": "in-ticket"
+      "status": "done"
     },
     {
       "id": "G20",
@@ -2332,7 +4174,7 @@ window.STATE =
     {
       "id": "G21",
       "text": "«на модель ты должен ставить оригинальные значки самой модели»",
-      "status": "in-ticket"
+      "status": "done"
     },
     {
       "id": "G22",
@@ -2357,7 +4199,7 @@ window.STATE =
     {
       "id": "G26",
       "text": "«чтобы в чате были видны пятичасовые лимиты и недельные лимиты»; «вообще любые лимиты агентных средств… переключаешь на Джамини - её лимиты, на Кодекс - лимиты Кодекса»",
-      "status": "in-ticket"
+      "status": "done"
     },
     {
       "id": "G27",
@@ -2392,157 +4234,316 @@ window.STATE =
     {
       "id": "G33",
       "text": "«Я хочу сделать другой дизайн, прямо скруглённый»",
-      "status": "in-ticket"
+      "status": "done"
     },
     {
       "id": "G34",
       "text": "«это должно быть похоже на терминал»",
-      "status": "in-ticket"
+      "status": "done"
     },
     {
       "id": "G35",
       "text": "«код должен работать в терминале»; «терминал будет считаться эмулятором»",
-      "status": "in-ticket"
+      "status": "done"
     },
     {
       "id": "G36",
       "text": "«этот терминал можно было бы кастомизировать»",
-      "status": "in-ticket"
+      "status": "done"
     },
     {
       "id": "G37",
       "text": "«делать сплиты, девочка»",
-      "status": "in-ticket"
+      "status": "done"
     },
     {
       "id": "G38",
       "text": "«красивый дизайн, красивый, красивый плюс окна»",
-      "status": "in-ticket"
+      "status": "done"
     },
     {
       "id": "G39",
       "text": "«это как-то всё выглядит сейчас громоздко… нету какого-то вкуса… нету изюминки»",
-      "status": "in-ticket"
+      "status": "done"
     },
     {
       "id": "G40",
       "text": "«чтобы туда могли переноситься моды мои, моды чужие»",
-      "status": "in-ticket"
+      "status": "done"
     },
     {
       "id": "G41",
       "text": "«чтобы можно было качать скиллы с популярных сайтов»",
-      "status": "in-ticket"
+      "status": "done"
     },
     {
       "id": "G42",
       "text": "«моды для кладка, то есть MCP»",
-      "status": "in-ticket"
+      "status": "done"
     },
     {
       "id": "G43",
       "text": "«когда выходила новая модель, автоматически обновлялся, и все модели автоматически обновлялись, включая GMI, включая ChatGPT»",
-      "status": "in-ticket"
+      "status": "done"
     },
     {
       "id": "G44",
       "text": "«внедри туда ещё GitHub… чтобы можно было публиковать»",
-      "status": "in-ticket"
+      "status": "done"
     },
     {
       "id": "G45",
       "text": "«чтобы можно было смотреть историю изменений, чтобы всё это красиво выглядело»",
-      "status": "in-ticket"
+      "status": "done"
     },
     {
       "id": "G46",
       "text": "«анимацию персонажа Клота Нукро, этот вот, который я мод писал, то, что он там что-то делает, сделал анимацию в 60 FPS»",
-      "status": "in-ticket"
+      "status": "done"
     },
     {
       "id": "G47",
       "text": "«Придумай ему какую-нибудь историю этому персонажу»",
-      "status": "in-ticket"
+      "status": "done"
     },
     {
       "id": "G48",
       "text": "«сделай приложение сильным, а то оно сейчас какое-то громоздкое»",
-      "status": "in-ticket"
+      "status": "done"
     },
     {
       "id": "G49",
       "text": "«можешь ещё добавить функции по своему усмотрению, какие можешь посмотреть, какие люди добавляют»",
-      "status": "in-ticket"
+      "status": "done"
     },
     {
       "id": "G50",
       "text": "«Технические термины.»",
-      "status": "in-ticket"
+      "status": "done"
     },
     {
       "id": "G51",
       "text": "«приложение можно было полностью кастомизировать конфигами, но также настройками можно вручную»",
-      "status": "in-ticket"
+      "status": "done"
     },
     {
       "id": "G52",
       "text": "«Дизайн разрабатывался через Tast-skills»",
-      "status": "in-ticket"
+      "status": "done"
     },
     {
       "id": "G53",
       "text": "«Поищи рекомендации от других людей на YouTube… как запускать несколько кодов параллельно и экономить токены, как запускать несколько агентов… как делать фабрики, как делать заводы и внедри»",
-      "status": "in-ticket"
+      "status": "done"
     },
     {
       "id": "G54",
       "text": "«Если вышло обновление какого-то терминального CLI, то ты его берёшь автоматически, приходит обновление, и пользователь должен перезапустить именно окно с терминалом»",
-      "status": "in-ticket"
+      "status": "done"
     },
     {
       "id": "G55",
       "text": "«все вот эти Codex, КВН, Джамини — это считается как отдельный терминал… терминальная среда по типу Tmux и так далее и Head»",
-      "status": "in-ticket"
+      "status": "done"
     },
     {
       "id": "G56",
       "text": "«Дизайн должен быть максимально похож на вот эти Linx, стэтапы, Linx, терминалы»",
-      "status": "in-ticket"
+      "status": "done"
     },
     {
       "id": "G57",
       "text": "«Продвинутый пользователь может его кастомизировать через настройки. Обычный пользователь может… какие-то базовые вещи кастомить»",
-      "status": "in-ticket"
+      "status": "done"
     },
     {
       "id": "G58",
       "text": "«То есть это должен быть по сути мультиплекс.»",
-      "status": "in-ticket"
+      "status": "done"
     },
     {
       "id": "G59",
       "text": "«Приложение тестируешь обязательно, обязательно через мой компьютер… полностью всё проверяешь через компьютер US»",
       "status": "in-ticket"
+    },
+    {
+      "id": "G60",
+      "text": "«проведи аудит, что мне в этой программе не хватает и что внедряют многие люди»",
+      "status": "in-ticket"
+    },
+    {
+      "id": "G61",
+      "text": "«задай мне вопросы, как мне это внедрить и внедряться самостоятельно»",
+      "status": "done"
+    },
+    {
+      "id": "G62",
+      "text": "«Очередь чата, ожидание лимита и защита от двойной отправки… Сохранять на диск?» → «Да, на диск»",
+      "status": "in-ticket"
+    },
+    {
+      "id": "G63",
+      "text": "«Codex, Gemini CLI, Cursor и пакеты Linux ни разу не запускались вживую. Как проверяем?» → «Скрипт на Arch»",
+      "status": "in-ticket"
+    },
+    {
+      "id": "G64",
+      "text": "«Лимит у одного агента роя… ставит на паузу всю задачу. Менять?» → «Стоит только он»",
+      "status": "in-ticket"
+    },
+    {
+      "id": "G65",
+      "text": "«Картинки в чате (вставить скриншот, перетащить файл)… Делать?» → «Да»",
+      "status": "in-ticket"
+    },
+    {
+      "id": "G66",
+      "text": "«Голосовой ввод внутри приложения?» → «Не делаем»",
+      "status": "dropped",
+      "why": "пользователь: «Не делаем» (Wispr Flow работает в любом окне)"
+    },
+    {
+      "id": "G67",
+      "text": "«Задачи из GitHub Issues… Делать?» → «Да, закрытие с вопросом»",
+      "status": "in-ticket"
+    },
+    {
+      "id": "G68",
+      "text": "«Подхват старых сессий: чаты Claude Code, начатые в терминале… Делать?» → «Да»",
+      "status": "in-ticket"
+    },
+    {
+      "id": "G69",
+      "text": "«Обновление самой программы… Как?» → «Плашка со ссылкой»",
+      "status": "in-ticket"
+    },
+    {
+      "id": "G70",
+      "text": "«История расходов… Что добавить?» → «Таблица по дням»",
+      "status": "in-ticket"
+    },
+    {
+      "id": "G71",
+      "text": "«Кнопка «Собрать отчёт об ошибке»… Делать?» → «Да»",
+      "status": "in-ticket"
+    },
+    {
+      "id": "G72",
+      "text": "«Локальные модели (Ollama / LM Studio через opencode)?» → «Не делаем»",
+      "status": "dropped",
+      "why": "пользователь: «Не делаем»"
+    },
+    {
+      "id": "G73",
+      "text": "«Подпись сборки для macOS - $99 в год» → «Пока без подписи»",
+      "status": "deferred",
+      "why": "пользователь: «Пока без подписи»; инструкция xattr в README остаётся"
+    },
+    {
+      "id": "G74",
+      "text": "«Когда публикуем репозиторий на GitHub?» → «После v5 и аудита»",
+      "status": "in-ticket"
+    },
+    {
+      "id": "G75",
+      "text": "«Я надеюсь, все скиллы и вся память импортируются, и MCP, соответственно, тоже»",
+      "status": "in-ticket"
+    },
+    {
+      "id": "G76",
+      "text": "«когда пользователи будут скачивать мою программу, у них должна устанавливаться чистая программа»",
+      "status": "in-ticket"
+    },
+    {
+      "id": "G77",
+      "text": "«если у них будут мои скиллы, мои MCP и моё всё, это может быть утечкой»",
+      "status": "in-ticket"
+    },
+    {
+      "id": "G77i",
+      "text": "(подразумевается) публикуемый репозиторий тоже не несёт личного: .autopilot/ (брифы, исследования, скриншоты), пути /Users/nezeronxer, данные dev-mock",
+      "status": "in-ticket"
+    },
+    {
+      "id": "G78",
+      "text": "«протестируй её в ручном режиме, в режиме пользователя, в интерфейсе»",
+      "status": "in-ticket"
+    },
+    {
+      "id": "G79",
+      "text": "«и погони аудит полной безопасности»",
+      "status": "in-ticket"
+    },
+    {
+      "id": "G80",
+      "text": "«Анимация должна быть анимация кода, то, что и у всех остальных нейросетей, агентов, то, что они что-то там думают, ты написал текст, а там пусто»",
+      "status": "in-ticket"
+    },
+    {
+      "id": "G81",
+      "text": "«все эти агенты не печатают плавно, то есть они печатают не в 60 FPS»",
+      "status": "in-ticket"
+    },
+    {
+      "id": "G82",
+      "text": "«она запускается вот, знаешь, как в чате, но а где моды, где скиллы? Ты всё это туда внедрил?»",
+      "status": "in-ticket"
+    },
+    {
+      "id": "G83",
+      "text": "«сделай вот этот чат как оболочку терминала, то есть это по сути будет как терминальная версия, только ты сделаешь свою версию… как чат… чтобы было более удобней»",
+      "status": "in-ticket"
+    },
+    {
+      "id": "G84",
+      "text": "«то, что Claude думает, всё это может меняться модами Claude-кода, то есть ты должен туда плавно, ничего не ломая, внедрить также моды Claude-кода, который позволяет ему менять под себя»",
+      "status": "in-ticket"
+    },
+    {
+      "id": "G85",
+      "text": "«И так сделать со всеми терминальными версиями.»",
+      "status": "in-ticket"
     }
   ],
   "gates": {
     "G2": {
-      "ok": false,
-      "at": "2026-10-23T02:00:30+03:00",
-      "found": 7,
-      "fixed": 5,
+      "ok": true,
+      "at": "2026-10-23T17:01:48+03:00",
+      "found": 6,
+      "fixed": 6,
       "deferred": 0
     },
     "G3": {
       "ok": false,
-      "at": "2026-10-23T02:05:46+03:00",
-      "problems": 13
+      "at": "2026-10-23T17:42:57+03:00",
+      "problems": 48
     },
     "G1": {
       "ok": true,
-      "at": "2026-10-23T02:00:30+03:00",
+      "at": "2026-10-23T17:42:35+03:00",
       "open": 0,
-      "total": 80
+      "total": 107
+    },
+    "G4": {
+      "ok": false,
+      "at": "2026-10-23T10:24:06+03:00",
+      "checked": 43,
+      "matched": 40
     }
-  }
+  },
+  "baseCommit": "efcd705",
+  "skillDir": "/Users/nezeronxer/.agents/skills/autopilot",
+  "waiting": null,
+  "waits": [
+    {
+      "kind": "briefing",
+      "from": "2026-10-23T16:37:26+03:00",
+      "to": "2026-10-23T16:39:14+03:00"
+    },
+    {
+      "kind": "briefing",
+      "from": "2026-10-23T16:40:39+03:00",
+      "to": "2026-10-23T16:41:37+03:00"
+    }
+  ]
 }

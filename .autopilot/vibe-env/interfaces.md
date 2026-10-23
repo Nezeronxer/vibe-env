@@ -565,3 +565,40 @@ pub fn load_token() -> Option<String>; pub fn save_token(t: &str) -> Result<(), 
 - `paneKind.beforeClose(pane) → Promise<bool>`; `NS.tabs.closePane/closeTab` - async; `NS.tabs.placeOf(paneId)`, `NS.tabs.putBack(kind, place)`; `NSPanes.wsPlaceOf(st, paneId) → {tab, index, sibling, dir, first}|null`, `NSPanes.wsPut(st, place, pane, newTabId)`; `tabSpec.place`.
 - `NSPalette.QUIET`, `NSPalette.quiet(attrs)` - атрибуты без автозамены; `h()` в `core/dom.js` пишет autocorrect/autocapitalize/spellcheck/autocomplete через setAttribute.
 - app: `QuitGate::ask` (один вопрос выхода за раз), `menu_label(entry, ru)`; `app/Info.plist` - CFBundleLocalizations en, ru.
+
+## F12 чат (38b0a7b)
+- Rust: `Chats::side_ask(&self, chat: &str, question: &str) -> Result<String, String>`; `agent::strip_cli_warnings(&str) -> String` (сидит в общем `run_blocking_with` - чистит stderr и задач).
+- Tauri: `side_ask(id, text) -> String`. Строка чата `keys::STOPPED` / `reason::STOPPED` = `"stopped"`.
+- UI: `NS.sidechat.create(chatId)`, `composer.suggest(text)`, `composer.deliver(text, id)`, хуки `busy`/`enqueue`/`now`; настройка `ns.hint_next` (`'0'` - выкл). Очередь сообщений живёт только в UI (ядро не умеет отозвать/править отложенное).
+
+## F13 задача (38b0a7b)
+- `git::snapshot(wt, task, label) -> Result<u32>`, `snapshots(repo, task) -> Vec<Snapshot>`, `restore_snapshot(wt, task, n) -> Result<u32>`, `drop_snapshots`; снимки в `refs/nightshift/<task>/<n>`, без `.env`.
+- `git::take_to_main(repo, wt, branch) -> Result<prev>`, `give_to_agent(repo, wt, branch, prev, fallback)`.
+- `Engine::{snapshots, restore_snapshot, todo_add, todo_set, todo_remove, take_to_main, give_to_agent}`; `Task.todos`, `Task.taken_from`, `Todo`. Открытый пункт → `NeedsHuman` `todos_open: N`. Забранная задача: `answer/retry/resume_failed/cancel/remove/откат` → `taken_to_main`.
+- Tauri: `task_snapshots, restore_snapshot, todo_add, todo_set, todo_remove, take_to_main, give_to_agent`.
+
+## F14 автоматика (38b0a7b)
+- Tauri: `auto_get`, `auto_schedule_save{schedule}`, `auto_schedule_remove{id}`, `auto_schedule_toggle{id,enabled}`, `auto_suggest_scan{projectId}`, `auto_suggest_do{projectId,fp}`, `auto_suggest_dismiss{projectId,fp}`, `auto_suggest_nightly{on}`, `auto_ci_set{config}`, `auto_ci_poll`; событие `auto-changed`; хранение `<data dir>/automation.json`.
+- Ядро: `schedule::{Schedule, Preset, next_after, due, limit_ok, TEMPLATES}`, `suggest::{Suggestion, parse_grep, scan}`, `ci::{Gh, RealGh, Ci, CiConfig, Watch, Step, decide, check_pr, merge_when_green}`.
+- Selftest: главный вид - не больше 20 видимых кнопок (Спросить F12, Автоматика F14).
+
+## v6 — границы, решённые в спецификации
+
+Разведка кода: `notes-v6.md` (§1-11). Проверка: `cargo test --workspace 2>&1 | grep '^test result' | awk '{p+=$4;f+=$6} END{print p,f}'` и `NS_PLAYWRIGHT=~/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright-core NS_CHROME="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" node scripts/ui-selftest.js 2>&1 | grep -E "^FAIL|ALL PASSED"`; один файл - `cargo test -p nightshift-core --test <имя>`. Общие файлы (`app/src/main.rs`, `ui/js/core/api.js`, `ui/index.html`, `core/src/lib.rs`, `core/src/model.rs`, `ui/dev-mock.js`, `scripts/ui-selftest.js`) - перечитать прямо перед правкой и править точечно; строки интерфейса - в своём `ui/js/v4/i18n-<фича>6.js`. Не коммитить, не запускать `.app`, без сети в тестах, новые зависимости - только через BLOCKED.
+
+- **core::chat (27 владеет)**: `Chat.queue: Vec<QueuedMsg{id, text, attachments: Vec<PathBuf>, at}>`, `Chat.wait: Option<Wait{msg_id, resets_at}>` - на диске через `Store`; `Chats::queue_edit(chat, id, text)`, `Chats::queue_drop(chat, id)`; восстановление в `Chats::new`. Событие `ChatEvent::Thinking{chat, msg_id, text}` → окно `chat-thinking {id, msgId, text}`.
+- **core::agent (27 владеет `Thinking`, `ui_hints`; 29 - `inventory`, `resume_argv`, `supports_images`)**: `AgentEvent::Thinking(String)`; у трейта `Adapter` с умолчаниями: `fn ui_hints(&self, cwd: &Path) -> UiHints` (`UiHints{spinner_verbs: Option<Vec<String>>}`), `fn inventory(&self, cwd: &Path) -> Inventory` (`Inventory{skills, commands, mcp, mods: Vec<Item{name, description, source}>}`), `fn resume_argv(&self, session: &str, cwd: &Path) -> Option<Vec<String>>`, `fn supports_images(&self) -> bool` (false).
+- **Run (29)**: `Run.attachments: Vec<PathBuf>` - адаптер сам решает, как передать (Claude - строка путей в промпте).
+- **UI (27)**: `ui/js/core/reveal.js` - `NS.reveal.attach(node, getTarget)` один rAF-цикл на ленту; индикатор - поверх `NS.actions.liveBar()`.
+- **core::swarm/lanes (28)**: `LaneState::Paused{resume_at}`; задача `PausedLimit`, только когда все живые полосы на паузе.
+- **Расходы (28)**: `<data>/spend_history.json` `[{day, project, env, usd: Option<f64>, tokens_in, tokens_out}]`; Tauri `spend_history{from?, to?}`.
+- **Отчёт и лог (28)**: `core::diag::collect(data_dir, out_dir) -> Result<PathBuf>`; `core::scrub` (из `kits/scrub.rs`, kits реэкспортирует); лог `<data>/logs/app.log`; Tauri `diag_collect{dir?}`.
+- **Обновление приложения (28)**: `Settings.release_feed: Option<String>` (None по умолчанию); Tauri `app_update_check` → `{current, latest?, url?, checked_at, error?}`; событие `app-update {latest, url}`.
+- **Issues (30)**: `suggest::Suggestion.source: Source::{Todo{file,line}, Issue{number, url}}`; `ci::Gh::{issue_list(repo) , issue_close(repo, n, comment)}`; вопрос о закрытии - тем же путём, что вопросы `Auto`.
+- **Сессии (30)**: `core::sessions::{list(project_path, page) -> Vec<SessionHead{id, started_at, first_prompt, messages}>, key_for(path) -> String}`; `Task.resume_session: Option<String>`; Tauri `sessions_list{projectId, page}`, `session_continue{projectId, id}`.
+- **Окружение (31)**: `NIGHTSHIFT_PROJECT`, `NIGHTSHIFT_PROJECT_NAME` в `Run.extra_env` всех ролей и чата.
+
+## F15 превью и доказательство
+- core: `preview::{local_url, host_port, Pick{selector,text,w,h}, parse_pick, trait Capture{available, shoot}, NodeCapture}`; `Engine::set_proof`; `Project.proof: bool`, `Project.app_url: Option<String>`; `Outcome.proof: Option<Proof{shots, skipped}>`; снимки `<data>/proof/<task>/`.
+- Tauri: `preview_open{url}`, `preview_reload`, `preview_width{px}`, `preview_close`, `preview_pick`, `proof_shot{taskId,file}`; событие `preview-pick` только в main; окно `preview`.
+- UI: `NS.preview{open, strip, checkLine, isLocal, insertToChat}`; paneKind `preview`.
