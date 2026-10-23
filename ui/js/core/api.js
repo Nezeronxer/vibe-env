@@ -4,7 +4,7 @@
   const NS = (window.NS = window.NS || {});
   const COMMANDS = new Set([
     // v1
-    'list_projects', 'add_project', 'update_project', 'remove_project', 'init_repo', 'repo_info', 'list_tasks', 'get_log', 'submit_task',
+    'list_projects', 'add_project', 'create_project', 'update_project', 'remove_project', 'init_repo', 'repo_info', 'list_tasks', 'get_log', 'submit_task',
     'answer', 'approve_outward', 'cancel', 'retry', 'remove_task', 'undo', 'push_base', 'pull_base', 'pause_all', 'list_agents',
     'get_settings', 'set_settings', 'github_info', 'delete_merged_branches', 'pr_state', 'open_path', 'open_editor', 'open_terminal', 'get_diffstat',
     // v2 (app)

@@ -100,7 +100,7 @@
   let adopt = null;                // fields for the next pane 'term' made by create() (attach, env CLI, a returned tab)
 
   const project = () => {
-    const s = S(), p = NS.store.project(s.lastProject || (s.settings && s.settings.default_project) || (s.projects[0] && s.projects[0].id));
+    const p = NS.store.project(NS.projects.current());
     return p || null;
   };
   const baseName = (p) => String(p || '').replace(/\/+$/, '').split('/').pop() || '~';

@@ -33,7 +33,7 @@
   }
 
   function open(projectId, opts) {
-    const p = NS.store.project(projectId || S.lastProject || ((S.settings || {}).default_project) || (S.projects[0] || {}).id);
+    const p = NS.store.project(projectId || NS.projects.current());
     if (!p) { NS.shell.toast(t('pub.no_project'), true); return; }
     const dlg = document.getElementById('dlg');
     const st = { name: repoName(p.path), priv: true, desc: '', stage: 'form', err: null, url: null, commits: null, branch: '' };

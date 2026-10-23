@@ -16,7 +16,7 @@
     let msgs = [], more = false, loading = false, pending = [];
     const cards = new Map();                            // task id -> card controller (kept across re-renders: open state lives there)
     const openGroups = new Set();
-    let selProject = (chatObj && chatObj.project_id) || S.lastProject || (S.settings && S.settings.default_project) || (S.projects[0] && S.projects[0].id) || null;
+    let selProject = (chatObj && chatObj.project_id) || NS.projects.current();     // F11: no silent first project; the last explicit choice is offered
     const alive = { v: true };
     const ext = ctx.params.ext || {};
     const tabId = ctx.params.tab || null;              // the tab this chat lives in (tabs.js): a new chat id goes back to that tab
@@ -27,20 +27,12 @@
     const title = h('h1', { class: 'pane-ttl' }), sub = h('span', { class: 'pane-sub' });
     const limits = NS.limits.limitsBar(envId);
     const menuBtn = h('button', { type: 'button', class: 'btn sm menu-btn', 'aria-haspopup': 'menu', 'aria-label': t('chat.menu'), text: '⋯' });
-    const projSel = h('select', { class: 'projsel', 'aria-label': t('chat.project') });
     // v4: this header is the pane's title row (tabs.js adds the registry slots and the pane tools); env, model and limits are in the bar
     const lamp = h('span', { class: 'pane-lamp', role: 'img', hidden: true });     // the tally lamp: red = an agent of this chat is on air, amber = it calls you
     const header = h('header', { class: 'convo-h pane-h' }, h('span', { class: 'pane-ic' }, envIcon(env.custom ? 'custom' : envId)), lamp,
-      title, sub, isNew ? projSel : null, !isNew ? menuBtn : null);
-    function fillProjects() {
-      clear(projSel);
-      for (const p of S.projects) projSel.append(h('option', { value: p.id, text: p.name, selected: p.id === selProject }));
-      projSel.append(h('option', { value: '__add', text: t('chat.add_project') }));
-    }
-    projSel.onchange = async () => {
-      if (projSel.value === '__add') { const p = await NS.projects.addByDialog(); if (!alive.v) return; if (p) selProject = p.id; fillProjects(); drawHeader(); return; }
-      selProject = projSel.value; S.lastProject = selProject; drawHeader();
-    };
+      title, sub, !isNew ? menuBtn : null);
+    // F11: a new chat starts with the project button above the field (the menu: recent, open a folder, create)
+    const pj = isNew ? NS.projects.picker(() => selProject, (p) => { selProject = p.id; drawHeader(); renderFeed(); composer.focus(); }) : null;
     function drawLamp() {
       const tks = isNew ? [] : st.chatTasks(chatId);
       const calling = tks.find((x) => L.kindOf(x) === 'wait'), onAir = tks.find((x) => L.kindOf(x) === 'run' && L.info(x.status).live), tk = calling || onAir;
@@ -180,7 +172,7 @@
       return h('div', { class: 'msg ai streaming' }, h('div', { class: 'msg-h' }, h('span', { class: 'av' }, envIcon(envId)), h('b', { text: env.name }), mlabel ? h('small', { text: mlabel }) : null),
         h('div', { class: 'msg-b' }, richText(sx.text), h('span', { class: 'caret', 'aria-hidden': 'true' })));
     }
-    const emptyNode = () => h('div', { class: 'newchat-empty' }, h('h2', { text: t('feed.empty_title', { env: env.name }) }), st.project(selProject) ? null : h('p', { text: t('feed.empty') }));
+    const emptyNode = () => h('div', { class: 'newchat-empty' }, h('h2', { text: t('feed.empty_title', { env: env.name }) }), pj ? pj.el : null, st.project(selProject) ? null : h('p', { text: t('feed.empty') }));
     // examples as three quiet cards under the field; a click puts the text into the field, it is not sent (story 239)
     const EX = [['onb3.ex1', 'onb3.ex1_t', 'f9.ex1_d'], ['onb3.ex2', 'onb3.ex2_t', 'f9.ex2_d'], ['onb3.ex3', 'onb3.ex3_t', 'f9.ex3_d']];
     const blankEx = h('div', { class: 'examples', role: 'group', 'aria-label': t('onb3.ex_title'), hidden: true }, EX.map(([label, text, d]) => h('button', { type: 'button', class: 'ex',
@@ -298,7 +290,7 @@
       const blank = !items.length && !pending.length;
       if (blank) put('empty', String(selProject), () => [emptyNode()]);
       convoEl.classList.toggle('blank', blank);                    // an empty chat: the question, the field and the examples in the middle (pin-25)
-      blankEx.hidden = !(blank && st.project(selProject));
+      blankEx.hidden = !blank;
       let run = [];
       const flush = (isLast) => {
         const segs = bySpeaker(run);
@@ -405,7 +397,8 @@
 
     const convoEl = h('section', { class: 'convo' });
     const composer = NS.composer.create({ envId, chat: chatId, hooks: {
-      projectId: () => selProject, activeTask, noteTo: ext.noteTo,
+      projectId: () => selProject, activeTask,
+      needProject: () => { if (!isNew || st.project(selProject)) return false; NS.shell.toast(t('pj.need')); pj.open(); return true; }, noteTo: ext.noteTo,
       addPending(p) { pending.push(p); renderFeed(); toBottom(); },
       dropPending(id) { pending = pending.filter((p) => p.id !== id); schedule(); },
       sent: async (newId) => {
@@ -421,7 +414,6 @@
     NS.append(convoEl, [header, convoy ? convoy.el : null, wrap, composer.el, blankEx]);
     root.append(convoEl);
     if (ext.decorate) ext.decorate(composer);
-    if (isNew) fillProjects();
     drawHeader();
     renderFeed();
 

@@ -135,6 +135,11 @@
     repo_info: ({ id }) => repos[id], list_agents: () => envs.map((e) => ({ id: e.id, name: e.name, available: !!e.installed, hint: e.install_hint || '' })),
     add_project: ({ path }) => { if (/nogit/.test(path)) fail('not a git repo: ' + path); const p = P('p' + (projects.length + 1), path.split('/').pop(), 'local'); projects.push(p); repos[p.id] = { is_repo: true, base_branch: 'main', current_branch: 'main', ahead: 0, behind: 0 }; return p; },
     init_repo: () => null,
+    create_project: ({ parent, name }) => {
+      if (!name.trim() || /[\\/]/.test(name) || /^\.+$/.test(name)) fail('bad_project_name');
+      if (projects.some((x) => x.path === parent + '/' + name)) fail('folder_exists: ' + parent + '/' + name);
+      const p = P('p' + (projects.length + 1), name, 'local'); p.path = parent + '/' + name; projects.push(p); repos[p.id] = { is_repo: true, base_branch: 'main', current_branch: 'main', dirty: false, origin_url: null, web_url: null, ahead: 0, behind: 0 }; return p;
+    },
     get_catalog: ({ env }) => (catalogs[env] ? { env, families: catalogs[env], source: 'built_in', at: ago(60 * 5) } : null),
     refresh_catalog: ({ env }) => (catalogs[env] ? { env, families: catalogs[env], source: 'cli_list', at: iso(Date.now()) } : null),
     get_limits: ({ env }) => { limitsCache = limitsCache || window.NSMockLimits.build({ exhausted }); return limitsCache[env] || null; },

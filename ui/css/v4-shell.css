@@ -241,3 +241,25 @@
 .cfg-errs h3 { display: flex; gap: 8px; align-items: center; font-size: 13px; color: var(--bad); margin-bottom: 4px; }
 .cfg-errs li { font: 12px var(--mono); color: var(--ink); }
 @media (max-width: 1099px) { .basic4 { grid-template-columns: minmax(0, 1fr); } .preview4 { position: static; } }
+
+/* F11: the project button of a new chat and its menu (same rows as the model menu) */
+.pj-pick { position: relative; display: inline-block; margin-top: 14px; }
+.pj-btn { display: inline-flex; align-items: center; gap: 7px; height: 32px; padding: 0 10px 0 11px; border: 1px solid var(--line2); border-radius: var(--radius-sm); background: var(--raised); color: var(--ink2); font: 13.5px var(--sans); cursor: pointer; max-width: 100%; }
+.pj-btn:hover, .pj-btn[aria-expanded="true"] { background: var(--raised2); color: var(--ink); }
+.pj-btn.empty { color: var(--ink); border-color: var(--amber); background: linear-gradient(180deg, color-mix(in srgb, var(--amber) 14%, transparent), color-mix(in srgb, var(--amber) 6%, transparent)); }
+.pj-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.pj-btn .ic { width: 14px; height: 14px; flex: none; }
+.pj-t { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 36ch; }
+.pj-pick .pj-pop { left: 50%; right: auto; top: calc(100% + 6px); bottom: auto; transform: translateX(-50%); width: 320px; max-width: 86vw; padding: 4px; text-align: left; max-height: 60vh; display: flex; flex-direction: column; overflow: hidden; border-radius: var(--radius-sm); }
+.pj-pick .pj-pop[hidden] { display: none; }
+.pj-pop .mn { display: flex; flex-direction: column; justify-content: center; line-height: 1.2; }
+.pj-pop .mrow { height: auto; min-height: 36px; padding-block: 4px; }
+.pj-pop .pj-sub { max-width: none; font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pj-pop .mgroup { margin: 6px 8px 2px; font-size: 11px; font-weight: 600; color: var(--ink3); }
+.pj-pop .hint { margin: 6px 8px; font-size: 12.5px; }
+.pj-f { display: flex; flex-direction: column; gap: 5px; margin: 12px 0; }
+.pj-f > span { font: 600 12.5px var(--mono); color: var(--ink2); }
+.pj-row { display: flex; align-items: center; gap: 8px; }
+.pj-where { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 12.5px var(--mono); }
+.pj-name { width: 100%; }
+.pj-err { display: block; color: var(--bad); margin-bottom: 8px; }

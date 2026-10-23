@@ -111,6 +111,7 @@
     async function send() {
       const text = ta.value, v = L.validateSend(text);
       if (!v.ok) { if (v.reason === 'empty') ta.focus(); else drawHint(); return; }
+      if (hooks.needProject && mode.kind === 'message' && hooks.needProject()) return;     // F11: a new chat needs a chosen project
       const id = gate.begin(key, text);
       if (id == null) return;                      // a double press while the first call is still running
       sendBtn.disabled = true;

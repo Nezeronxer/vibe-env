@@ -433,6 +433,13 @@ async fn add_project(app: AppHandle, s: State<'_, App>, path: String) -> Res<Pro
 }
 
 #[tauri::command]
+async fn create_project(app: AppHandle, s: State<'_, App>, parent: String, name: String) -> Res<Project> {
+    let proj = s.hub.create_project(&parent, &name)?;
+    let _ = app.emit("project-changed", &proj.id);
+    Ok(proj)
+}
+
+#[tauri::command]
 async fn update_project(app: AppHandle, s: State<'_, App>, project: Project) -> Res<()> {
     let id = project.id.clone();
     hub(&s).update_project(project)?;
@@ -1160,7 +1167,7 @@ fn main() {
             _ => {}
         })
         .invoke_handler(tauri::generate_handler![
-            list_projects, add_project, update_project, remove_project, init_repo, repo_info,
+            list_projects, add_project, create_project, update_project, remove_project, init_repo, repo_info,
             list_tasks, get_log, get_task_log, submit_task, answer, approve_outward,
             cancel, retry, remove_task, undo, push_base, pull_base, pause_all,
             list_agents, get_settings, set_settings,

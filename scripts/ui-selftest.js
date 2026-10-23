@@ -75,6 +75,8 @@ if (process.env.NS_PLAYWRIGHT) (async () => {
   await f9(b, 'http://127.0.0.1:' + srv.address().port, out);
   await b.close(); b = await launch();       // F10 in a fresh browser too
   await f10(b, 'http://127.0.0.1:' + srv.address().port, out);
+  await b.close(); b = await launch();       // F11 in a fresh browser too
+  await f11(b, 'http://127.0.0.1:' + srv.address().port, out);
   process.stdout.write(out.join('\n') + '\n');
   if (out.some((l) => l.startsWith('FAIL'))) process.exitCode = 1;
   await b.close(); srv.close();
@@ -212,7 +214,8 @@ async function f8(b, base, out) {
   await p.click('.navb.nb-pal'); await p.waitForTimeout(300);
   ok('F8 2: "⌘K Команды" opens the palette', await p.evaluate(() => !!document.querySelector('.pal-in') && NS.palette.isOpen), null);
   await p.keyboard.press('Escape'); await p.waitForTimeout(200);
-  // 3: the "+" menu
+  // 3: the "+" menu (F11: the terminal opens in the project that was chosen, not in a guessed one)
+  await p.evaluate(() => NS.projects.choose('p1'));
   await p.click('.tab-plus'); await p.waitForTimeout(250);
   const items = await p.evaluate(() => [...document.querySelectorAll('.plusmenu [role=menuitem]')].map((x) => x.textContent.trim()));
   ok('F8 3: "+" opens a menu of three items - chat, terminal with the CLI, shell', items.length === 3 && /Новый чат/.test(items[0]) && /Терминал с Claude Code/.test(items[1]) && /Терминал \(shell\)/.test(items[2]), items);
@@ -359,4 +362,41 @@ async function f10(b, base, out) {
   const rm = await q.evaluate(() => { const l = document.querySelector('.tasks a .lamp.calling'), p = document.querySelector('.pane-lamp.calling'); return { lamp: l && getComputedStyle(l).animationName, pane: p && getComputedStyle(p).animationName, t: getComputedStyle(document.documentElement).getPropertyValue('--t').trim() }; });
   ok('F10 2: with prefers-reduced-motion the amber lamp does not pulse', rm.lamp === 'none' && (!rm.pane || rm.pane === 'none'), rm);
   await q.close();
+}
+
+// F11 - the project of a new chat is chosen, never guessed: the button, the menu, the create form
+async function f11(b, base, out) {
+  const ok = (name, cond, detail) => out.push((cond ? 'PASS ' : 'FAIL ') + name + (cond ? '' : ' ' + JSON.stringify(detail)));
+  const p = await b.newPage({ viewport: { width: 1440, height: 900 } });
+  await p.goto(base + '/index.html?lang=ru&platform=mac&env=claude&chat=new');
+  await p.waitForTimeout(1500);
+  const btn = () => p.evaluate(() => { const e = document.querySelector('.newchat-empty .pj-btn'); return e && { text: e.textContent.trim(), empty: e.classList.contains('empty') }; });
+  const b0 = await btn();
+  ok('F11 2: a new chat on a clean start has no project: the button says «Выбрать проект»', b0 && b0.text === 'Выбрать проект' && b0.empty, b0);
+  await p.fill('.composer textarea', 'Сделай кнопку входа'); await p.keyboard.press('Enter'); await p.waitForTimeout(400);
+  const sent = await p.evaluate(() => ({ menu: !document.querySelector('.pj-pop').hidden, chats: NS.store.s.chats ? [...NS.store.s.chats.values()].flat().length : 0, left: document.querySelector('.composer textarea').value, pending: document.querySelectorAll('.me.sending').length }));
+  ok('F11 2: «Сделай…» without a project is not sent, the project menu opens and the text stays', sent.menu && sent.left === 'Сделай кнопку входа' && sent.pending === 0, sent);
+  const m = await p.evaluate(() => ({ rows: [...document.querySelectorAll('.pj-pop .mrow .mn')].map((x) => x.firstChild.textContent), w: document.querySelector('.pj-pop').getBoundingClientRect().width }));
+  ok('F11 3: the menu lists the recent projects, then «Открыть папку…» and «Создать проект…»', JSON.stringify(m.rows) === JSON.stringify(['billing-api', 'web-site', 'docs-tool', 'Открыть папку…', 'Создать проект…']), m);
+  await p.click('.pj-pop .mrow:has-text("web-site")'); await p.waitForTimeout(300);
+  const after = await p.evaluate(() => ({ text: document.querySelector('.newchat-empty .pj-btn').textContent.trim(), last: NS.store.s.lastProject, hdr: document.querySelector('.pane-sub') && document.querySelector('.pane-sub').textContent }));
+  ok('F11 3: picking a recent project changes the project of the chat and is remembered', after.text === 'Проект: web-site' && after.last === 'p2' && /web-site/.test(after.hdr || ''), after);
+  // open a folder: the system dialog (dev-mock answers with a folder) adds and selects it
+  await p.click('.newchat-empty .pj-btn'); await p.click('.pj-pop .mrow:has-text("Открыть папку")'); await p.waitForTimeout(400);
+  const opened = await p.evaluate(() => document.querySelector('.newchat-empty .pj-btn').textContent.trim());
+  ok('F11 3: «Открыть папку…» adds the folder and selects it', opened === 'Проект: new-project', opened);
+  // create: parent folder, name, the core makes the rest
+  await p.click('.newchat-empty .pj-btn'); await p.click('.pj-pop .mrow:has-text("Создать проект")'); await p.waitForTimeout(300);
+  const dis = await p.evaluate(() => document.querySelector('dialog[open] .btn.primary').disabled);
+  await p.click('dialog[open] .pj-row .btn'); await p.waitForTimeout(200);
+  await p.fill('dialog[open] .pj-name', 'a/b'); await p.waitForTimeout(100);
+  const slash = await p.evaluate(() => ({ dis: document.querySelector('dialog[open] .btn.primary').disabled, err: !document.querySelector('.pj-err').hidden }));
+  await p.fill('dialog[open] .pj-name', 'Мой сайт'); await p.keyboard.press('Enter'); await p.waitForTimeout(400);
+  const made = await p.evaluate(() => ({ open: !!document.querySelector('dialog[open]'), text: document.querySelector('.newchat-empty .pj-btn').textContent.trim() }));
+  ok('F11 3: «Создать проект…» needs a folder and a clean name, then creates and selects the project', dis && slash.dis && slash.err && !made.open && made.text === 'Проект: Мой сайт', { dis, slash, made });
+  // the field now sends
+  await p.fill('.composer textarea', 'Как это устроено?'); await p.keyboard.press('Enter'); await p.waitForTimeout(500);
+  const went = await p.evaluate(() => !document.querySelector('.newchat-empty') || document.querySelector('.composer textarea').value === '');
+  ok('F11 1: with a chosen project the message goes', went, went);
+  await p.close();
 }

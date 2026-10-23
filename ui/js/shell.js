@@ -151,7 +151,7 @@
   R.extend('bar', { id: 'branch', side: 'left', order: 30, render(el) {
     const draw = () => {
       const chat = s.route.chat && s.route.chat !== 'new' ? NS.store.findChat(s.route.chat) : null;
-      const pid = (chat && chat.project_id) || s.lastProject || (s.settings && s.settings.default_project) || (s.projects[0] && s.projects[0].id);
+      const pid = (chat && chat.project_id) || NS.projects.current();
       const p = NS.store.project(pid);
       if (!p) { clear(el).append(h('span', { class: 'bm-t mute', text: t('bar.no_project') })); return; }
       const repo = s.repos.get(p.id);

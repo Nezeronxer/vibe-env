@@ -59,11 +59,11 @@
 
   function mount(root0, ctx) {
     const alive = { v: true };
-    const st = { pid: ctx.params.project || S.lastProject || ((S.settings || {}).default_project) || (S.projects[0] || {}).id, rows: [], done: false, loading: false, q: '', sel: null, files: null, diff: null, hl: null, err: null, repo: null, seq: 0 };
+    const st = { pid: ctx.params.project || NS.projects.current(), rows: [], done: false, loading: false, q: '', sel: null, files: null, diff: null, hl: null, err: null, repo: null, seq: 0 };
     const project = () => NS.store.project(st.pid);
 
     const picker = h('select', { class: 'hs-proj', 'aria-label': t('hist.project'), onchange: (e) => { st.pid = e.target.value; S.lastProject = st.pid; reset(); } },
-      S.projects.map((p) => h('option', { value: p.id, text: p.name, selected: p.id === st.pid })));
+      (project() ? [] : [h('option', { value: '', text: t('pj.pick'), selected: true })]).concat(S.projects.map((p) => h('option', { value: p.id, text: p.name, selected: p.id === st.pid }))));
     const input = h('input', root.NSPalette.quiet({ type: 'text', class: 'mk-q', placeholder: t('hist.search_ph'), 'aria-label': t('hist.search') }));
     const status = h('div', { class: 'hs-repo' });
     const head = h('div', { class: 'mk-h' }, h('div', { class: 'mk-t' }, h('h1', { text: t('hist.title') })), picker, input, status);

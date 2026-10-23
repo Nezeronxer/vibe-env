@@ -55,6 +55,24 @@ impl Hub {
         Ok(proj)
     }
 
+    /// "Создать проект": a new empty folder `name` inside `parent`, `git init` and one empty commit (worktrees need a commit), then added.
+    /// Never overwrites: an existing folder is refused. Errors are short keys the window translates.
+    pub fn create_project(&self, parent: &str, name: &str) -> Res<Project> {
+        let name = name.trim();
+        if name.is_empty() || name == "." || name == ".." || name.contains(['/', '\\', '\0']) {
+            return Err("bad_project_name".into());
+        }
+        let parent = std::fs::canonicalize(parent).map_err(|_| format!("path_missing: {parent}"))?;
+        let dir = parent.join(name);
+        // a dangling link counts as existing too
+        if dir.symlink_metadata().is_ok() {
+            return Err(format!("folder_exists: {}", dir.display()));
+        }
+        std::fs::create_dir(&dir).map_err(|e| format!("{}: {e}", dir.display()))?;
+        git::init_repo(&dir).map_err(e2s)?;
+        self.add_project(&dir.to_string_lossy())
+    }
+
     /// "Убрать проект": refused while the project has tasks that are not finished.
     pub fn remove_project(&self, id: &str) -> Res<()> {
         let mut st = lk(self.engine.store());
@@ -220,6 +238,25 @@ mod tests {
         p.path = other.clone();
         assert!(r.hub.update_project(p).unwrap_err().starts_with("not_same_repo"));
         assert_eq!(r.hub.project(&r.project.id).unwrap().path, r.repo);
+    }
+
+    #[test]
+    fn a_new_project_is_a_folder_with_git_and_one_commit_and_bad_names_and_existing_folders_are_refused() {
+        let r = Rig::new(FakeAdapter::new(vec![]));
+        let parent = r.s.0.to_string_lossy().to_string();
+        let p = r.hub.create_project(&parent, " fresh ").unwrap();
+        assert_eq!(p.name, "fresh");
+        assert!(p.path.join(".git").is_dir());
+        assert_eq!(git::repo_info(&p.path).base_branch.as_deref(), Some("main"));
+        let log = std::process::Command::new("git").args(["log", "--oneline"]).current_dir(&p.path).output().unwrap();
+        assert_eq!(String::from_utf8_lossy(&log.stdout).lines().count(), 1);
+        assert!(r.hub.project(&p.id).is_ok());
+        for bad in ["", "  ", "..", ".", "a/b", "../x", "a\\b"] {
+            assert_eq!(r.hub.create_project(&parent, bad).unwrap_err(), "bad_project_name", "{bad:?}");
+        }
+        assert!(r.hub.create_project(&parent, "fresh").unwrap_err().starts_with("folder_exists"));
+        assert!(r.hub.create_project(&format!("{parent}/nope"), "x").unwrap_err().starts_with("path_missing"));
+        assert!(!r.s.0.join("x").exists());
     }
 
     #[test]
