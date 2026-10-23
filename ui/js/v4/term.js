@@ -105,19 +105,23 @@
   };
   const baseName = (p) => String(p || '').replace(/\/+$/, '').split('/').pop() || '~';
   const envOk = (e) => e && e.state !== 'missing';
+  // F8: "Терминал · Claude Code" - the name of the tab and of the header says what runs in it
+  const termName = (pane) => (pane.env && NS.store.env(pane.env) ? NS.store.env(pane.env).name : pane.title || '');
+  const termTitle = (pane) => pane.ptitle || (termName(pane) ? t('term.tab', { name: termName(pane) }) : t('term.kind'));
 
   // ---------- one session in one pane ----------
   function View(el, pane, opts) {
     opts = opts || {};
     const L = cfg();
     const env = pane.env ? NS.store.env(pane.env) : null;
-    const title = h('span', { class: 'pane-ttl', text: pane.ptitle || pane.title || t('term.kind') });
+    const title = h('span', { class: 'pane-ttl', text: termTitle(pane) });
     const sub = h('small', { class: 't-cwd', text: pane.cwd ? String(pane.cwd).replace(/^\/(Users|home)\/[^/]+/, '~') : '' });
-    const head = h('header', { class: 'pane-h t-head' }, pane.env ? envIcon(env && env.custom ? 'custom' : pane.env) : h('span', { class: 't-glyph', 'aria-hidden': 'true', text: '>_' }), title, sub);
+    const head = h('header', { class: 'pane-h t-head' }, h('span', { class: 't-glyph', 'aria-hidden': 'true', text: '>_' }), title, sub);   // F8: a terminal always shows >_, a chat shows the env
     const strips = h('div', { class: 't-strips' });
     const host = h('div', { class: 't-host' });
     const find = h('div', { class: 't-find', hidden: true });
-    const box = h('div', { class: 't-pane' }, head, strips, h('div', { class: 't-body' }, host, find));
+    const dead = h('div', { class: 't-dead', role: 'status', hidden: true });
+    const box = h('div', { class: 't-pane' }, head, strips, h('div', { class: 't-body' }, host, find, dead));
     el.append(box);
 
     const th = TS().themeOf(L);
@@ -246,7 +250,7 @@
           pane.termId = id;
           refreshSessions();
         }
-        exitCode = null; running = true;
+        exitCode = null; running = true; dead.hidden = true;
         await attach();
         setState('talk');
       } catch (e) {
@@ -263,12 +267,21 @@
       const saved = i >= 0 ? restored.splice(i, 1)[0] : null;
       id = null; running = false; exitCode = 0;
       if (saved && saved.text) term.write(String(saved.text).replace(/\r?\n/g, '\r\n'));
-      if (saved) { note('── ' + t('term.restored') + ' ──'); note(t('term.again')); setState('done'); }
+      if (saved) { note('── ' + t('term.restored') + ' ──'); note(t('term.again')); setState('done'); drawDead(0); }
       else start(true);
+    }
+    // F8: the process is gone - a plain card in the middle of the output with the two things to do
+    function drawDead(code) {
+      const name = pane.env && NS.store.env(pane.env) ? NS.store.env(pane.env).name : t('term.kind');
+      clear(dead).append(h('div', { class: 't-dead-card' }, h('b', { text: t('term.dead_t', { name }) }), h('p', { text: t('term.dead_d', { code: code == null || code < 0 ? t('term.signal') : code }) }),
+        h('div', { class: 't-dead-b' }, h('button', { type: 'button', class: 'btn primary sm t-dead-run', text: t('term.dead_run'), onclick: () => { restart(); term.focus(); } }),
+          WIN ? null : h('button', { type: 'button', class: 'btn sm t-dead-x', text: t('term.dead_close'), onclick: () => { if (NS.tabs && NS.tabs.closePane) NS.tabs.closePane(pane.id); } }))));
+      dead.hidden = false;
     }
     function exited(code) {
       if (!running && exitCode !== null) return;
       running = false; attached = false; exitCode = code == null ? -1 : code;
+      drawDead(code);
       note(t('term.exited', { code: code == null ? t('term.signal') : code, close: keyText('Cmd+W') }));
       setState(code === 0 ? 'done' : 'fail');
       const lim = cfg().notify_secs;
@@ -278,6 +291,7 @@
     }
     async function restart(argv) {
       const old = id;
+      dead.hidden = true;
       if (old) { await call('term_close', { id: old }).catch(() => {}); }
       if (argv) pane.argv = argv;
       id = null;
@@ -301,7 +315,7 @@
     term.onData(input);
     term.onBinary((d) => write(d));
     term.onResize(({ cols, rows }) => { if (id && running) call('term_resize', { id, cols, rows }).catch(() => {}); });
-    term.onTitleChange((s) => { pane.ptitle = s.slice(0, 60); title.textContent = pane.ptitle || pane.title || t('term.kind'); });
+    term.onTitleChange((s) => { pane.ptitle = s.slice(0, 60); title.textContent = termTitle(pane); });
     let fitT = 0;
     const ro = new ResizeObserver(() => { clearTimeout(fitT); fitT = setTimeout(() => { if (host.offsetWidth > 0 && host.offsetHeight > 0) try { fit.fit(); } catch (e) { /* hidden */ } }, 50); });
     ro.observe(host);
@@ -460,7 +474,7 @@
   }
   NS.registry.extend('paneKind', { kind: 'term', labelKey: 'term.kind', order: 2, create,
     sig: (pane) => pane.id,
-    title: (pane) => pane.ptitle || (pane.env && NS.store.env(pane.env) ? NS.store.env(pane.env).name : pane.title) || t('term.kind'),
+    title: (pane) => termTitle(pane),
     // ⌘W / × on a pane with a running process asks first and the layout waits for the answer (253, live run v4)
     async beforeClose(pane) {
       const v = live.get(pane.id);
@@ -522,9 +536,14 @@
     NS.tabs.putBack('term', s.place);
     adopt = null;
   }
-  function envTerm(envId, where) {
+  function envTerm(envId, where, reuse) {
     const env = NS.store.env(envId);
     if (!env) return;
+    // the bar button never leaves the click without an answer: a terminal of this env already open is brought to the front (F8)
+    if (reuse && NS.tabs && NS.tabs.focusPane) {
+      const have = P().allPanes(NS.tabs.state).find((x) => x.pane.kind === 'term' && x.pane.env === env.id && !x.pane.moved);
+      if (have) { if (NS.shell && NS.shell.current && NS.shell.current.def.id !== 'tabs' && NS.shell.back) NS.shell.back(); NS.tabs.focusPane(have.pane.id); return; }
+    }
     if (!envOk(env)) { toast(t('term.cli_missing', { env: env.name }), true); return; }
     const p = project();
     const model = modelArg(NS.store.envSettings(env.id).default_model, S().catalogs.get(env.id), env.id);
@@ -678,8 +697,8 @@
       const env = NS.store.env(S().route.env || S().lastEnv);
       clear(el);
       if (!env || !envOk(env)) return;
-      el.append(h('button', { type: 'button', class: 'bm t-barbtn', title: t('cmd.term_env', { env: env.name }) + ' · ' + keyText('Shift+Cmd+T') + ' ' + t('term.shell'), 'aria-label': t('cmd.term_env', { env: env.name }),
-        onclick: () => envTerm(env.id) }, h('span', { class: 't-glyph', 'aria-hidden': 'true', text: '>_' }), h('span', { text: env.name })));
+      el.append(h('button', { type: 'button', class: 'bm t-barbtn', title: t('term.bar_btn_d', { env: env.name }) + ' · ' + keyText('Shift+Cmd+T') + ' ' + t('term.shell'), 'aria-label': t('term.bar_btn_d', { env: env.name }),
+        onclick: () => envTerm(env.id, null, true) }, h('span', { class: 't-glyph', 'aria-hidden': 'true', text: '>_' }), h('span', { text: t('term.bar_btn') })));
     };
     draw();
     return { update: (evt) => { if (['route', 'focus', 'envs', 'settings'].includes(evt)) draw(); } };

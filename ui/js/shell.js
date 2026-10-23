@@ -299,6 +299,7 @@
     const mac = plat() === 'mac', mod = mac ? e.metaKey : e.ctrlKey;
     const code = e.code || '';
     if (mod && !e.altKey && !e.shiftKey && (code === 'KeyK' || /^[kл]$/i.test(e.key))) { e.preventDefault(); NS.palette.open(); return; }
+    if (mod && !e.altKey && !e.shiftKey && (code === 'Comma' || e.key === ',' || e.key === 'б')) { e.preventDefault(); nav('settings', { env: s.lastEnv, section: 'basic' }); return; }
     if (mod && !e.altKey && !e.shiftKey && (code === 'KeyB' || /^[bи]$/i.test(e.key)) && !document.body.classList.contains('is-empty')) { e.preventDefault(); toggleSide(); return; }
     if (e.key === 'Escape' && current && (current.def.layout || 'full') === 'full' && !document.querySelector('dialog[open]') && !(NS.palette && NS.palette.isOpen)
       && !(e.target && e.target.closest && e.target.closest('input, textarea, select, .pop, .menu'))) { e.preventDefault(); back(); return; }

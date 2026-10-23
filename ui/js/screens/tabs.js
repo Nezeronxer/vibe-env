@@ -226,7 +226,8 @@
     restore();
     const strip = h('div', { class: 'tabstrip', role: 'tablist', 'aria-label': t('tabs.label') });
     const corner = h('div', { class: 'tabs-corner' });
-    const top = h('div', { class: 'ws-top' }, strip, corner);
+    const nav = h('nav', { class: 'ws-nav', 'aria-label': t('nav.label') });
+    const top = h('div', { class: 'ws-top' }, strip, nav, corner);
     const area = h('div', { class: 'panes' });
     const wsEl = h('section', { class: 'ws' }, top, area);
     root.append(wsEl);
@@ -256,6 +257,41 @@
       wsEl.append(menu);
       setTimeout(() => document.addEventListener('click', onDocMenu), 0);
     }
+    // "+" (F8): a small menu in the look of the model menu - a chat, the CLI of the env in a terminal, a bare shell
+    function openPlus(anchor) {
+      if (menu && menu.classList.contains('plusmenu')) { closeMenu(); anchor.focus(); return; }
+      closeMenu();
+      const mac = platform() === 'mac', K = (a) => window.NSLogic.keyLabel(mac ? a : a.replace('Shift+Cmd', 'Ctrl+Shift').replace('Cmd', 'Ctrl'), mac ? 'mac' : 'linux').join('');
+      const env = NS.store.env(curEnv()), cli = env && env.state !== 'missing' && NS.term && NS.term.envTerm ? env : null;
+      const row = (icon, label, desc, key, fn, off) => h('div', { class: 'mrow plus-row', role: 'menuitem', tabIndex: off ? -1 : 0, title: desc, 'aria-disabled': off ? 'true' : null,
+        onclick: () => { if (off) return; closeMenu(); anchor.focus(); fn(); }, onkeydown: (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.currentTarget.click(); } } },
+        h('span', { class: 'plus-ic', 'aria-hidden': 'true' }, icon), h('span', { class: 'mn', text: label }), key ? h('kbd', { text: key }) : null);
+      const rows = [
+        row(env ? envIcon(env.custom ? 'custom' : env.id) : ic('i-chat'), t('plus.chat'), t('plus.chat_d'), K('Cmd+T'), () => newTab()),
+        cli ? row(h('span', { class: 't-glyph', text: '>_' }), t('plus.term_cli', { env: cli.name }), t('plus.term_cli_d', { env: cli.name }), '', () => NS.term.envTerm(cli.id)) : null,
+        row(h('span', { class: 't-glyph', text: '>_' }), t('plus.term_shell'), t('plus.term_shell_d'), K('Shift+Cmd+T'), () => (NS.term && NS.term.open ? NS.term.open() : null), !(NS.term && NS.term.open))];
+      menu = h('div', { class: 'menu plusmenu', role: 'menu', 'aria-label': t('plus.label'),
+        onkeydown: (e) => {
+          const items = [...menu.querySelectorAll('[role=menuitem]:not([aria-disabled])')], i = items.indexOf(document.activeElement);
+          if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); items[(i + (e.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length].focus(); }
+          else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); closeMenu(); anchor.focus(); }
+        } }, rows);
+      const r = anchor.getBoundingClientRect(), rr = wsEl.getBoundingClientRect();
+      setVars(menu, { '--x': Math.max(0, Math.min(r.left - rr.left, rr.width - 280)) + 'px', '--y': (r.bottom - rr.top + 4) + 'px' });
+      wsEl.append(menu);
+      setTimeout(() => document.addEventListener('click', onDocMenu), 0);
+      const first = menu.querySelector('[role=menuitem]'); if (first) first.focus();
+    }
+    // the entrances that used to hide behind ⌘K: the factory, the settings, the palette (F8)
+    function drawNav() {
+      const mac = platform() === 'mac';
+      const nb = (cls, icon, label, desc, fn) => h('button', { type: 'button', class: 'navb ' + cls, title: desc, 'aria-label': label, onclick: fn }, icon, h('span', { class: 'nav-l', text: label }));
+      const env = () => S().lastEnv;
+      NS.append(clear(nav),
+        [nb('nb-fact', ic('i-fact'), t('nav.factory'), t('nav.factory_d'), () => NS.shell.nav('factory', { env: env() })),
+          nb('nb-set', ic('i-gear'), t('nav.settings'), t('nav.settings_d') + ' ' + (mac ? '⌘,' : 'Ctrl+,'), () => NS.shell.nav('settings', { env: env(), section: 'basic' })),
+          nb('nb-pal', h('kbd', { text: mac ? '⌘K' : 'Ctrl+K' }), t('nav.palette'), t('nav.palette_d'), () => NS.palette.open())]);
+    }
     function tabEl(tb, i) {
       const on = tb.id === state.active;
       const p = P.findPane(tb.root, tb.focus) || P.leaves(tb.root)[0];
@@ -273,7 +309,7 @@
         ondragover: (e) => { if (dragId && dragId !== tb.id) { e.preventDefault(); el.classList.add('over'); } },
         ondragleave: () => el.classList.remove('over'),
         ondrop: (e) => { e.preventDefault(); el.classList.remove('over'); if (dragId && dragId !== tb.id) setState(P.wsMove(state, dragId, state.tabs.findIndex((x) => x.id === tb.id))); } },
-      h('span', { class: 'tab-ic' }, p.env ? envIcon(env && env.custom ? 'custom' : p.env) : ic('i-dash')),
+      h('span', { class: 'tab-ic' + (p.kind === 'term' ? ' is-term' : '') }, p.kind === 'term' ? h('span', { class: 't-glyph', 'aria-hidden': 'true', text: '>_' }) : p.env ? envIcon(env && env.custom ? 'custom' : p.env) : ic('i-dash')),
       h('span', { class: 'tab-t' }, h('span', { class: 'tab-l', text: short(title) })),
       n > 1 ? h('small', { class: 'tab-n', text: String(n), title: n + ' · ' + t('tabs.label') }) : null,
       h('i', { class: 'tdot ' + kind, 'aria-hidden': 'true' }), h('span', { class: 'sr-only', text: t(word) }),
@@ -291,7 +327,7 @@
         wsEl.append(menu); setTimeout(() => document.addEventListener('click', onDocMenu), 0);
       } }) : null;
       NS.append(clear(strip), [h('div', { class: 'tabs-scroll' }, list), more,
-        h('button', { type: 'button', class: 'tab-plus', 'aria-label': t('tabs.new'), title: t('tabs.new') + ' (' + (platform() === 'mac' ? '⌘T' : 'Ctrl+T') + ')', onclick: () => newTab() }, ic('i-plus'))]);
+        h('button', { type: 'button', class: 'tab-plus', 'aria-label': t('tabs.new'), 'aria-haspopup': 'menu', title: t('tabs.new'), onclick: (e) => { e.stopPropagation(); openPlus(e.currentTarget); } }, ic('i-plus'))]);
       const a = strip.querySelector('.tab.on');
       if (a && a.scrollIntoView) a.scrollIntoView({ block: 'nearest', inline: 'nearest' });
     }
@@ -402,7 +438,7 @@
     };
     ws = { draw, focus };
     const offExt = NS.registry.onExtend((point) => { if (point === 'tabsCorner') drawCorner(); if (point === 'paneHeader' || point === 'paneKind') { for (const id of [...mounted.keys()]) destroyPane(id); drawPanes(); } });
-    drawCorner();
+    drawCorner(); drawNav();
     draw();
     const forward = (evt, payload) => {
       const f = focused();
@@ -431,6 +467,7 @@
   }
 
   NS.registry.register({ id: 'tabs', layout: 'chats', mount });
-  NS.tabs = { show, setChat, dropChat, newTab, closeTab, closePane, placeOf, putBack, split, zoom, focusDir, equalize,
+  function focusPane(paneId) { setState(P.wsFocusPane(state, paneId)); focusActive(); }
+  NS.tabs = { show, setChat, dropChat, focusPane, newTab, closeTab, closePane, placeOf, putBack, split, zoom, focusDir, equalize,
     get state() { return state; }, get active() { return focused(); }, get activeTab() { return activeTab(); } };
 })();

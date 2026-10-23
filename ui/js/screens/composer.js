@@ -11,8 +11,8 @@
     ['reviewer', 'q.review', 'q.review_d', true], ['e2e', 'q.e2e', 'q.e2e_d'], ['best_of_n', 'q.bestn', 'q.bestn_d']];
   const MODES = [['race', 'swarm.race', 'swarm.race_d'], ['crew', 'swarm.crew', 'swarm.crew_d'], ['council', 'swarm.council', 'swarm.council_d']];
 
-  function makeSwitch(text, on, onToggle) {
-    const b = h('button', { type: 'button', role: 'switch', class: 'tg', 'aria-checked': String(!!on) }, h('span', { class: 'sw' }, h('i')), text);
+  function makeSwitch(text, on, onToggle, title) {
+    const b = h('button', { type: 'button', role: 'switch', class: 'tg', title: title || text, 'aria-checked': String(!!on) }, h('span', { class: 'sw' }, h('i')), text);
     b.onclick = () => { const v = b.getAttribute('aria-checked') !== 'true'; b.setAttribute('aria-checked', String(v)); onToggle(v); };
     b.set = (v) => b.setAttribute('aria-checked', String(!!v));
     return b;
@@ -37,7 +37,7 @@
     const swhint = h('small', { class: 'swhint', hidden: true });
     const envText = h('span'), pickBtn = h('button', { type: 'button', class: 'envpick', 'aria-expanded': 'false', 'aria-haspopup': 'listbox', 'aria-controls': 'modelPop' + sfx }, h('span', { class: 'icw' }, envIcon(envId)), envText, ic('i-chev', 'chev'));
     const sendBtn = h('button', { type: 'submit', class: 'send4', id: 'sendBtn' + sfx, 'aria-label': t('composer.send'), title: t('composer.send') + ' ↵' }, h('span', { 'aria-hidden': 'true', text: '↵' }));
-    const tuneBtn = h('button', { type: 'button', class: 'tune4', id: 'tune' + sfx, 'aria-expanded': 'false', 'aria-controls': 'tunePanel' + sfx, 'aria-label': t('composer.tune'), title: t('composer.tune'), text: '⋯' });
+    const tuneBtn = h('button', { type: 'button', class: 'tune4', id: 'tune' + sfx, 'aria-expanded': 'false', 'aria-controls': 'tunePanel' + sfx, 'aria-label': t('composer.tune'), title: t('composer.tune_d') }, ic('i-gear'), h('span', { class: 'tune-w', text: t('composer.tune') }));
     const modelPop = h('div', { class: 'pop mmenu', id: 'modelPop' + sfx, hidden: true });
     const tunePanel = h('div', { class: 'pop', id: 'tunePanel' + sfx, hidden: true, role: 'dialog' });
     let quality, swarm, qSw, sSw;
@@ -174,12 +174,13 @@
           h('h3', { class: 'when', text: t('tune.when') }), h('div', { class: 'seg', role: 'radiogroup', 'aria-label': t('tune.when') }, startBtns))));
     }
 
-    qSw = makeSwitch(t('composer.quality'), true, (v) => { quality.on = v; save(); if (!tunePanel.hidden) drawTune(); });
-    sSw = makeSwitch(t('composer.swarm'), false, (v) => { swarm = v ? { mode: 'race', n: 3 } : null; save(); drawHint(); if (!tunePanel.hidden) drawTune(); });
+    qSw = makeSwitch(t('composer.quality'), true, (v) => { quality.on = v; save(); if (!tunePanel.hidden) drawTune(); }, t('composer.quality_d'));
+    sSw = makeSwitch(t('composer.swarm'), false, (v) => { swarm = v ? { mode: 'race', n: 3 } : null; save(); drawHint(); if (!tunePanel.hidden) drawTune(); }, t('composer.swarm_d'));
     form.append(modebar,
       h('div', { class: 'cmp-line' }, h('span', { class: 'pr', 'aria-hidden': 'true', text: '❯' }), ta,
         h('div', { class: 'comp-row' }, pickBtn, qSw, sSw, tuneBtn, sendBtn)),
       hint, swhint, modelPop, tunePanel);
+    if (chat === 'new' || !chat) form.append(h('p', { class: 'cmp-note', text: t('composer.note_new') }));
     refresh();
     if (ta.value) setTimeout(grow, 0);
     // an example from the empty chat goes into the field, it is not sent (story 239)

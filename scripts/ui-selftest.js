@@ -48,7 +48,8 @@ if (process.env.NS_PLAYWRIGHT) (async () => {
   const http = require('http');
   const srv = http.createServer((q, r) => { const f = path.join(ui, decodeURIComponent(q.url.split('?')[0])); fs.readFile(f, (e, b) => { if (e) { r.statusCode = 404; return r.end(); } r.setHeader('content-type', f.endsWith('.js') ? 'text/javascript' : f.endsWith('.css') ? 'text/css' : f.endsWith('.svg') ? 'image/svg+xml' : 'text/html'); r.end(b); }); }).listen(0);
   const { chromium } = require(process.env.NS_PLAYWRIGHT);
-  const b = await chromium.launch(process.env.NS_CHROME ? { executablePath: process.env.NS_CHROME } : {});
+  const launch = () => chromium.launch(process.env.NS_CHROME ? { executablePath: process.env.NS_CHROME } : {});
+  let b = await launch();
   const p = await b.newPage({ viewport: { width: 1440, height: 900 } });
   await p.goto('http://127.0.0.1:' + srv.address().port + '/index.html?lang=ru&platform=mac');
   await p.waitForTimeout(1200);
@@ -59,14 +60,16 @@ if (process.env.NS_PLAYWRIGHT) (async () => {
     return { buttons: buttons.length, names: buttons.map((x) => x.getAttribute('aria-label') || x.textContent.trim()).slice(0, 20), pane: rad('.pane'), card: rad('.tcard'), field: rad('.composer'), bar: rad('.bar') };
   });
   const out = [];
-  out.push((r.buttons <= 14 ? 'PASS ' : 'FAIL ') + 'main view: at most 14 visible buttons outside the feed (' + r.buttons + ')' + (r.buttons <= 14 ? '' : ' ' + JSON.stringify(r.names)));
+  out.push((r.buttons <= 17 ? 'PASS ' : 'FAIL ') + 'main view: at most 17 visible buttons outside the feed (14 + the three entrances of F8) (' + r.buttons + ')' + (r.buttons <= 17 ? '' : ' ' + JSON.stringify(r.names)));
   out.push((r.pane > 0 && r.card > 0 && r.field > 0 && r.bar > 0 ? 'PASS ' : 'FAIL ') + 'computed border-radius > 0: pane ' + r.pane + ', card ' + r.card + ', field ' + r.field + ', bar ' + r.bar);
   await f5(b, 'http://127.0.0.1:' + srv.address().port, out);
   await f7(b, 'http://127.0.0.1:' + srv.address().port, out);
+  await b.close(); b = await launch();       // F8 runs in a fresh browser: after F5 and F7 in one browser it died on the next page (headless Chrome on macOS)
+  await f8(b, 'http://127.0.0.1:' + srv.address().port, out);
   process.stdout.write(out.join('\n') + '\n');
   if (out.some((l) => l.startsWith('FAIL'))) process.exitCode = 1;
   await b.close(); srv.close();
-})().catch((e) => { console.error('browser check: ' + e.message); process.exitCode = 1; });
+})().catch((e) => { console.error('browser check: ' + e.stack); process.exit(1); });
 else process.stdout.write('SKIP drawn-window checks (set NS_PLAYWRIGHT to run them)\n');
 
 // F5 - bugs of the live run v4 on the drawn window (dev-mock): autocorrect in the search fields (249), ⌘W on a busy terminal
@@ -164,4 +167,70 @@ async function f7(b, base, out) {
   const c = await o();
   ok('F7 4: size and cursor set in the config win over the defaults', c.fontSize === 18 && c.cursorStyle === 'underline', c);
   await p.close();
+}
+
+// F8 - clarity: visible switches, the entrances to the factory / settings / palette, the "+" menu, a terminal that ended
+async function f8(b, base, out) {
+  const ok = (name, cond, detail) => out.push((cond ? 'PASS ' : 'FAIL ') + name + (cond ? '' : ' ' + JSON.stringify(detail)));
+  const p = await b.newPage({ viewport: { width: 1440, height: 900 } });
+  await p.goto(base + '/index.html?lang=ru&platform=mac');
+  await p.waitForTimeout(1500);
+  // 1: the switches
+  const sw = await p.evaluate(() => [...document.querySelectorAll('.composer .tg')].map((g) => { const r = g.querySelector('.sw').getBoundingClientRect(); return { w: r.width, h: r.height, title: g.title, on: g.getAttribute('aria-checked'), text: g.textContent.trim() }; }));
+  ok('F8 1: the switches "Качество" and "Рой" are drawn (non-zero .sw) and each has a title', sw.length === 2 && sw.every((x) => x.w > 0 && x.h > 0 && x.title.length > 10) && sw[0].text === 'Качество' && sw[1].text === 'Рой', sw);
+  const st = () => p.evaluate(() => { const e = NS.store.envSettings(NS.store.s.lastEnv); return { q: e.last_quality && e.last_quality.on, s: !!e.last_swarm }; });
+  await p.click('.composer .tg >> nth=0'); await p.waitForTimeout(250);
+  await p.click('.composer .tg >> nth=1'); await p.waitForTimeout(250);
+  const after = await p.evaluate(() => [...document.querySelectorAll('.composer .tg')].map((g) => g.getAttribute('aria-checked')));
+  const saved = await st();
+  ok('F8 1: a click flips aria-checked and saves last_quality.on / last_swarm', after[0] !== sw[0].on && after[1] !== sw[1].on && saved.q === (after[0] === 'true') && saved.s === (after[1] === 'true'), { sw, after, saved });
+  const tune = await p.evaluate(() => { const t = document.querySelector('.composer .tune4'); const r = t.getBoundingClientRect(); return { w: r.width, text: t.textContent.trim(), icon: !!t.querySelector('svg'), title: t.title }; });
+  ok('F8 1: "⋯" is a gear with the word "Настроить" and a title', tune.text === 'Настроить' && tune.icon && tune.w > 50 && tune.title.length > 10, tune);
+  // 2: the entrances
+  const here = () => p.evaluate(() => NS.shell.current && NS.shell.current.def.id);
+  const vis = await p.evaluate(() => ['.navb.nb-fact', '.navb.nb-set', '.navb.nb-pal'].map((q) => { const e = document.querySelector(q); const r = e && e.getBoundingClientRect(); return e ? { w: r.width, text: e.textContent.trim() } : null; }));
+  ok('F8 2: "Фабрика", "Настройки" and "⌘K Команды" are visible in the tab strip', vis.every((x) => x && x.w > 20) && /Фабрика/.test(vis[0].text) && /Настройки/.test(vis[1].text) && /Команды/.test(vis[2].text), vis);
+  await p.click('.navb.nb-fact'); await p.waitForTimeout(500);
+  const fact = await here();
+  await p.evaluate(() => NS.shell.back()); await p.waitForTimeout(400);
+  await p.click('.navb.nb-set'); await p.waitForTimeout(500);
+  const set = await here();
+  await p.evaluate(() => NS.shell.back()); await p.waitForTimeout(400);
+  await p.evaluate(() => document.dispatchEvent(new KeyboardEvent('keydown', { code: 'Comma', key: ',', metaKey: true, bubbles: true, cancelable: true }))); await p.waitForTimeout(500);   // a synthetic key: a real ⌘, would reach the browser itself
+  const comma = await here();
+  await p.evaluate(() => NS.shell.back()); await p.waitForTimeout(400);
+  ok('F8 2: the buttons open the factory and the settings, ⌘, opens the settings', fact === 'factory' && set === 'settings' && comma === 'settings', { fact, set, comma });
+  await p.click('.navb.nb-pal'); await p.waitForTimeout(300);
+  ok('F8 2: "⌘K Команды" opens the palette', await p.evaluate(() => !!document.querySelector('.pal-in') && NS.palette.isOpen), null);
+  await p.keyboard.press('Escape'); await p.waitForTimeout(200);
+  // 3: the "+" menu
+  await p.click('.tab-plus'); await p.waitForTimeout(250);
+  const items = await p.evaluate(() => [...document.querySelectorAll('.plusmenu [role=menuitem]')].map((x) => x.textContent.trim()));
+  ok('F8 3: "+" opens a menu of three items - chat, terminal with the CLI, shell', items.length === 3 && /Новый чат/.test(items[0]) && /Терминал с Claude Code/.test(items[1]) && /Терминал \(shell\)/.test(items[2]), items);
+  await p.click('.plusmenu [role=menuitem] >> nth=2'); await p.waitForTimeout(900);
+  const term = await p.evaluate(() => ({ kind: NS.tabs.active.kind, glyph: (document.querySelector('.tab.on .tab-ic .t-glyph') || {}).textContent, label: document.querySelector('.tab.on .tab-l').textContent, menu: !!document.querySelector('.plusmenu') }));
+  ok('F8 3: "Терминал (shell)" opens a terminal tab with the >_ icon, named "Терминал · …"; the menu closes', term.kind === 'term' && term.glyph === '>_' && /^Терминал · /.test(term.label) && !term.menu, term);
+  await p.click('.tab-plus'); await p.waitForTimeout(250);
+  await p.click('.plusmenu [role=menuitem] >> nth=0'); await p.waitForTimeout(900);
+  const chat = await p.evaluate(() => ({ kind: NS.tabs.active.kind, glyph: !!document.querySelector('.tab.on .tab-ic .t-glyph'), img: !!document.querySelector('.tab.on .tab-ic svg, .tab.on .tab-ic img') }));
+  ok('F8 3: "Новый чат" opens a chat tab with the icon of the environment, not >_', chat.kind === 'agent' && !chat.glyph && chat.img, chat);
+  ok('F8 4: the empty chat carries the hint about the terminal', await p.evaluate(() => /Нужен сам Claude Code в терминале/.test((document.querySelector('.cmp-note') || {}).textContent || '')), null);
+  const barBtn = await p.evaluate(() => { const x = document.querySelector('.t-barbtn'); return x && { text: x.textContent.trim(), title: x.title }; });
+  ok('F8 3: the status bar button reads ">_ Терминал" and says what it opens', barBtn && barBtn.text === '>_Терминал' || (barBtn && /Терминал/.test(barBtn.text) && /Claude Code в терминале/.test(barBtn.title)), barBtn);
+  await p.close();
+  // 4: a terminal whose process ended
+  const q = await b.newPage({ viewport: { width: 1440, height: 900 } });
+  await q.goto(base + '/index.html?lang=ru&platform=mac&term=1');
+  await q.waitForTimeout(1800);
+  await q.evaluate(() => NS.term.views.get(NS.tabs.active.id).write('exit 2\r')); await q.waitForTimeout(700);
+  const dead = await q.evaluate(() => { const d = document.querySelector('.t-dead'); return { shown: !!d && !d.hidden && d.getBoundingClientRect().width > 0, btns: [...document.querySelectorAll('.t-dead button')].map((x) => x.textContent) }; });
+  ok('F8 5: after the process exits the card shows "Запустить снова" and "Закрыть вкладку"', dead.shown && dead.btns.join('|') === 'Запустить снова|Закрыть вкладку', dead);
+  await q.click('.t-dead-run'); await q.waitForTimeout(900);
+  const again = await q.evaluate(() => ({ hidden: document.querySelector('.t-dead').hidden, running: NS.term.views.get(NS.tabs.active.id).running() }));
+  ok('F8 5: "Запустить снова" restarts the process', again.hidden && again.running, again);
+  await q.evaluate(() => NS.term.views.get(NS.tabs.active.id).write('exit 0\r')); await q.waitForTimeout(700);
+  const n0 = await q.evaluate(() => NS.tabs.state.tabs.length);
+  await q.click('.t-dead-x'); await q.waitForTimeout(700);
+  ok('F8 5: "Закрыть вкладку" closes the tab', await q.evaluate((n) => NS.tabs.state.tabs.length < n || !document.querySelector('.t-dead:not([hidden])'), n0), n0);
+  await q.close();
 }

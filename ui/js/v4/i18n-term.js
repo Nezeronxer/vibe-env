@@ -1,6 +1,8 @@
 // Strings of the v4 terminal (task 23): the pane, its menu and strips, the palette commands, the section "Терминал" of the settings.
 (function (root) {
   const ru = {
+    'term.dead_t': '{name} закрыт', 'term.dead_d': 'Процесс завершился, код {code}. Вывод выше остался.', 'term.dead_run': 'Запустить снова', 'term.dead_close': 'Закрыть вкладку',
+    'term.tab': 'Терминал · {name}', 'term.cli_hint': 'Открыть {env} в терминале', 'term.bar_btn': 'Терминал', 'term.bar_btn_d': 'Открыть {env} в терминале',
     'term.kind': 'Терминал', 'term.shell': '(shell)',
     'term.find': 'Найти в выводе', 'term.find_prev': 'Предыдущее', 'term.find_next': 'Следующее', 'term.find_close': 'Закрыть поиск',
     'term.bcast_on': 'Ввод во все панели', 'term.cli_updated': '{env} обновлена до {v} - перезапустить вкладку', 'term.restart_tab': 'Перезапустить', 'term.later': 'Позже',
@@ -42,6 +44,8 @@
     'termset.prefix': 'Префикс как в tmux', 'termset.prefix_d': 'например ctrl+b; потом % " стрелки z c d 0-9; пусто - выключен', 'termset.prefix_bad': 'Нужно ctrl+буква или alt+буква',
   };
   const en = {
+    'term.dead_t': '{name} closed', 'term.dead_d': 'The process ended, code {code}. The output above stays.', 'term.dead_run': 'Start again', 'term.dead_close': 'Close tab',
+    'term.tab': 'Terminal · {name}', 'term.cli_hint': 'Open {env} in a terminal', 'term.bar_btn': 'Terminal', 'term.bar_btn_d': 'Open {env} in a terminal',
     'term.kind': 'Terminal', 'term.shell': '(shell)',
     'term.find': 'Find in output', 'term.find_prev': 'Previous', 'term.find_next': 'Next', 'term.find_close': 'Close search',
     'term.bcast_on': 'Input to every pane', 'term.cli_updated': '{env} updated to {v} - restart the tab', 'term.restart_tab': 'Restart', 'term.later': 'Later',

@@ -48,6 +48,7 @@
 .pg-w::after { content: ""; position: absolute; right: -4px; top: -4px; width: 6px; height: 5px; border: 1.4px solid currentColor; border-radius: 1.5px; background: var(--pane-bg); }
 
 /* the bar: "<Среда> в терминале" */
+.t-barbtn { margin-left: 6px; }
 .t-barbtn .t-glyph { color: var(--ink3); }
 .t-barbtn:hover .t-glyph { color: var(--accent); }
 
@@ -75,3 +76,12 @@ body.t-window { background: var(--canvas); }
 @media (max-width: 1099px) { .tcards { grid-template-columns: repeat(2, minmax(0, 1fr)); } .tcolors { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @container (max-width: 420px) { .t-cwd { display: none; } .t-find-in { width: 120px; } }
 @media (prefers-reduced-motion: reduce) { .t-find { box-shadow: none; } }
+
+/* F8: the process ended - a plain card in the middle of the output; Enter and ⌘W still work */
+.t-dead { position: absolute; inset: 0; z-index: 4; display: grid; place-items: center; padding: 16px; pointer-events: none; }
+.t-dead[hidden] { display: none; }
+.t-dead-card { pointer-events: auto; display: grid; gap: 6px; justify-items: center; text-align: center; max-width: 340px; padding: 18px 22px 16px; background: var(--raised); border: 1px solid var(--line2); border-radius: var(--radius-pane); box-shadow: var(--shadow); }
+.t-dead-card b { font-size: 14px; font-weight: 650; color: var(--ink); }
+.t-dead-card p { font-size: 12.5px; color: var(--ink2); }
+.t-dead-b { display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap; justify-content: center; }
+.t-dead-b .btn { height: 28px; font-size: 12.5px; }

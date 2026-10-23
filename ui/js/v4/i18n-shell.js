@@ -39,6 +39,14 @@
     'import.done': 'Конфиг «{name}» установлен. Откатить можно в «Конфигах».',
   };
   const ru = Object.assign({}, TERMS, {
+    // F8: clarity - visible switches, entrances to settings and the factory, the "+" menu
+    'composer.tune': 'Настроить', 'composer.tune_d': 'Настроить Качество и Рой: шаги проверки, режим роя, когда начать',
+    'composer.quality_d': 'Качество: план, тесты до кода, ревью перед merge', 'composer.swarm_d': 'Рой: несколько агентов решают одну задачу, берётся лучшее решение',
+    'composer.note_new': 'Чат - вопросы и задачи агенту. Нужен сам Claude Code в терминале - «+» → Терминал.',
+    'nav.label': 'Разделы', 'nav.factory': 'Фабрика', 'nav.factory_d': 'Фабрика: что агенты делают сейчас и что в очереди', 'nav.settings': 'Настройки', 'nav.settings_d': 'Настройки: среды, модель, качество, терминал',
+    'nav.palette': 'Команды', 'nav.palette_d': 'Палитра команд - всё приложение с клавиатуры',
+    'plus.chat': 'Новый чат', 'plus.term_cli': 'Терминал с {env}', 'plus.term_shell': 'Терминал (shell)', 'plus.label': 'Что открыть',
+    'plus.chat_d': 'Чат с агентом: вопросы и задачи', 'plus.term_cli_d': 'Сам {env} в терминале, как в обычной командной строке', 'plus.term_shell_d': 'Пустая командная строка в папке проекта',
     // v4 keys: ⌘D splits right, ⌘⇧D splits down, ⌘W closes the pane (the v3 meaning of these settings rows changed)
     'keys3.tab_split': 'Сплит вправо', 'keys3.tab_split_d': 'Фокусная панель делится, до 6 панелей во вкладке.', 'keys3.tab_unsplit': 'Сплит вниз',
     'keys3.tab_close': 'Закрыть панель', 'keys3.tab_close_d': 'Последняя панель закрывает вкладку. Работа агента не останавливается.',
@@ -76,6 +84,14 @@
     'adv.errors': 'Ошибки конфига', 'adv.err_line': 'строка {line}, `{key}` - {msg}', 'adv.config_missing': 'Конфиг-файл пока не подключён: команда config_open ещё не построена',
   });
   const en = {
+    // F8: clarity
+    'composer.tune': 'Tune', 'composer.tune_d': 'Tune Quality and Swarm: check steps, swarm mode, when to start',
+    'composer.quality_d': 'Quality: a plan, tests before code, review before merge', 'composer.swarm_d': 'Swarm: several agents solve one task, the best result is taken',
+    'composer.note_new': 'Chat - questions and tasks for the agent. Want Claude Code itself in a terminal - "+" → Terminal.',
+    'nav.label': 'Sections', 'nav.factory': 'Factory', 'nav.factory_d': 'Factory: what the agents do now and what is queued', 'nav.settings': 'Settings', 'nav.settings_d': 'Settings: environments, model, quality, terminal',
+    'nav.palette': 'Commands', 'nav.palette_d': 'Command palette - the whole app from the keyboard',
+    'plus.chat': 'New chat', 'plus.term_cli': 'Terminal with {env}', 'plus.term_shell': 'Terminal (shell)', 'plus.label': 'What to open',
+    'plus.chat_d': 'A chat with the agent: questions and tasks', 'plus.term_cli_d': '{env} itself in a terminal, like on a plain command line', 'plus.term_shell_d': 'A bare command line in the project folder',
     'keys3.tab_split': 'Split right', 'keys3.tab_split_d': 'The focused pane splits, up to 6 panes in a tab.', 'keys3.tab_unsplit': 'Split down',
     'keys3.tab_close': 'Close pane', 'keys3.tab_close_d': 'The last pane closes the tab. The agent keeps working.',
     'pal.label': 'Command palette', 'pal.ph': 'Command…', 'pal.none': 'Nothing found', 'pal.recent': 'recent',

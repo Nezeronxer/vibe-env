@@ -91,3 +91,24 @@
   .comp-row .envpick span { max-width: 9ch; overflow: hidden; text-overflow: ellipsis; }
   .pane-sub { display: none; }
 }
+
+/* F8: the entrances that used to hide behind ⌘K - quiet buttons with an icon and a word, icons only in a narrow window */
+.ws-nav { flex: none; display: flex; align-items: center; gap: 2px; }
+.navb { display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 8px; border: 0; background: none; color: var(--ink3); border-radius: var(--radius-sm); font: 12px var(--mono); white-space: nowrap;
+  transition: color var(--t) ease-out, background var(--t) ease-out; }
+.navb:hover { color: var(--ink); background: var(--raised); }
+.navb .ic { width: 13px; height: 13px; }
+.navb kbd { font: 11px var(--mono); color: var(--ink2); background: var(--raised); border-radius: 4px; padding: 1px 5px; opacity: 1; margin: 0; }
+.navb:hover kbd { background: var(--raised2); color: var(--ink); }
+@media (max-width: 820px) { .navb { padding: 0 7px; } .navb .nav-l { display: none; } }
+.tab-ic.is-term { display: inline-flex; align-items: center; }
+.tab-ic .t-glyph { font: 700 11px var(--mono); color: var(--ink3); letter-spacing: -.04em; }
+.tab.on .tab-ic .t-glyph { color: var(--accent); }
+/* "+": the same look as the model menu - one line per item, the keys on the right */
+.plusmenu { left: var(--x); top: var(--y); min-width: 260px; padding: 4px; }
+.plusmenu .mrow { gap: 10px; }
+.plusmenu .plus-ic { flex: none; width: 16px; display: grid; place-items: center; }
+.plusmenu .plus-ic .ic, .plusmenu .plus-ic img { width: 14px; height: 14px; }
+.plusmenu .plus-ic .t-glyph { font: 700 11px var(--mono); color: var(--ink3); letter-spacing: -.04em; }
+.plusmenu kbd { flex: none; margin-left: auto; font: 11.5px var(--mono); color: var(--ink3); opacity: 1; }
+.plusmenu .mrow[aria-disabled="true"] { opacity: .45; cursor: not-allowed; }
