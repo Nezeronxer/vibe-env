@@ -13,6 +13,7 @@ mod open;
 mod ops;
 mod pathfix;
 mod presence;
+mod preview;
 mod proj;
 mod ptycmds;
 mod settings_check;
@@ -1168,6 +1169,7 @@ fn main() {
         })
         .manage(ptycmds::Pty::default())
         .manage(windows::Windows::default())
+        .manage(preview::Picker::default())
         .on_window_event(|w, ev| match ev {
             // an extra window closes for real; its sessions go on, detached (story 301)
             tauri::WindowEvent::Destroyed if w.label() != "main" => {
@@ -1234,7 +1236,8 @@ fn main() {
             gitcmds::gh_publish, gitcmds::git_log_page, gitcmds::git_revert_commit, gitcmds::startup_tax, gitcmds::compact, gitcmds::commit_stat, gitcmds::commit_file_diff,
             config::config_open, config::config_errors,
             auto::auto_get, auto::auto_schedule_save, auto::auto_schedule_remove, auto::auto_schedule_toggle, auto::auto_suggest_scan,
-            auto::auto_suggest_do, auto::auto_suggest_dismiss, auto::auto_suggest_nightly, auto::auto_ci_set, auto::auto_ci_poll
+            auto::auto_suggest_do, auto::auto_suggest_dismiss, auto::auto_suggest_nightly, auto::auto_ci_set, auto::auto_ci_poll,
+            preview::preview_open, preview::preview_reload, preview::preview_width, preview::preview_close, preview::preview_pick, preview::proof_shot
         ])
         .build(tauri::generate_context!())
         .expect("error while building Nightshift");

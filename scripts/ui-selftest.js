@@ -83,6 +83,8 @@ if (process.env.NS_PLAYWRIGHT) (async () => {
   await f12(b, 'http://127.0.0.1:' + srv.address().port, out);
   await b.close(); b = await launch();       // F14 in a fresh browser too
   await f14(b, 'http://127.0.0.1:' + srv.address().port, out);
+  await b.close(); b = await launch();       // F15 in a fresh browser too
+  await f15(b, 'http://127.0.0.1:' + srv.address().port, out);
   process.stdout.write(out.join('\n') + '\n');
   if (out.some((l) => l.startsWith('FAIL'))) process.exitCode = 1;
   await b.close(); srv.close();
@@ -633,5 +635,45 @@ async function f14(b, base, out) {
     return o;
   });
   ok('F14: a clean start - empty lists, no count on the button, the watchman off', /Расписаний ещё нет/.test(none.sched) && /Пока ничего/.test(none.sug) && /выключен/.test(none.ci) && none.badge === true && none.on === 'false', none);
+  await p.close();
+}
+
+// F15 - the proof screenshots in the done card, the preview pane, "Указать элемент" into the task chat field
+async function f15(b, base, out) {
+  const ok = (name, cond, detail) => out.push((cond ? 'PASS ' : 'FAIL ') + name + (cond ? '' : ' ' + JSON.stringify(detail)));
+  const p = await b.newPage({ viewport: { width: 1440, height: 900 } });
+  await p.goto(base + '/index.html?lang=ru&platform=mac&env=gemini&chat=es');
+  await p.waitForTimeout(1600);
+  const strip = await p.evaluate(() => { const s = document.querySelector('.tcard .pv4-strip'); return s && { cap: s.querySelector('.pv4-cap').textContent, thumbs: [...s.querySelectorAll('.pv4-thumb')].map((x) => ({ label: x.getAttribute('aria-label'), img: (x.querySelector('img').getAttribute('src') || '').slice(0, 10) })) }; });
+  ok('F15 2: the done card carries the strip of proof screenshots (page, after the click, phone), each a loaded picture', strip && strip.thumbs.length === 3 && strip.thumbs.every((x) => x.img === 'data:image') && /Скриншот 2 из 3: После клика/.test(strip.thumbs[1].label), strip);
+  await p.click('.tcard .tc-more'); await p.waitForTimeout(500);
+  const chk = await p.evaluate(() => [...document.querySelectorAll('.clist li')].map((li) => li.textContent).find((x) => /Как пользователь/.test(x)) || null);
+  ok('F15 2: «Проверки» lists the step «Как пользователь» with the count of shots', /Снято скриншотов: 3/.test(chk || ''), chk);
+  await p.click('.pv4-thumb >> nth=1'); await p.waitForTimeout(300);
+  const big = await p.evaluate(() => { const d = document.querySelector('dialog[open]'); return d && { cls: d.className, cap: (d.querySelector('.pv4-bigcap') || {}).textContent, img: (d.querySelector('img').getAttribute('src') || '').slice(0, 10) }; });
+  await p.keyboard.press('ArrowRight'); await p.waitForTimeout(150);
+  const next = await p.evaluate(() => (document.querySelector('dialog[open] .pv4-bigcap') || {}).textContent);
+  await p.keyboard.press('Escape'); await p.waitForTimeout(200);
+  const after = await p.evaluate(() => ({ dlg: !!document.querySelector('dialog[open]'), cardOpen: !document.querySelector('.tcard .tc-det').hidden }));
+  ok('F15 2: a click on a thumbnail shows it big; arrows step through, Esc closes and the card stays open', big && /pv4-big/.test(big.cls) && /Скриншот 2 из 3/.test(big.cap) && big.img === 'data:image' && /Скриншот 3 из 3 · Телефон/.test(next || '') && !after.dlg && after.cardOpen, { big, next, after });
+  // the preview pane next to the chat
+  await p.click('.pv4-det .btn'); await p.waitForTimeout(600);
+  const pane = await p.evaluate(() => { const v = document.querySelector('.pv4'); return v && { url: v.querySelector('.pv4-url').value, pick: v.querySelector('.pv4-pick').disabled, st: v.querySelector('.pv4-st').textContent, widths: [...v.querySelectorAll('.pv4-w button')].map((x) => x.textContent), proof: v.querySelector('.pv4-proof [role=switch]').getAttribute('aria-checked'), chat: !!document.querySelector('.convo .tcard[data-task="t-es"]') }; });
+  ok('F15 1: «Превью» opens a pane beside the chat with the project address, widths 390/768/desktop and «Указать элемент» off until the window is open', pane && pane.url === 'http://localhost:4010/' && pane.pick === true && /не открыто/.test(pane.st) && pane.widths.join('|') === 'Телефон 390|Планшет 768|Десктоп' && pane.proof === 'true' && pane.chat, pane);
+  await p.fill('.pv4-url', 'http://example.com/'); await p.click('.pv4 .btn.primary'); await p.waitForTimeout(200);
+  const refused = await p.evaluate(() => ({ st: document.querySelector('.pv4-st').textContent, bad: document.querySelector('.pv4-url').getAttribute('aria-invalid'), pick: document.querySelector('.pv4-pick').disabled }));
+  ok('F15 1: an address that is not localhost is refused before anything opens', /Только адреса этого компьютера/.test(refused.st) && refused.bad === 'true' && refused.pick, refused);
+  await p.fill('.pv4-url', 'http://localhost:4010'); await p.click('.pv4 .btn.primary'); await p.waitForTimeout(250);
+  const opened = await p.evaluate(() => ({ st: document.querySelector('.pv4-st').textContent, pick: document.querySelector('.pv4-pick').disabled }));
+  ok('F15 1: a local address opens the preview window and the tools come alive', /Открыто: http:\/\/localhost:4010\//.test(opened.st) && opened.pick === false, opened);
+  await p.click('.pv4-w button:nth-child(1)'); await p.waitForTimeout(150);
+  ok('F15 1: «Телефон 390» is the chosen width', await p.evaluate(() => document.querySelector('.pv4-w button.on').textContent === 'Телефон 390'), null);
+  await p.click('.pv4-pick'); await p.waitForTimeout(500);
+  const picked = await p.evaluate(() => ({ field: document.querySelector('.tcard[data-task="t-es"]').closest('.convo').querySelector('.composer textarea').value, st: document.querySelector('.pv4-st').textContent }));
+  ok('F15 1: «Указать элемент» puts the element (selector, text, size) into the task chat field', /`main > section\.hero > a\.btn-primary`/.test(picked.field) && /«Empezar gratis»/.test(picked.field) && /240×52/.test(picked.field) && /Вставлено в поле чата/.test(picked.st), picked);
+  const words = await p.evaluate(() => { const d = NSI18n.dicts; const keys = Object.keys(d.ru).filter((k) => /^pv\./.test(k)); return { n: keys.length, missing: keys.filter((k) => !(k in d.en)) }; });
+  ok('F15: every preview word exists in ru and en', words.n > 30 && !words.missing.length, words);
+  const lay = await p.evaluate(() => document.documentElement.scrollWidth > innerWidth);
+  ok('F15: no horizontal scroll at 1440 with the preview pane', !lay, lay);
   await p.close();
 }

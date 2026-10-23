@@ -380,7 +380,7 @@ impl Drop for Group {
 }
 
 /// SIGKILL the whole process group of a child started with `process_group(0)`.
-fn kill_group(pid: u32) {
+pub(crate) fn kill_group(pid: u32) {
     #[cfg(unix)]
     {
         let _ = Command::new("kill").args(["-KILL", "--", &format!("-{pid}")]).output();

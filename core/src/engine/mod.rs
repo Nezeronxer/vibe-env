@@ -16,6 +16,7 @@ mod handoff;
 mod lanes;
 mod ops;
 mod practices;
+mod proof;
 mod race;
 mod roles;
 mod runs;
@@ -190,6 +191,8 @@ pub struct Engine {
     avail: Mutex<HashMap<EnvId, Availability>>,
     /// Tasks whose project folder is gone and that said so on their feed (R11.10); cleared when the folder is back.
     folder_wait: Mutex<std::collections::HashSet<TaskId>>,
+    /// F15: who takes the proof screenshots and the folder they go to (`set_proof`); None = the step is skipped.
+    proof: Mutex<Option<(Arc<dyn crate::preview::Capture>, PathBuf)>>,
 }
 
 impl Engine {
@@ -227,6 +230,7 @@ impl Engine {
             auth: Mutex::new(HashMap::new()),
             avail: Mutex::new(HashMap::new()),
             folder_wait: Mutex::new(Default::default()),
+            proof: Mutex::new(None),
         })
     }
 
@@ -504,6 +508,9 @@ impl Engine {
         }
         self.clear_pending(id);
         self.clear_state(id);
+        if let Some((_, dir)) = lk(&self.proof).clone() {
+            let _ = std::fs::remove_dir_all(dir.join(&t.id)); // F15: the proof shots go with the task
+        }
         lk(&self.store).remove_task(id).map_err(|e| e.to_string())
     }
 

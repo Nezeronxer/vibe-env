@@ -1,0 +1,35 @@
+/* F15 preview pane, proof thumbnails in the "готово" card and the big shot. Tokens only; amber stays the one live accent. */
+.pv4 { padding: 14px 18px 18px; display: grid; gap: 12px; align-content: start; max-width: 760px; width: 100%; overflow: auto; height: 100%; }
+.pv4-h { display: grid; gap: 2px; }
+.pv4-h h2 { font-size: 17px; font-weight: 650; letter-spacing: -0.01em; }
+.pv4-h small { color: var(--ink3); font-size: 12px; overflow-wrap: anywhere; }
+.pv4-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.pv4-url { flex: 1 1 220px; min-width: 0; height: 30px; padding: 0 10px; border-radius: var(--radius-sm); border: 1px solid var(--line2); background: var(--bg); color: var(--ink); font: 12.5px var(--mono); }
+.pv4-url[aria-invalid="true"] { border-color: var(--bad); }
+.pv4-tools { gap: 10px; }
+.pv4-w button:disabled { opacity: .45; cursor: not-allowed; }
+.pv4-st { color: var(--ink2); font-size: 12.5px; min-height: 18px; overflow-wrap: anywhere; }
+.pv4-st.bad { color: var(--bad); }
+.pv4-proof { display: grid; gap: 6px; padding: 12px 14px; border: 1px solid var(--line); border-radius: var(--radius-pane); background: var(--card-fx); }
+.pv4-proof:empty { display: none; }
+.pv4-proof .tg b { font-weight: 600; color: var(--ink); }
+.pv4-proof .hint { max-width: 62ch; }
+.pv4-facts { color: var(--ink3); font-size: 12px; overflow-wrap: anywhere; }
+.pv4-facts .warn { color: var(--bad); }
+.pv4-note { color: var(--ink3); }
+.pv4-det { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding-top: 4px; }
+
+/* the strip of thumbnails under "готово" */
+.pv4-strip { display: grid; gap: 6px; margin-top: 8px; }
+.pv4-cap { color: var(--ink3); font-size: 12px; }
+.pv4-shots { list-style: none; margin: 0; padding: 0; display: flex; gap: 8px; flex-wrap: wrap; }
+.pv4-thumb { display: grid; gap: 4px; padding: 4px; border: 1px solid var(--line2); border-radius: var(--radius-sm); background: var(--bg); color: var(--ink2); cursor: zoom-in; }
+.pv4-thumb:hover { border-color: var(--brass); color: var(--ink); }
+.pv4-thumb img { display: block; width: 148px; height: 92px; object-fit: cover; object-position: top left; border-radius: calc(var(--radius-sm) - 3px); background: var(--raised); }
+.pv4-thumb small { font-size: 11.5px; text-align: left; padding: 0 2px; }
+
+/* the big shot (the shared #dlg) */
+dialog.pv4-big { max-width: min(1200px, 94vw); width: auto; padding: 12px; }
+.pv4-bigimg { display: block; max-width: 100%; max-height: 78vh; margin: 0 auto; border-radius: var(--radius-sm); border: 1px solid var(--line); background: var(--raised); }
+dialog.pv4-big .dlg-acts { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 10px; }
+.pv4-bigcap { margin: 0; color: var(--ink2); font-size: 12.5px; }

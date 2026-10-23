@@ -549,6 +549,9 @@ impl Engine {
                 Some(true) => {}
             }
         }
+        if self.proof_step(t, p, cancel).is_none() {
+            return Ok(Flow::Stop);
+        }
         self.set(t, Status::Reviewing)?;
         Ok(Flow::Next)
     }

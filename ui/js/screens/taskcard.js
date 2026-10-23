@@ -215,7 +215,7 @@
           if (s.state === 'skip') li.title = t('card.skipped', { why: s.reason ? NS.errHuman(s.reason) : (task.quality && task.quality.on === false ? t('skip.quality_off') : '') });
           return li;
         })),
-        needBlock(task, hooks), stateLine(task)]);
+        needBlock(task, hooks), stateLine(task), NS.preview ? NS.preview.strip(task) : null]);   // F15: the proof shots of "Проверить как пользователь"
       more.textContent = open ? t('card.collapse') : t('card.more');
       more.setAttribute('aria-expanded', String(open));
     }
@@ -263,6 +263,8 @@
       if (o.tests) row(o.tests.passed ? 'ok' : 'bad', t('chk.tests'), o.tests.passed ? t('chk.tests_ok') : t('chk.tests_bad'), o.tests.tail);
       else if (past && !project.check_cmd) row('ok', t('chk.tests'), t('chk.no_tests'));
       else row('wait', t('chk.tests'), t('chk.later'));
+      const proof = NS.preview && NS.preview.checkLine(task);
+      if (proof) row(proof.state, proof.title, proof.text);
       if (o.review) row(o.review.approved ? 'ok' : 'bad', t('chk.review'), o.review.approved ? t('chk.review_ok') : (o.review.issues || []).join('; ') || t('chk.review_bad'));
       else row('wait', t('chk.review'), t('chk.after_tests'));
       return h('section', { class: 'db' }, h('h3', { text: t('det.checks') }), h('ul', { class: 'clist' }, rows));

@@ -47,6 +47,8 @@ impl Hub {
         let kits = Arc::new(kits);
         let k = kits.clone();
         engine.set_env_vars(Arc::new(move |env| k.env_vars(env)));
+        // F15: "Проверить как пользователь" shoots with node + playwright when the machine has them
+        engine.set_proof(Arc::new(nightshift_core::preview::NodeCapture::default()), dir.join("proof"));
         let chats = Chats::new(engine.clone());
         Arc::new(Hub { engine, chats, kits, dir, adapters: Mutex::new(adapters), plans: Mutex::new(vec![]), envs: Mutex::new(vec![]), cards: Mutex::new(Default::default()), settings_hooks: Mutex::new(vec![]) })
     }
@@ -54,6 +56,11 @@ impl Hub {
     /// Starts the scheduler. The cards of convoys that are already on disk count as delivered.
     pub fn on_settings(&self, f: Box<dyn Fn(&nightshift_core::model::Settings) + Send + Sync>) {
         lk(&self.settings_hooks).push(f);
+    }
+
+    /// F15: the proof shots of a task are in `<this>/<task id>/`.
+    pub fn proof_dir(&self) -> PathBuf {
+        self.dir.join("proof")
     }
 
     pub fn start(&self) {

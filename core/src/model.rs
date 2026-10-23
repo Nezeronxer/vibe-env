@@ -80,6 +80,12 @@ pub struct Project {
     /// Story 309: each task's copy gets its own ports (`PORT`, `NIGHTSHIFT_PORT_BASE`) and database name.
     #[serde(default)]
     pub isolate_ports: bool,
+    /// F15 (#3): "Проверить как пользователь" - after green gates start `run_cmd`, take screenshots of `app_url`. Off by default.
+    #[serde(default)]
+    pub proof: bool,
+    /// F15: the address of the started app (only `http://localhost` / `127.0.0.1`); None = the task's port, if any.
+    #[serde(default)]
+    pub app_url: Option<String>,
 }
 
 impl Project {
@@ -101,6 +107,8 @@ impl Project {
             extra_checks: vec![],
             run_cmd: None,
             isolate_ports: false,
+            proof: false,
+            app_url: None,
         }
     }
 }
@@ -132,6 +140,15 @@ pub struct Outcome {
     /// What the gates ran at the last pass and how each ended (one entry per check).
     #[serde(default)]
     pub gates: Vec<GateResult>,
+    /// F15: the screenshots of "Проверить как пользователь"; None = the step is off.
+    #[serde(default)]
+    pub proof: Option<Proof>,
+}
+/// F15: what the proof step left: file names in `<data>/proof/<task id>/`, or why it was skipped (a key).
+#[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
+pub struct Proof {
+    pub shots: Vec<String>,
+    pub skipped: Option<String>,
 }
 /// One check of the gates: the project's tests, build, linter, types (spec 142).
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]

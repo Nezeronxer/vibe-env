@@ -10,6 +10,7 @@ pub mod models;
 pub mod model;
 pub mod net;
 pub mod notify;
+pub mod preview;
 pub mod prompt;
 pub mod schedule;
 pub mod store;
