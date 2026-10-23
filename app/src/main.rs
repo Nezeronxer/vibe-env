@@ -180,6 +180,13 @@ fn new_chat(app: &AppHandle) {
 /// The terminals of the last run: folders and text, restored by the window (story 253).
 const TERMS_FILE: &str = "terms.json";
 
+/// The terminals saved at the last quit, to reopen; empty when the data folder could not be read. The snapshot holds
+/// terminal output, so it is removed in either case.
+fn restored_terms(dir: &std::path::Path, readable: bool) -> Vec<nightshift_core::term::TermSaved> {
+    let saved = ptycmds::load_saved(&dir.join(TERMS_FILE));
+    if readable { saved } else { vec![] }
+}
+
 /// "Выход": with work going on the person is asked first; then the runs are stopped, the state stays on disk (R08.2).
 fn quit(app: &AppHandle) {
     let app = app.clone();
@@ -847,11 +854,11 @@ fn build_app(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
         }));
     }
 
+    let saved = restored_terms(&dir, unreadable.is_none());
     if unreadable.is_some() {
         // the window shows its own screen; the engine of the stand-in store is never started
         return Ok(());
     }
-    let saved = ptycmds::load_saved(&dir.join(TERMS_FILE));
     if !saved.is_empty() {
         note_startup(&startup_list, "terms-restored", json!(saved));
     }
@@ -1138,7 +1145,19 @@ fn main() {
 
 #[cfg(test)]
 mod tests {
-    use super::{menu_layout, MenuEntry, CLOSE_WINDOW_KEY};
+    use super::{menu_layout, restored_terms, MenuEntry, CLOSE_WINDOW_KEY, TERMS_FILE};
+
+    /// Repair of F4: the terminal snapshot holds terminal output, so it is removed at start even when the data folder
+    /// is unreadable and nothing is restored.
+    #[test]
+    fn the_terminal_snapshot_is_removed_at_start_in_every_branch() {
+        for readable in [true, false] {
+            let t = crate::testkit::Scratch::new("start-terms");
+            std::fs::write(t.0.join(TERMS_FILE), "[]").unwrap();
+            assert!(restored_terms(&t.0, readable).is_empty());
+            assert!(!t.0.join(TERMS_FILE).exists(), "readable={readable}");
+        }
+    }
     use tauri_plugin_global_shortcut::Shortcut;
 
     /// ⌘W / ⌘T / ⌘D / ⇧⌘D reach the page: the menu has no standard "Close Window" (⌘W) and ours is on another key.

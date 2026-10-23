@@ -207,7 +207,7 @@ fn runs_something(key: &str, text: &str) -> bool {
 
 /// A skill or subagent file that runs something by itself: frontmatter with hooks, MCP servers, tools or permissions
 /// (`hooks`, `mcpServers`, `permissionMode`, `allowed-tools`, `tools`, opencode `permission`), a `!`command`` line in
-/// the text, or frontmatter that does not close (it cannot be read reliably, so it is held too). Keys are looked for
+/// the text, or frontmatter that does not close on a bare `---` or is indented (it cannot be read reliably, so it is held too). Keys are looked for
 /// anywhere in the frontmatter (flow style `{hooks: …}` too): a false hit only means one more tick.
 pub(crate) fn runs_in_markdown(b: &[u8]) -> bool {
     static FM: OnceLock<Regex> = OnceLock::new();
@@ -222,6 +222,15 @@ pub(crate) fn runs_in_markdown(b: &[u8]) -> bool {
         Regex::new(r#"(?i)(?:^|[\s{,?])["']?(hooks|mcp_?servers|permission_?mode|permissions?|allowed[-_]?tools|tools)["']?\s*:"#).unwrap()
     });
     let head = &rest[..end];
+    // YAML closes only on a bare `---`; `---x` or `----` is still frontmatter, past where this search would stop
+    if rest[end + 1..].lines().next().unwrap_or("").trim_end() != "---" {
+        return true;
+    }
+    // js-yaml reads an indented frontmatter as the root mapping, which the top-level check below would skip
+    let first = head.lines().find(|l| !l.trim().is_empty() && !l.trim_start().starts_with('#'));
+    if first.is_some_and(|l| l.starts_with([' ', '\t'])) {
+        return true;
+    }
     fm.is_match(head) || head.lines().any(top_key_hides_or_runs)
 }
 
