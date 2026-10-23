@@ -567,6 +567,172 @@ eq('words: the new terms', [t('step.gates'), t('step.merge'), t('set.nav.kits'),
 eq('v4 shell words exist in ru and en', Object.keys(NSI18n.dicts.ru).filter((k) => /^(pal|bar|pane|shell4|look4|adv|cmd)\./.test(k)).filter((k) => !(k in NSI18n.dicts.en)), []);
 } else eq('v4 shell scripts are loaded', 'missing', 'loaded');
 
+// ================= v4 terminal (task 23): theme import, prefix keys, file:line, ack schedule =================
+if (typeof NSTerm !== 'undefined' && typeof NSTermSettings !== 'undefined') {
+const TS = NSTermSettings, TM = NSTerm;
+// --- theme import: samples cut from the official files named in docs/themes-sources.md ---
+const kitty = '# vim:ft=kitty\nforeground              #cdd6f4\nbackground              #1e1e2e\nselection_background    #f5e0dc\ncursor                  #f5e0dc\ncursor_text_color       #1e1e2e\n'
+  + 'color0 #45475a\ncolor8 #585b70\ncolor1 #f38ba8\ncolor2  #a6e3a1\ncolor3  #f9e2af\ncolor4  #89b4fa\ncolor5  #f5c2e7\ncolor6  #94e2d5\ncolor7  #bac2de\ncolor15 #a6adc8\n';
+const k = TS.parseTheme(kitty, 'mocha');
+eq('import kitty: background, text, red, bright black and the missing bright colours taken from the normal ones',
+  k.ok && [k.theme.background, k.theme.foreground, k.theme.ansi[1], k.theme.ansi[8], k.theme.ansi[9], k.theme.ansi[15], k.theme.scheme], ['#1e1e2e', '#cdd6f4', '#f38ba8', '#585b70', '#f38ba8', '#a6adc8', 'dark']);
+const ghostty = 'background = 282c34\nforeground = abb2bf\ncursor-color = abb2bf\nselection-background = 3e4452\n' + [0, 1, 2, 3, 4, 5, 6, 7].map((i) => 'palette = ' + i + '=#' + ['2c323c', 'e06c75', '98c379', 'e5c07b', '61afef', 'c678dd', '56b6c2', '5c6370'][i]).join('\n') + '\n# a comment\nfont-family = JetBrains Mono\n';
+const g = TS.parseTheme(ghostty);
+eq('import Ghostty: `key = value`, hex without #, palette = N=#hex', g.ok && [g.theme.background, g.theme.ansi[4], g.theme.selection, g.theme.ansi[12]], ['#282c34', '#61afef', '#3e4452', '#61afef']);
+const comp = (r, gg, b) => '<dict><key>Blue Component</key><real>' + b + '</real><key>Green Component</key><real>' + gg + '</real><key>Red Component</key><real>' + r + '</real></dict>';
+const iterm = '<?xml version="1.0"?><plist version="1.0"><dict>' + [0, 1, 2, 3, 4, 5, 6, 7].map((i) => '<key>Ansi ' + i + ' Color</key>' + (i === 1 ? comp(0.8784313725490196, 0.4235294117647059, 0.4588235294117647) : comp(0.1, 0.2, 0.3))).join('')
+  + '<key>Background Color</key>' + comp(0.9921568627, 0.9647058824, 0.8901960784) + '<key>Foreground Color</key>' + comp(0.396, 0.482, 0.514) + '<key>Selection Color</key>' + comp(0.396, 0.482, 0.514) + '</dict></plist>';
+const it = TS.parseTheme(iterm);
+eq('import iTerm2: components 0..1 -> hex (One Dark red #e06c75), a light ground is a light scheme, a selection equal to the text falls back to bright black',
+  it.ok && [it.theme.ansi[1], it.theme.background, it.theme.scheme, it.theme.selection === it.theme.ansi[8]], ['#e06c75', '#fdf6e3', 'light', true]);
+eq('import: a foreign file is refused ("не похоже на тему"), nothing half-read comes back',
+  [TS.parseTheme('{"name": "x", "colors": [1, 2]}'), TS.parseTheme('background #000000\nforeground #ffffff\ncolor0 #000000'), TS.parseTheme('<plist><dict></dict></plist>')].map((r) => r.ok ? 'ok' : r.error), ['not_theme', 'not_theme', 'not_theme']);
+eq('themes: Nightshift + 6 ready ones, each 16 valid colours', ['catppuccin-mocha', 'tokyo-night', 'gruvbox-dark', 'dracula', 'solarized-light', 'one-dark'].map((id) => !!TS.validTheme(TS.THEMES[id])), [true, true, true, true, true, true]);
+eq('terminal settings: out-of-range values fall back, an unknown theme becomes Nightshift', ((o) => [o.theme, o.scrollback, o.padding, o.cursor, o.line_height, o.prefix])(TS.termLook({ theme: 'neon', scrollback: 5, padding: 99, cursor: 'x', line_height: 7, prefix: ' Ctrl+B ' })),
+  ['nightshift', 1000, 24, 'block', 2, 'ctrl+b']);
+eq('a terminal theme paints the window: panel = its ground, text = its text, the 16 colours', ((v) => [v['--panel'], v['--ink'], v['--ansi-1'], v['--accent']])(TS.appVars(TS.THEMES.dracula)), ['#282a36', '#f8f8f2', '#ff5555', '#bd93f9']);
+
+// --- prefix mode (tmux): ctrl+b, then one key ---
+const run = (keys) => { let st = 'idle'; return keys.map((key) => { const r = TM.prefixStep(st, key, 'ctrl+b'); st = r.state; return r.action ? r.action.type + (r.action.dir || '') + (r.action.n != null ? r.action.n : '') : r.eat ? '·' : '-'; }); };
+eq('prefix: % splits right, " splits down, arrows move the focus, z zooms, c new tab, d detaches, digits pick a tab',
+  run(['ctrl+b', '%', 'ctrl+b', '"', 'ctrl+b', 'left', 'ctrl+b', 'z', 'ctrl+b', 'c', 'ctrl+b', 'd', 'ctrl+b', '3']),
+  ['·', 'splith', '·', 'splitv', '·', 'focusleft', '·', 'zoom', '·', 'new', '·', 'detach', '·', 'goto3']);
+eq('prefix: plain keys pass, an unknown key after the prefix is swallowed and disarms, prefix twice sends it, shift alone keeps it armed',
+  run(['a', 'ctrl+b', 'x', 'a', 'ctrl+b', 'ctrl+b', 'ctrl+b', 'shift', '%']), ['-', '·', '·', '-', '·', 'send-prefix', '·', '·', 'splith']);
+eq('prefix: off when not configured', TM.prefixStep('idle', 'ctrl+b', '').eat, false);
+eq('prefix: key names from events (layout-free letters, the typed symbol for % and ")',
+  [TM.keyName({ key: 'b', code: 'KeyB', ctrlKey: true }), TM.keyName({ key: 'и', code: 'KeyB', ctrlKey: true }), TM.keyName({ key: '%', code: 'Digit5', shiftKey: true }), TM.keyName({ key: 'ArrowUp', code: 'ArrowUp' }), TM.keyName({ key: 'Shift', code: 'ShiftLeft', shiftKey: true })],
+  ['ctrl+b', 'ctrl+b', '%', 'up', 'shift']);
+
+// --- path:line[:col] in the output ---
+const refs = (s) => TM.fileRefs(s).map((r) => [r.path, r.line, r.col, s.slice(r.start, r.end)]);
+eq('file refs: path:line:col, a relative path, an absolute one, file:// URL',
+  [refs('src/app.rs:42:7: error[E0308]'), refs('  at /Users/dev/a.js:10 (x)'), refs('see file:///tmp/x.py for it')],
+  [[['src/app.rs', 42, 7, 'src/app.rs:42:7']], [['/Users/dev/a.js', 10, null, '/Users/dev/a.js:10']], [['/tmp/x.py', null, null, 'file:///tmp/x.py']]]);
+eq('file refs: not times, not URLs with ports, not bare words', [refs('at 12:30:01 ok'), refs('http://localhost:8080/a'), refs('error: line 4')], [[], [], []]);
+eq('file refs: a relative path is joined to the folder of the terminal', [TM.resolvePath('src/a.rs', '/p/proj'), TM.resolvePath('./b.js', '/p/proj/'), TM.resolvePath('/abs/c', '/p')], ['/p/proj/src/a.rs', '/p/proj/b.js', '/abs/c']);
+
+// --- ack schedule: one ack per ~100 KB written, with the exact byte count ---
+const sent = [];
+const ack = TM.acker(100 * 1024, (n) => sent.push(n));
+[60, 50, 30, 80, 20].forEach((kb) => ack.wrote(kb * 1024));
+eq('ack: nothing under 100 KB, then the whole amount since the last ack (60+50, then 30+80; the last 20 waits)', sent, [110 * 1024, 110 * 1024]);
+// --- idle shell: the question on close is skipped only at a prompt, never in a full-screen program ---
+eq('idle shell: a prompt at the cursor is idle; vim / htop (alternate screen) and a running command are not',
+  [TM.looksIdle('dev@mac proj % ', false), TM.looksIdle('~/code ❯ ', false), TM.looksIdle('$ ', false), TM.looksIdle('Compiling foo v0.1', false), TM.looksIdle('dev@mac proj % ', true)], [true, true, true, false, false]);
+// --- CLI of an env with the chosen model; resume where the CLI can ---
+const envC = { id: 'claude', path: '/usr/local/bin/claude' }, envX = { id: 'codex', path: 'codex' };
+eq('env CLI: binary, model flag of the env, resume after an update', [TM.cliArgv(envC, 'opus'), TM.cliArgv(envX, 'gpt-5', true), TM.cliArgv(envC, null, true), TM.cliArgv({ id: 'gemini' }, null)],
+  [['/usr/local/bin/claude', '--model', 'opus'], ['codex', 'resume', '--last', '-m', 'gpt-5'], ['/usr/local/bin/claude', '--continue'], ['gemini']]);
+eq('v4 terminal words exist in ru and en', Object.keys(NSI18n.dicts.ru).filter((k) => /^(term|termset)\./.test(k)).filter((k) => !(k in NSI18n.dicts.en)), []);
+} else eq('v4 terminal scripts are loaded', 'missing', 'loaded');
+
+// ================= v4 catalog, history, publishing (task 24) =================
+if (typeof NSMarket !== 'undefined' && typeof NSHistory !== 'undefined' && typeof NSPublishLogic !== 'undefined') {
+// --- the graph: CommitRow (lane, edges) -> one path per edge, in the colour of its branch; a merge commit has two parents ---
+// hand-made history (newest first): A merges B (lane 0) and C (lane 1) into D; edges run from the middle of a row to the middle of the next one
+const row = (lane, parents, edges) => ({ sha: 'x', parents, author: '', time: 0, subject: '', refs: [], task: null, lane, edges });
+const gr = NSHistory.layout([row(0, ['b', 'c'], [[0, 0], [0, 1]]), row(0, ['d'], [[0, 0], [1, 1]]), row(1, ['d'], [[0, 0], [1, 0]]), row(0, [], [])], 10, 10);
+eq('graph: width = lanes used x lane width', gr.width, 20);
+eq('graph: a merge commit is a ring, the others are filled nodes, node x = middle of its lane', gr.rows.map((r) => [r.lane, r.cx, r.merge]), [[0, 5, true], [0, 5, false], [1, 15, false], [0, 5, false]]);
+eq('graph: a fork leaves the node as a curve to the new lane in that lane\'s colour, the own line goes straight down', gr.rows[0].paths.map((p) => p.c + ' ' + p.d), ['0 M5,5 L5,15', '1 M5,5 C5,11 15,9 15,15']);
+eq('graph: a passing line keeps its colour, a line merging into the next node is coloured as the branch that merges', [gr.rows[1].paths.map((p) => p.c + ' ' + p.d), gr.rows[2].paths.map((p) => p.c + ' ' + p.d)],
+  [['0 M5,5 L5,15', '1 M15,5 L15,15'], ['0 M5,5 L5,15', '0 M15,5 C15,11 5,9 5,15']]);
+eq('graph: lane colours repeat after 8 lanes', NSHistory.layout([row(9, [], [])], 10, 10).rows[0].c, 1);
+// --- the long list: 10 000 rows never exist at once ---
+const vr = (top) => NSMarket.vrange(top, 620, 62, 10000, 4);
+eq('virtual list: top, middle and the very end of 10 000 rows - a window of 14-20 rows, the spacer keeps the whole height',
+  [vr(0), vr(310000), vr(619380)].map((r) => [r.start, r.end, r.height]), [[0, 14, 620000], [4996, 5014, 620000], [9986, 10000, 620000]]);
+eq('virtual list: an empty list and a short one never ask for a row that is not there', [NSMarket.vrange(0, 620, 62, 0), NSMarket.vrange(0, 620, 62, 3)].map((r) => [r.start, r.end]), [[0, 0], [0, 3]]);
+eq('catalog: the next portion joins the list, an item seen twice stays once in its first place',
+  NSMarket.mergeItems([{ id: 'a' }, { id: 'b' }], [{ id: 'b', n: 2 }, { id: 'c' }, { id: 'c' }, null]).map((i) => i.id + (i.n || '')), ['a', 'b', 'c']);
+// --- the install plan: what runs code is off until it is ticked ---
+const plan = { id: 'p', writes: ['~/.claude/mods/x/index.js'], executable: ['x/index.js', 'x/panel.js'], warnings: ['runs_code'], runs: null, needs: [], texts: [], installed: false };
+const pv = NSMarket.planView(plan, new Set());
+eq('plan: nothing executable is on by default, so nothing is enabled on "Применить"', [pv.exec.map((e) => e.on), pv.enabled, pv.runsCode, pv.writes], [[false, false], [], true, ['~/.claude/mods/x/index.js']]);
+eq('plan: a ticked entry is enabled, the others stay off', NSMarket.planView(plan, new Set(['x/panel.js'])).enabled, ['x/panel.js']);
+eq('plan: a remote MCP and a Docker one are told apart from "runs code"', [NSMarket.planView({ warnings: ['remote'], runs: 'https://m.example/sse' }).remote, NSMarket.planView({ warnings: ['needs_docker'] }).docker, NSMarket.planView({ warnings: ['remote'] }).runsCode], [true, true, false]);
+eq('marks: installed, update available, neither', ['a', 'b', 'c'].map((id) => { const s = NSMarket.itemState({ id }, [{ id: 'a', version: '1', update: null }, { id: 'b', version: '1', update: '2' }]); return [s.installed, s.update]; }), [[true, null], [true, '2'], [false, null]]);
+eq('links from a catalog: only https', ['https://github.com/a/b', 'http://x.io', 'javascript:alert(1)', 'file:///etc/passwd', '', null].map((u) => !!NSMarket.safeHttps(u)), [true, false, false, false, false, false]);
+eq('own source: a kind and an https address', [NSMarket.validSource('mcp', 'https://x.io/m.json'), NSMarket.validSource('mcp', 'http://x.io'), NSMarket.validSource('theme', 'https://x.io')], [true, false, false]);
+eq('errors of the core: {kind, detail} and "kind: text" give the same parts', [NSMarket.errParts({ kind: 'timeout', detail: 'x' }), NSMarket.errParts('not_found: item')], [{ kind: 'timeout', detail: 'x' }, { kind: 'not_found', detail: 'item' }]);
+eq('popularity is short', [NSMarket.fmtCount(950), NSMarket.fmtCount(12400), NSMarket.fmtCount(2000000), NSMarket.fmtCount(null)], ['950', '12.4k', '2M', '']);
+// --- history: time, search, marks, tasks, revert ---
+eq('relative time: now, minutes, hours, days, then a date', [30, 330, 7200, 3 * 86400, 20 * 86400].map((d) => { const r = NSHistory.relTime(1000, (1000 + d) * 1000); return r.key + (r.n ? ':' + r.n : '') + (r.date ? ':' + r.date : ''); }),
+  ['hist.now', 'hist.min:5', 'hist.hour:2', 'hist.day:3', 'hist.date:1970-01-01']);
+const hr = (sha, subject, author, refs, task) => Object.assign(row(0, [], []), { sha, subject, author, refs: refs || [], task: task || null });
+const hrows = [hr('a1b2c3d4', 'Fix cursor', 'Maya', ['main']), hr('e5f6a7b8', 'Add export', 'Nezeron', ['tag: v1']), hr('99887766', 'Refactor', 'Maya', [], 't-inv')];
+eq('history search: message, author, hash, ref - case does not matter', ['CURSOR', 'maya', 'e5f6', 'v1', 'nothing', ''].map((q) => NSHistory.filterRows(hrows, q).length), [1, 2, 1, 1, 0, 3]);
+eq('marks of branches and tags', ['tag: v1', 'origin/main', 'feature/x', 'main', 'ns/abcd1234'].map(NSHistory.refKind), ['tag', 'remote', 'branch', 'branch', 'branch']);
+const tasks = [{ id: 't-inv-2026' }, { id: 'zzz' }];
+eq('a task commit finds its task by the id or by the 8-letter prefix of the branch; another commit has none', [NSHistory.taskOf(hrows[2], tasks), NSHistory.taskOf(hr('s', '', '', [], 'zz'), tasks), NSHistory.taskOf(hrows[0], tasks)], [{ id: 't-inv-2026' }, { id: 'zzz' }, null]);
+eq('revert: a task commit is undone as the task, any other with git revert', [NSHistory.revertPlan(hrows[0], null), NSHistory.revertPlan(hrows[2], { id: 'zzz' })], [{ kind: 'revert', sha: 'a1b2c3d4' }, { kind: 'undo', id: 'zzz' }]);
+eq('an empty repository is not an error', ["fatal: your current branch 'main' does not have any commits yet", "fatal: bad default revision 'HEAD'", 'boom'].map(NSHistory.isEmptyRepoError), [true, true, false]);
+// --- publishing ---
+const PL = NSPublishLogic;
+eq('repository name from the folder: letters, digits, . _ -', ['/Users/dev/code/billing api/', '/x/a--b', '/x/.hidden', '/x/докс', '/x/foo.git'].map(PL.repoName), ['billing-api', 'a-b', 'hidden', 'project', 'foo']);
+eq('a valid name', ['ok-name_1.x', '', '.', '..', 'a b', 'x.git', 'a'.repeat(101)].map(PL.validName), [true, false, false, false, false, false, false]);
+eq('error of the publication -> text key and the one action that helps', ['gh_missing', 'gh_not_logged_in', 'name_taken', 'bad_name', 'weird'].map((k) => { const v = PL.errView({ kind: k }); return v.key.slice(8) + ':' + v.action; }),
+  ['gh_missing:install', 'gh_not_logged_in:login', 'name_taken:rename', 'bad_name:rename', 'publish_failed:null']);
+eq('protected files in the history come back as a list', PL.errView({ kind: 'protected_in_history', paths: ['.env', 'k/id_rsa'] }), { key: 'pub.err.protected_in_history', action: null, paths: ['.env', 'k/id_rsa'], detail: '' });
+eq('catalog, history and publishing words exist in ru and en (and the keys the code builds)', Object.keys(NSI18n.dicts.ru).filter((k) => /^(mk|hist|pub)\./.test(k)).filter((k) => !(k in NSI18n.dicts.en)), []);
+eq('words built from a kind exist', ['skill', 'mcp', 'mod'].map((k) => NSI18n.has('mk.kind_' + k)).concat(['gh_missing', 'gh_not_logged_in', 'name_taken', 'bad_name', 'protected_in_history', 'publish_failed'].map((k) => NSI18n.has('pub.err.' + k))), Array(9).fill(true));
+} else eq('v4 catalog scripts are loaded', 'missing', 'loaded');
+
+// ================= v4 Clawd (task 25): the state machine, time-based animation, the loop stops on a hidden window =================
+if (typeof NSClawd !== 'undefined') {
+const C = NSClawd;
+const T0 = 1e6;                                                         // a fixed "now" in ms; the machine never reads the clock itself
+const tk = (id, status, extra) => Object.assign({ id, status, title: 'Задача ' + id, agent: 'claude' }, extra);
+const act = (id, kind, done, extra) => ({ id, name: kind === 'edit' ? 'Edit' : 'Bash', input: Object.assign({ kind }, extra), done });
+let m = C.machine();
+m.task(tk('a', 'working'), T0); m.task(tk('b', 'needs_human'), T0);
+m.action('a', act('e1', 'edit', false, { path: 'src/reports/cache.py' }), T0);
+eq('clawd: "Нужен ты" beats typing (call > type, story 285)', m.state(T0 + 10).name, 'call');
+m.task(tk('b', 'working'), T0 + 20);
+m.action('b', act('b1', 'bash', false, { command: 'pytest -q' }), T0 + 20);
+eq('clawd: an open Edit beats an open Bash (type > run); the words name the file and the env', [m.state(T0 + 30).name, m.state(T0 + 30).detail.path], ['type', 'cache.py']);
+m.action('a', act('e1', 'edit', true, { path: 'src/reports/cache.py' }), T0 + 40);
+eq('clawd: a finished Edit still shows a moment (hold), then the running Bash wins', [m.state(T0 + 40 + C.HOLD_MS - 1).name, m.state(T0 + 40 + C.HOLD_MS + 1).name], ['type', 'run']);
+m.action('b', act('b1', 'bash', true, { command: 'pytest -q' }), T0 + 50);
+eq('clawd: a working task with no open action - thinks', m.state(T0 + 50 + C.HOLD_MS + 1).name, 'think');
+m = C.machine();
+m.task(tk('c', 'merging'), T0); m.task(tk('c', 'done'), T0 + 100);
+eq('clawd: a task merged into main - cheers, and the cheer is over after 2 s', [m.state(T0 + 100 + 1999).name, m.state(T0 + 100 + 2001).name], ['cheer', 'idle']);
+m.task(tk('d', 'working'), T0 + 200);
+eq('clawd: thinking beats cheering (think > cheer)', m.state(T0 + 300).name, 'think');
+m.task(tk('d', 'failed'), T0 + 400); m.task(tk('e', 'working'), T0 + 400); m.action('e', act('e2', 'edit', false, { path: 'a.py' }), T0 + 400);
+eq('clawd: a failed task beats typing (sad > type)', m.state(T0 + 500).name, 'sad');
+m = C.machine();
+m.task(tk('f', 'done'), T0);
+eq('clawd: tasks already finished at start make no cheer', m.state(T0 + 1).name, 'idle');
+m.frozen(true);
+eq('clawd: frozen - sleeps; "Нужен ты" still wakes him', [m.state(T0 + 2).name, (m.task(tk('g', 'needs_human'), T0 + 3), m.state(T0 + 4).name)], ['sleep', 'call']);
+m = C.machine(); m.task(tk('n', 'queued', { start: 'night' }), T0);
+eq('clawd: only a night queue waiting - sleeps', m.state(T0 + 1).name, 'sleep');
+eq('clawd: the priority of story 285 (+ sleep under the work, over idle)', C.PRIORITY, ['call', 'sad', 'type', 'run', 'think', 'cheer', 'sleep', 'idle']);
+// time-based: the same second at 60, 8 and 144 frames/s draws the same pixels (each state has particles or a jump)
+const at60 = (st, fps, sec) => { const a = C.anim(st); for (let i = 0; i < fps * sec; i++) a.step(1 / fps); return JSON.stringify(a.pixels()); };
+eq('clawd: the frame after 1 s does not depend on the frame rate (60 / 8 / 144 fps), every state',
+  C.STATES.filter((st) => !(at60(st, 60, 1) === at60(st, 8, 1) && at60(st, 60, 1) === at60(st, 144, 1))), []);
+eq('clawd: a long frame is clamped (a 5 s stall moves the clock by at most 0.1 s)', (() => { const a = C.anim('run'); a.step(5); return a.time(); })(), 0.1);
+eq('clawd: whole pixels only, inside the canvas, the body is #D97757', (() => { const px = C.anim('idle').pixels(); return [px.every(([x, y]) => Number.isInteger(x) && Number.isInteger(y) && x >= 0 && y >= 0 && x < C.W && y < C.H), px.some((p) => p[2] === '#d97757')]; })(), [true, true]);
+eq('clawd: the states differ on screen', new Set(C.STATES.map((st) => { const a = C.anim(st); a.step(0.05); a.step(0.3); return JSON.stringify(a.pixels()); })).size, C.STATES.length);
+// one rAF loop; a hidden window stops the frames, showing it starts them again
+const q = [], vis = []; let hidden = false, frames = 0;
+const loop = C.loop({ raf: (f) => { q.push(f); return q.length; }, caf: () => { q.length = 0; }, hidden: () => hidden, onVisibility: (f) => vis.push(f), frame: () => { frames++; } });
+loop.start();
+const pump = (n) => { for (let i = 0; i < n && q.length; i++) q.shift()(i * 16.7); };
+pump(3);
+hidden = true; vis.forEach((f) => f());
+const afterHide = frames; pump(5);
+eq('clawd loop: frames run, stop on visibilitychange to hidden (no rAF queued)', [afterHide, frames, q.length], [3, 3, 0]);
+hidden = false; vis.forEach((f) => f()); pump(2);
+eq('clawd loop: showing the window starts the frames again, one rAF at a time', [frames, q.length], [5, 1]);
+eq('clawd: story text in ru and en, 6-8 sentences each', ['ru', 'en'].map((l) => (NSI18n.dicts[l]['clawd.story'].match(/[.!?](\s|$)/g) || []).length).map((n) => n >= 6 && n <= 8), [true, true]);
+eq('v4 Clawd/updates/practices words exist in ru and en', Object.keys(NSI18n.dicts.ru).filter((k) => /^(clawd|upd|pr|mock)\./.test(k)).filter((k) => !(k in NSI18n.dicts.en)), []);
+} else eq('v4 Clawd scripts are loaded', 'missing', 'loaded');
+
 const total = out.length;
 if (typeof document !== 'undefined') {
   document.getElementById('out').textContent = out.join('\n') + `\n\n${bad ? 'FAILED ' + bad : 'ALL PASSED'}: ${total - bad} of ${total}`;

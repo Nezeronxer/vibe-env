@@ -1,1 +1,71 @@
-/* v4 terminal (task 23). */
+/* v4 terminal (task 23): the pane, its strips, search and menu; an extra window; the settings section "Терминал".
+   Colours are tokens only: the terminal theme itself reaches xterm from JS and the window through the same variables. */
+.t-pane { flex: 1; min-height: 0; display: flex; flex-direction: column; position: relative; container-type: inline-size; }
+.t-head { gap: 8px; }
+.t-head .ic, .t-head img { width: 13px; height: 13px; flex: none; }
+.t-glyph { font: 700 11px var(--mono); color: var(--ink3); flex: none; letter-spacing: -.04em; }
+.t-head[data-state="run"] .t-glyph { color: var(--exec); }
+.t-head[data-state="wait"] .t-glyph { color: var(--human); }
+.t-head[data-state="fail"] .t-glyph { color: var(--bad); }
+.t-cwd { flex: 1; min-width: 0; color: var(--ink3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font: 12px var(--mono); }
+.t-head > .btn { flex: none; }
+.t-body { flex: 1; min-height: 0; position: relative; display: flex; }
+.t-host { flex: 1; min-width: 0; min-height: 0; padding: var(--t-pad, 10px); padding-right: 2px; background: var(--pane-bg); border-radius: 0 0 var(--radius-pane) var(--radius-pane); overflow: hidden; }
+.t-host .xterm { height: 100%; }
+.t-host .xterm-viewport { background: transparent !important; }
+.t-host.lig .xterm-rows { font-variant-ligatures: normal; font-feature-settings: "liga" 1, "calt" 1; }
+.t-host .xterm-screen canvas { border-radius: 0; }
+
+/* strips over the output: input to every pane (accent, never amber), the CLI was updated */
+.t-strips:empty { display: none; }
+.t-strips { display: grid; gap: 1px; flex: none; }
+.t-strip { display: flex; align-items: center; gap: 10px; min-height: 28px; padding: 3px 8px 3px 12px; font-size: 12.5px; color: var(--ink); background: var(--raised); }
+.t-strip > span { flex: 1; min-width: 0; }
+.t-strip.bcast { background: var(--accent); color: var(--on-btn); font-weight: 600; }
+.t-strip.bcast kbd { font: 11px var(--mono); color: inherit; opacity: .8; }
+.t-strip.upd { border-bottom: 1px solid var(--line); }
+
+/* search ⌘F: a small field at the top right of the output */
+.t-find { position: absolute; top: 8px; right: 14px; z-index: 5; display: flex; align-items: center; gap: 2px; padding: 3px; background: var(--raised); border: 1px solid var(--line2); border-radius: var(--radius-sm); box-shadow: var(--shadow); }
+.t-find[hidden] { display: none; }
+.t-find-in { width: 200px; height: 24px; border: 0; background: none; color: var(--ink); font: 12.5px var(--mono); padding: 0 6px; }
+.t-find-in:focus { outline: none; }
+.t-find .pt { font-size: 13px; }
+
+/* the context menu of the output */
+.t-menu { left: var(--x); top: var(--y); min-width: 220px; }
+.t-menu button { justify-content: space-between; }
+.t-menu kbd { font: 11px var(--mono); color: var(--ink3); }
+
+/* "Вынести в окно" on the pane header: a window with a smaller one in front */
+.pg-w { width: 11px; height: 9px; }
+.pg-w::after { content: ""; position: absolute; right: -4px; top: -4px; width: 6px; height: 5px; border: 1.4px solid currentColor; border-radius: 1.5px; background: var(--pane-bg); }
+
+/* the bar: "<Среда> в терминале" */
+.t-barbtn .t-glyph { color: var(--ink3); }
+.t-barbtn:hover .t-glyph { color: var(--accent); }
+
+/* an extra window: one terminal over the whole window */
+body.t-window { background: var(--canvas); }
+.t-win { position: fixed; inset: var(--gap); display: flex; flex-direction: column; border-radius: var(--radius-pane); }
+.t-win .t-head { padding-right: 6px; }
+
+/* settings: theme cards with a miniature terminal, own colours, the preview */
+.tcards { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.tmini { display: grid; align-content: start; gap: 2px; height: 92px; padding: 8px 9px; background: var(--tm-bg); color: var(--tm-fg); border-radius: var(--radius-sm); font: 10.5px/1.35 var(--mono); overflow: hidden; }
+.tm-l { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tm-c { font-weight: 400; }
+.tm-c[data-c="1"] { color: var(--tm-1); } .tm-c[data-c="2"] { color: var(--tm-2); } .tm-c[data-c="3"] { color: var(--tm-3); }
+.tm-c[data-c="4"] { color: var(--tm-4); } .tm-c[data-c="5"] { color: var(--tm-5); } .tm-c[data-c="6"] { color: var(--tm-6); }
+.tm-cur { display: inline-block; width: .6em; height: 1.1em; vertical-align: text-bottom; background: var(--tm-cur); }
+.tpreview .tmini { border: 1px solid var(--line); height: 196px; font-size: 12.5px; padding: 12px; gap: 4px; }
+.tcolors { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px 14px; padding: 10px 0; }
+.tcol { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--ink2); min-width: 0; cursor: pointer; }
+.tcol span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tcol input[type="color"] { width: 26px; height: 22px; padding: 0; border: 1px solid var(--line2); border-radius: 5px; background: none; flex: none; cursor: pointer; }
+.tcol input[type="color"]::-webkit-color-swatch-wrapper { padding: 2px; }
+.tcol input[type="color"]::-webkit-color-swatch { border: 0; border-radius: 3px; }
+
+@media (max-width: 1099px) { .tcards { grid-template-columns: repeat(2, minmax(0, 1fr)); } .tcolors { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@container (max-width: 420px) { .t-cwd { display: none; } .t-find-in { width: 120px; } }
+@media (prefers-reduced-motion: reduce) { .t-find { box-shadow: none; } }
