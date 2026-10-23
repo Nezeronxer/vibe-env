@@ -1,0 +1,82 @@
+[
+  {
+    "name": ".claude-plugin",
+    "path": "claude-code/mods/.claude-plugin",
+    "sha": "ded292d46d06edd05141bddd39faed18ede1c761",
+    "size": 0,
+    "url": "https://api.github.com/repos/anthropics/claude-code-playground/contents/claude-code/mods/.claude-plugin?ref=main",
+    "html_url": "https://github.com/anthropics/claude-code-playground/tree/main/claude-code/mods/.claude-plugin",
+    "git_url": "https://api.github.com/repos/anthropics/claude-code-playground/git/trees/ded292d46d06edd05141bddd39faed18ede1c761",
+    "download_url": null,
+    "type": "dir",
+    "_links": {
+      "self": "https://api.github.com/repos/anthropics/claude-code-playground/contents/claude-code/mods/.claude-plugin?ref=main",
+      "git": "https://api.github.com/repos/anthropics/claude-code-playground/git/trees/ded292d46d06edd05141bddd39faed18ede1c761",
+      "html": "https://github.com/anthropics/claude-code-playground/tree/main/claude-code/mods/.claude-plugin"
+    }
+  },
+  {
+    "name": "README.md",
+    "path": "claude-code/mods/README.md",
+    "sha": "101fab15473001c669d6398e6759938bb61a6597",
+    "size": 1449,
+    "url": "https://api.github.com/repos/anthropics/claude-code-playground/contents/claude-code/mods/README.md?ref=main",
+    "html_url": "https://github.com/anthropics/claude-code-playground/blob/main/claude-code/mods/README.md",
+    "git_url": "https://api.github.com/repos/anthropics/claude-code-playground/git/blobs/101fab15473001c669d6398e6759938bb61a6597",
+    "download_url": "https://raw.githubusercontent.com/anthropics/claude-code-playground/main/claude-code/mods/README.md",
+    "type": "file",
+    "_links": {
+      "self": "https://api.github.com/repos/anthropics/claude-code-playground/contents/claude-code/mods/README.md?ref=main",
+      "git": "https://api.github.com/repos/anthropics/claude-code-playground/git/blobs/101fab15473001c669d6398e6759938bb61a6597",
+      "html": "https://github.com/anthropics/claude-code-playground/blob/main/claude-code/mods/README.md"
+    }
+  },
+  {
+    "name": "blast-radius",
+    "path": "claude-code/mods/blast-radius",
+    "sha": "4c442edb4e2e4d8b35ffccbc34499bc34588fa05",
+    "size": 0,
+    "url": "https://api.github.com/repos/anthropics/claude-code-playground/contents/claude-code/mods/blast-radius?ref=main",
+    "html_url": "https://github.com/anthropics/claude-code-playground/tree/main/claude-code/mods/blast-radius",
+    "git_url": "https://api.github.com/repos/anthropics/claude-code-playground/git/trees/4c442edb4e2e4d8b35ffccbc34499bc34588fa05",
+    "download_url": null,
+    "type": "dir",
+    "_links": {
+      "self": "https://api.github.com/repos/anthropics/claude-code-playground/contents/claude-code/mods/blast-radius?ref=main",
+      "git": "https://api.github.com/repos/anthropics/claude-code-playground/git/trees/4c442edb4e2e4d8b35ffccbc34499bc34588fa05",
+      "html": "https://github.com/anthropics/claude-code-playground/tree/main/claude-code/mods/blast-radius"
+    }
+  },
+  {
+    "name": "replay-theater",
+    "path": "claude-code/mods/replay-theater",
+    "sha": "bfa82719a36b6a36f5f8777812283f4629b83472",
+    "size": 0,
+    "url": "https://api.github.com/repos/anthropics/claude-code-playground/contents/claude-code/mods/replay-theater?ref=main",
+    "html_url": "https://github.com/anthropics/claude-code-playground/tree/main/claude-code/mods/replay-theater",
+    "git_url": "https://api.github.com/repos/anthropics/claude-code-playground/git/trees/bfa82719a36b6a36f5f8777812283f4629b83472",
+    "download_url": null,
+    "type": "dir",
+    "_links": {
+      "self": "https://api.github.com/repos/anthropics/claude-code-playground/contents/claude-code/mods/replay-theater?ref=main",
+      "git": "https://api.github.com/repos/anthropics/claude-code-playground/git/trees/bfa82719a36b6a36f5f8777812283f4629b83472",
+      "html": "https://github.com/anthropics/claude-code-playground/tree/main/claude-code/mods/replay-theater"
+    }
+  },
+  {
+    "name": "token-weather",
+    "path": "claude-code/mods/token-weather",
+    "sha": "b0e296a34197d6069fd91bf3d1a3ea1ed6f573df",
+    "size": 0,
+    "url": "https://api.github.com/repos/anthropics/claude-code-playground/contents/claude-code/mods/token-weather?ref=main",
+    "html_url": "https://github.com/anthropics/claude-code-playground/tree/main/claude-code/mods/token-weather",
+    "git_url": "https://api.github.com/repos/anthropics/claude-code-playground/git/trees/b0e296a34197d6069fd91bf3d1a3ea1ed6f573df",
+    "download_url": null,
+    "type": "dir",
+    "_links": {
+      "self": "https://api.github.com/repos/anthropics/claude-code-playground/contents/claude-code/mods/token-weather?ref=main",
+      "git": "https://api.github.com/repos/anthropics/claude-code-playground/git/trees/b0e296a34197d6069fd91bf3d1a3ea1ed6f573df",
+      "html": "https://github.com/anthropics/claude-code-playground/tree/main/claude-code/mods/token-weather"
+    }
+  }
+]

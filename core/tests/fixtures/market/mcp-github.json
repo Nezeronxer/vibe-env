@@ -1,0 +1,159 @@
+{
+ "servers": [
+  {
+   "server": {
+    "$schema": "https://static.modelcontextprotocol.io/schemas/2025-09-29/server.schema.json",
+    "_meta": {
+     "io.modelcontextprotocol.registry/publisher-provided": {
+      "github": {
+       "defaultBranch": "main",
+       "displayName": "Markitdown",
+       "isInOrganization": true,
+       "legacyId": "976a2f68e16c4e2b97097133487f8c14",
+       "license": "MIT License",
+       "name": "markitdown",
+       "nameWithOwner": "microsoft/markitdown",
+       "opengraphImageUrl": "https://opengraph.githubassets.com/8344f82c62b90584e7203412c8580a8e0167dc75e195bb26043240e36442fd47/microsoft/markitdown",
+       "ownerAvatarUrl": "https://avatars.githubusercontent.com/u/6154722?v=4",
+       "preferredImage": "https://avatars.githubusercontent.com/u/6154722?v=4",
+       "primaryLanguage": "Python",
+       "primaryLanguageColor": "#3572A5",
+       "publicId": "976a2f68-e16c-4e2b-9709-7133487f8c14",
+       "pushedAt": "2026-10-22T22:31:47Z",
+       "readme": "# readme (cut for the fixture)",
+       "readmeUpdatedAt": "2025-09-09T10:55:23Z",
+       "readmeVersion": "1.0.0",
+       "stargazerCount": 191659,
+       "topics": [
+        "langchain",
+        "openai",
+        "autogen-extension",
+        "autogen",
+        "markdown",
+        "microsoft-office",
+        "pdf"
+       ],
+       "usesCustomOpenGraphImage": false
+      }
+     }
+    },
+    "description": "Convert various file formats (PDF, Word, Excel, images, audio) to Markdown.",
+    "name": "microsoft/markitdown",
+    "packages": [
+     {
+      "identifier": "markitdown-mcp",
+      "registryType": "pypi",
+      "runtimeHint": "uvx",
+      "transport": {
+       "type": "stdio"
+      },
+      "version": "0.0.1a4"
+     }
+    ],
+    "repository": {
+     "id": "888092115",
+     "source": "github",
+     "url": "https://github.com/microsoft/markitdown"
+    },
+    "version": "1.0.0"
+   },
+   "_meta": {
+    "io.modelcontextprotocol.registry/official": {
+     "isLatest": true,
+     "publishedAt": "2025-09-09T17:55:23Z",
+     "status": "active",
+     "updatedAt": "2026-01-21T09:35:10Z"
+    }
+   }
+  },
+  {
+   "server": {
+    "$schema": "https://static.modelcontextprotocol.io/schemas/2025-09-29/server.schema.json",
+    "_meta": {
+     "io.modelcontextprotocol.registry/publisher-provided": {
+      "github": {
+       "defaultBranch": "master",
+       "displayName": "Netdata",
+       "homepageUrl": "https://www.netdata.cloud",
+       "isInOrganization": true,
+       "legacyId": "8a9105cbeb2d429190d00f520a78ff87",
+       "license": "GNU General Public License v3.0",
+       "name": "netdata",
+       "nameWithOwner": "netdata/netdata",
+       "opengraphImageUrl": "https://repository-images.githubusercontent.com/10744183/8d08ea53-6359-45fe-bc4d-067cfe1673a1",
+       "ownerAvatarUrl": "https://avatars.githubusercontent.com/u/43390781?v=4",
+       "preferredImage": "https://avatars.githubusercontent.com/u/43390781?v=4",
+       "primaryLanguage": "Go",
+       "primaryLanguageColor": "#00ADD8",
+       "publicId": "8a9105cb-eb2d-4291-90d0-0f520a78ff87",
+       "pushedAt": "2026-10-22T19:50:51Z",
+       "readme": "# readme (cut for the fixture)",
+       "readmeUpdatedAt": "2026-10-08T16:52:54Z",
+       "readmeVersion": "2.12.1",
+       "stargazerCount": 81093,
+       "topics": [
+        "monitoring",
+        "docker",
+        "kubernetes",
+        "cncf",
+        "prometheus",
+        "netdata",
+        "devops",
+        "observability",
+        "alerting",
+        "influxdb"
+       ],
+       "usesCustomOpenGraphImage": true
+      }
+     }
+    },
+    "description": "Real-time infrastructure monitoring with metrics, logs, alerts, and ML-based anomaly detection.",
+    "name": "io.github.netdata/mcp-server",
+    "remotes": [
+     {
+      "headers": [
+       {
+        "description": "Netdata Cloud API token with scope:mcp",
+        "isRequired": true,
+        "isSecret": true,
+        "value": "Bearer {NETDATA_CLOUD_API_TOKEN}",
+        "variables": {
+         "NETDATA_CLOUD_API_TOKEN": {
+          "description": "Netdata Cloud API token (create at app.netdata.cloud > User Settings > API Tokens with scope:mcp)",
+          "isSecret": true
+         }
+        },
+        "name": "Authorization"
+       }
+      ],
+      "type": "streamable-http",
+      "url": "https://app.netdata.cloud/api/v1/mcp"
+     }
+    ],
+    "repository": {
+     "source": "github",
+     "subfolder": "docs/netdata-ai/mcp",
+     "url": "https://github.com/netdata/netdata"
+    },
+    "title": "Netdata",
+    "version": "2.12.1",
+    "websiteUrl": "https://www.netdata.cloud"
+   },
+   "_meta": {
+    "io.modelcontextprotocol.registry/official": {
+     "isLatest": true,
+     "publishedAt": "2026-10-08T16:52:54Z",
+     "status": "active",
+     "updatedAt": "2026-10-22T23:35:11Z"
+    }
+   }
+  }
+ ],
+ "metadata": {
+  "count": 2,
+  "nextCursor": "mcp.cursor.eyJ2IjoxLCJraW5kIjoic2VydmVyIiwic2VydmVyIjp7InN0YXJzIjo4MTA5MywibmFtZSI6ImlvLmdpdGh1Yi5uZXRkYXRhL21jcC1zZXJ2ZXIiLCJ1dWlkIjoiOGE5MTA1Y2JlYjJkNDI5MTkwZDAwZjUyMGE3OGZmODciLCJ2aXNpYmlsaXR5IjoicHVibGljIn19",
+  "per_page": 2,
+  "total": 632,
+  "total_pages": 316
+ }
+}

@@ -1,0 +1,1 @@
+{ "name": "clawd-run", "version": "0.1.0", "description": "Мультик вместо спиннера: Clawd бежит по шагам из домика, субагенты за ним; /clawd - что он сделал", "types": "./types/index.d.ts" }

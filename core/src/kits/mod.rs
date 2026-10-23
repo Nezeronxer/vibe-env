@@ -15,6 +15,7 @@ mod toml_lite;
 mod units;
 
 pub(crate) use scrub::is_secret_file;
+pub(crate) use source::{read_tree, safe_rel, scratch_dir, sha256_hex, with_clone};
 pub use secrets::{env_name_allowed, env_value_ok, SecretSaved, SecretStore, SystemKeyring};
 pub use snap::SnapshotState;
 
@@ -43,10 +44,12 @@ pub enum Group {
     Mcp,
     Agents,
     Settings,
+    /// Claude Code mods (`~/.claude/mods/<name>/`): code that runs inside the CLI, always held.
+    Mods,
 }
 
 impl Group {
-    pub const ALL: [Group; 6] = [Group::Skills, Group::Rules, Group::Hooks, Group::Mcp, Group::Agents, Group::Settings];
+    pub const ALL: [Group; 7] = [Group::Skills, Group::Rules, Group::Hooks, Group::Mcp, Group::Agents, Group::Settings, Group::Mods];
 }
 
 /// "For all projects" (the environment folder in the home) or "only this project".
@@ -156,6 +159,8 @@ pub enum HeldKind {
     ScriptedSkill,
     /// A setting that runs a program (status line, helper, notify…).
     Command,
+    /// A Claude Code mod: "мод исполняет код на твоём компьютере".
+    Mod,
 }
 
 #[derive(Serialize, Clone, Debug, PartialEq)]
@@ -948,6 +953,28 @@ impl Kits {
                 target_env_name: l.name.into(),
             });
         }
+        self.plan(l, env, &src, scope, Arc::new(kit))
+    }
+
+    /// The same plan for a kit put together in memory (an item of the catalog, `core::market`): the files are checked
+    /// like a loaded kit's, `install` takes it by the plan id, and the snapshot keeps it for held items.
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn preview_built(&self, env: &str, name: &str, src: KitSource, commit: Option<String>, scope: &Scope, files: BTreeMap<String, Vec<u8>>, env_vars: Vec<EnvVarNeed>) -> Result<ImportPlan, KitError> {
+        let l = self.layout(env)?;
+        self.check_scope(scope)?;
+        for p in files.keys() {
+            if source::safe_rel(p)? != *p || p == "kit.json" {
+                return Err(KitError::UnsafePath(p.clone()));
+            }
+        }
+        let manifest = Manifest {
+            name: name.chars().filter(|c| !c.is_control()).take(100).collect(),
+            env: env.into(),
+            files: files.iter().map(|(p, b)| ManifestFile { path: p.clone(), sha256: source::sha256_hex(b), size: b.len() as u64 }).collect(),
+            env_vars: env_vars.into_iter().filter(|v| env_name_allowed(&v.name)).collect(),
+        };
+        let mut kit = LoadedKit { manifest, files, commit, sha: String::new() };
+        kit.sha = source::sha256_hex(&kit_json_bytes(&kit));
         self.plan(l, env, &src, scope, Arc::new(kit))
     }
 

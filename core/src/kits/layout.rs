@@ -29,6 +29,10 @@ pub(crate) struct McpFile {
 /// Name of the MCP file inside a kit.
 pub(crate) const KIT_MCP: &str = ".mcp.json";
 
+/// Kit folder of skills from a catalog for an environment whose own skills group is not confirmed for kits, but whose
+/// skills folder is documented (`Layout::catalog_skills`): `catalog-skills/<name>/…`.
+pub(crate) const KIT_CATALOG_SKILLS: &str = "catalog-skills";
+
 #[derive(Debug)]
 pub(crate) struct Layout {
     pub id: &'static str,
@@ -61,9 +65,14 @@ pub(crate) struct Layout {
     /// other key may move the provider, its address or its key, or run something, and is held like a hook.
     pub safe_settings: &'static [&'static str],
     pub unverified: &'static [Group],
+    /// Mods folder (Claude Code only), relative to `home_dir` / `project_dir`.
+    pub mods: Option<&'static str>,
+    /// Where a skill from a catalog goes when `skills` is not confirmed: (global, relative to the home; project,
+    /// relative to the project root). research-catalogs §1.4 [док]. Inventory and export never look there.
+    pub catalog_skills: Option<(&'static str, &'static str)>,
 }
 
-const ALL: &[Group] = &[Group::Skills, Group::Rules, Group::Hooks, Group::Mcp, Group::Agents, Group::Settings];
+const ALL: &[Group] = &[Group::Skills, Group::Rules, Group::Hooks, Group::Mcp, Group::Agents, Group::Settings, Group::Mods];
 
 pub(crate) static LAYOUTS: &[Layout] = &[
     Layout {
@@ -87,6 +96,8 @@ pub(crate) static LAYOUTS: &[Layout] = &[
         settings: true,
         safe_settings: &["model", "theme", "outputStyle", "alwaysThinkingEnabled", "includeCoAuthoredBy", "cleanupPeriodDays", "spinnerTipsEnabled"],
         unverified: &[],
+        mods: Some("mods"),
+        catalog_skills: None,
     },
     Layout {
         id: "codex",
@@ -107,6 +118,8 @@ pub(crate) static LAYOUTS: &[Layout] = &[
         settings: true,
         safe_settings: &["model", "model_reasoning_effort", "model_reasoning_summary", "model_verbosity", "hide_agent_reasoning", "show_raw_agent_reasoning", "tui"],
         unverified: &[Group::Skills, Group::Agents],
+        mods: None,
+        catalog_skills: Some((".agents/skills", ".agents/skills")),
     },
     Layout {
         id: "gemini",
@@ -127,6 +140,8 @@ pub(crate) static LAYOUTS: &[Layout] = &[
         settings: true,
         safe_settings: &["theme", "ui"],
         unverified: &[Group::Skills],
+        mods: None,
+        catalog_skills: Some((".gemini/skills", ".gemini/skills")),
     },
     Layout {
         id: "opencode",
@@ -148,6 +163,8 @@ pub(crate) static LAYOUTS: &[Layout] = &[
         settings: true,
         safe_settings: &["$schema", "theme", "model", "small_model", "keybinds", "tui", "username"],
         unverified: &[],
+        mods: None,
+        catalog_skills: None,
     },
     Layout {
         id: "cursor",
@@ -168,6 +185,8 @@ pub(crate) static LAYOUTS: &[Layout] = &[
         settings: false,
         safe_settings: &[],
         unverified: ALL,
+        mods: None,
+        catalog_skills: None,
     },
     Layout {
         id: "qwen",
@@ -188,6 +207,8 @@ pub(crate) static LAYOUTS: &[Layout] = &[
         settings: true,
         safe_settings: &["theme", "ui"],
         unverified: &[Group::Skills],
+        mods: None,
+        catalog_skills: None,
     },
 ];
 
@@ -205,6 +226,7 @@ impl Layout {
                 Group::Mcp => self.mcp_key.is_some(),
                 Group::Agents => self.agents.is_some(),
                 Group::Settings => self.settings && self.config.is_some(),
+                Group::Mods => self.mods.is_some(),
             }
     }
 
@@ -216,6 +238,9 @@ impl Layout {
                 return m.project.to_string();
             }
         }
+        if let Some((rest, (_, p))) = self.catalog_rel(rel) {
+            return format!("{p}/{rest}");
+        }
         let at_root = (self.rules_at_project_root && self.rules.contains(&rel))
             || (self.config_at_project_root && self.config.is_some_and(|(c, _)| c == rel));
         if at_root {
@@ -223,5 +248,10 @@ impl Layout {
         } else {
             format!("{}/{}", self.project_dir, rel)
         }
+    }
+
+    /// `catalog-skills/<rest>` of a kit and the folders it maps to, for an environment that has them.
+    pub fn catalog_rel<'a>(&self, rel: &'a str) -> Option<(&'a str, (&'static str, &'static str))> {
+        Some((rel.strip_prefix(KIT_CATALOG_SKILLS)?.strip_prefix('/')?, self.catalog_skills?))
     }
 }

@@ -1,0 +1,54 @@
+{
+ "name": "claude-community",
+ "owner": {
+  "name": "Anthropic"
+ },
+ "renames": {
+  "qodo-skills": "qodo",
+  "wordpress-com": "build-with-wordpress",
+  "auth0-sdks": "auth0",
+  "twilio": "twilio-developer-kit"
+ },
+ "plugins": [
+  {
+   "name": "0x",
+   "description": "Guide developers through swapping ERC-20 tokens using the 0x API. Covers standard swaps via AllowanceHolder and Permit2 as well as gasless swaps across 20+ EVM chains — walking through price quotes, approvals, EIP-712 signing, and transaction submission. Also helps integrate 0x swaps directly into your app with code samples.",
+   "source": {
+    "source": "url",
+    "url": "https://github.com/0xProject/0x-ai.git",
+    "sha": "0167bbb411cc972b966127d23c23de801061fa99"
+   },
+   "homepage": "https://github.com/0xProject/0x-ai"
+  },
+  {
+   "name": "10x-shopping",
+   "description": "An AI-powered shopping assistant that connects Claude to Shopify's global product catalog. Browse products, manage carts, and complete purchases through natural conversation",
+   "source": {
+    "source": "url",
+    "url": "https://github.com/qressy/10x-claude-plugin.git",
+    "sha": "5cd3d90ec0cfa99773dd2c075e492bd280b3826a"
+   },
+   "homepage": "https://www.10xgeo.com/"
+  },
+  {
+   "name": "10x-team",
+   "description": "10x-Team gives you an entire engineering team as Claude Code skills. 12 specialized roles — CTO, Product Manager, Principal Architect,\nStaff Engineer, Engineering Manager, Senior Engineer, SDE, DBA, Security Engineer, QA Engineer, DevOps Engineer, and SRE — each with\nstructured decision processes and opinionated guidance.\n\nKey features:\n\n- 12 individual role skills (/cto, /architect, /sde, /security-engineer, etc.) for targeted expertise\n- 1 orchestrator skill (/10x-team) that runs all 12 roles end-to-end with hard gates at every phase\n- File-based project state (.10x/) so roles share decisions and track progress across conversations\n- Discovery protocol that reverse-engineers existing codebases before making changes\n- Every role follows a structured process — no generic advice, only actionable recommendations with trade-offs\n- Brainstorm-first approach — the orchestrator won't let you write code until the design is validated",
+   "source": {
+    "source": "url",
+    "url": "https://github.com/Jaan-Mustafa/10x-Team.git",
+    "sha": "ea01f8262495e99a66ca292739b0517314e6914e"
+   },
+   "homepage": "https://github.com/Jaan-Mustafa/10x-Team/blob/main/README.md"
+  },
+  {
+   "name": "16minds",
+   "description": "16-minds summons agents modeled on 16 distinct personality types — each with its own values, thinking patterns, and tone — to debate, review, or advise on any topic. Each personality is written directly into an independent prompt, so outputs carry visibly different voices instead of the averaged answer a single agent tends to produce.\n\nThree commands cover the range:\n  - /mind <type> — a single type's opinion\n  - /pair <a> <b> — a two-type debate (open → rebut → reply / synthesize)\n  - /minds — fan out to all 16 in parallel, then synthesize\n\nThree modes (light / middle / heavy) trade depth for token cost.\n\nThe /minds synthesis follows a fixed 4-section rubric — score distribution, axes of disagreement, easily-overlooked perspectives, and landing-zone candidates with per-candidate \"types likely to agree / fit / risk\" — to keep 16-voice output structured rather than scattershot. The --save flag writes the full execution log to a file for use as article material or decision logs.\n\nBuilt for decisions where a single averaged answer would lose the edges: idea generation, design judgment, code review, and life/career questions.",
+   "source": {
+    "source": "url",
+    "url": "https://github.com/yukurash/16minds-plugin.git",
+    "sha": "00f3bd5f0f6d9d34a6df91e061afa5846f8d4bc6"
+   },
+   "homepage": "https://github.com/yukurash/16minds-plugin"
+  }
+ ]
+}

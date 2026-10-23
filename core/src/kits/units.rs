@@ -2,7 +2,7 @@
 //! one MCP server, one settings key. The same cutting is used for the inventory, the export
 //! and the import plan, so what is counted is what is moved.
 
-use super::layout::{ConfFmt, HookShape, Layout, KIT_MCP};
+use super::layout::{ConfFmt, HookShape, Layout, KIT_CATALOG_SKILLS, KIT_MCP};
 use super::toml_lite::{self as tl, Block};
 use super::{Group, HeldKind, KitError};
 use regex::Regex;
@@ -56,6 +56,8 @@ impl DiskTree<'_> {
         }
         if self.project {
             self.base.join(self.layout.project_rel(rel))
+        } else if let Some((rest, (g, _))) = self.layout.catalog_rel(rel) {
+            self.base.join(g).join(rest)
         } else {
             self.base.join(self.layout.home_dir).join(rel)
         }
@@ -179,7 +181,7 @@ impl Unit {
 }
 
 const SCRIPT_EXT: &[&str] = &[
-    "sh", "bash", "zsh", "fish", "py", "js", "mjs", "cjs", "ts", "mts", "rb", "pl", "php", "ps1", "bat", "cmd", "exe", "lua", "jar", "bin", "so", "dylib",
+    "sh", "bash", "zsh", "fish", "py", "js", "mjs", "cjs", "jsx", "ts", "tsx", "mts", "cts", "rb", "pl", "php", "ps1", "bat", "cmd", "exe", "lua", "jar", "bin", "so", "dylib",
 ];
 
 pub(crate) fn is_script(rel: &str, bytes: Option<&[u8]>) -> bool {
@@ -287,21 +289,41 @@ pub(crate) fn cut(l: &Layout, home: &str, t: &dyn Tree, all_files: Option<&[Stri
             }
         }
     }
+    let mut skill_dirs = vec![];
     if let (true, Some(dir)) = (l.available(Group::Skills), l.skills) {
-        let mut by: BTreeMap<String, Vec<String>> = BTreeMap::new();
-        for f in t.list(dir) {
-            let rest = &f[dir.len() + 1..];
-            let name = rest.split('/').next().unwrap_or(rest).to_string();
-            by.entry(name).or_default().push(f);
-        }
-        for (name, files) in by {
+        skill_dirs.push(dir);
+    }
+    // a catalog skill for an environment whose skills group kits do not take (only inside a kit)
+    if strict && l.catalog_skills.is_some() {
+        skill_dirs.push(KIT_CATALOG_SKILLS);
+    }
+    for dir in skill_dirs {
+        for (name, files) in by_folder(t, dir) {
             let scripts: Vec<String> = files.iter().filter(|f| is_script(f, t.read(f).as_deref())).cloned().collect();
             taken.extend(files.iter().cloned());
+            // a plugin folder (`.claude-plugin/plugin.json`) is code as a whole, whatever its files are called
+            let plugin = files.iter().any(|f| f.ends_with("/.claude-plugin/plugin.json"));
             let mut u = Unit::file(Group::Skills, format!("skill:{name}"), name, files);
-            if !scripts.is_empty() || u.files.iter().any(|f| !scripts.contains(f) && t.read(f).is_some_and(|b| runs_in_markdown(&b))) {
+            if plugin || !scripts.is_empty() || u.files.iter().any(|f| !scripts.contains(f) && t.read(f).is_some_and(|b| runs_in_markdown(&b))) {
                 u.held = Some(HeldKind::ScriptedSkill);
                 u.scripts = scripts;
             }
+            units.push(u);
+        }
+    }
+    if let (true, Some(dir)) = (l.available(Group::Mods), l.mods) {
+        for (name, files) in by_folder(t, dir) {
+            // a mod is a plugin folder; anything else in `mods/` is not one
+            if !files.contains(&format!("{dir}/{name}/.claude-plugin/plugin.json")) {
+                continue;
+            }
+            // `.claude-plugin/types/` is written by Claude Code itself and ignored by git: never moved
+            let files: Vec<String> = files.into_iter().filter(|f| !f.contains("/.claude-plugin/types/")).collect();
+            taken.extend(files.iter().cloned());
+            let scripts: Vec<String> = files.iter().filter(|f| is_script(f, t.read(f).as_deref())).cloned().collect();
+            let mut u = Unit::file(Group::Mods, format!("mod:{name}"), name, files);
+            u.held = Some(HeldKind::Mod);
+            u.scripts = scripts;
             units.push(u);
         }
     }
@@ -375,6 +397,17 @@ pub(crate) fn cut(l: &Layout, home: &str, t: &dyn Tree, all_files: Option<&[Stri
     }
     let loose = all_files.map(|a| a.iter().filter(|f| !taken.contains(*f)).cloned().collect()).unwrap_or_default();
     Ok(Cut { units, loose, notes })
+}
+
+/// Files under `dir`, by their first folder (`skills/<name>/…` → `name`).
+fn by_folder(t: &dyn Tree, dir: &str) -> BTreeMap<String, Vec<String>> {
+    let mut by: BTreeMap<String, Vec<String>> = BTreeMap::new();
+    for f in t.list(dir) {
+        let rest = &f[dir.len() + 1..];
+        let name = rest.split('/').next().unwrap_or(rest).to_string();
+        by.entry(name).or_default().push(f);
+    }
+    by
 }
 
 fn scripts_of(l: &Layout, home: &str, cmds: &[String], exists: &dyn Fn(&str) -> bool) -> Vec<String> {

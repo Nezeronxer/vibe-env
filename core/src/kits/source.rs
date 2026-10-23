@@ -282,6 +282,25 @@ fn git_limited(dir: &Path, args: &[&str], watch: &Path, err_file: &Path, out_fil
 }
 
 fn load_repo(url: &str, scratch: &Path) -> Result<LoadedKit, KitError> {
+    with_clone(url, scratch, load_dir)
+}
+
+/// Every file of a folder with the kit limits (no symlinks, sizes, count), `.git` left out. For the catalog.
+pub(crate) fn read_tree(root: &Path) -> Result<BTreeMap<String, Vec<u8>>, KitError> {
+    let md = std::fs::symlink_metadata(root).map_err(|_| KitError::NotFound(root.display().to_string()))?;
+    if md.file_type().is_symlink() {
+        return Err(KitError::Symlink(root.display().to_string()));
+    }
+    if !md.is_dir() {
+        return Err(KitError::NotFound(root.display().to_string()));
+    }
+    let mut all = vec![];
+    walk(root, root, 0, &mut all, &mut 0)?;
+    all.into_iter().map(|(rel, _)| Ok((safe_rel(&rel)?, std::fs::read(root.join(&rel)).map_err(io)?))).collect()
+}
+
+/// Clone `url` with the kit limits into a temp folder, hand the checkout and its commit to `f`, remove the folder.
+pub(crate) fn with_clone<T>(url: &str, scratch: &Path, f: impl FnOnce(&Path, Option<String>) -> Result<T, KitError>) -> Result<T, KitError> {
     let src = clone_url(url)?;
     let tmp = scratch.join(format!("nightshift-kit-{}", uuid::Uuid::new_v4()));
     std::fs::create_dir_all(&tmp).map_err(io)?;
@@ -332,7 +351,7 @@ fn load_repo(url: &str, scratch: &Path) -> Result<LoadedKit, KitError> {
             .ok()
             .filter(|o| o.status.success())
             .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string());
-        load_dir(&dest, commit)
+        f(&dest, commit)
     })();
     let _ = std::fs::remove_dir_all(&tmp);
     res
