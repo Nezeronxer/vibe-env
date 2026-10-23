@@ -218,6 +218,8 @@
   });
   const kindDef = (kind) => NS.registry.points('paneKind').find((d) => d.kind === kind) || null;
   function paneTitle(p) { const d = kindDef(p.kind); return d && d.title ? d.title(p) : d ? t(d.labelKey) : p.kind; }
+  // a chat whose tasks were all cancelled or undone: a stamped, neutral dot instead of a green "done"
+  const stamped = (p, kind) => { const tk = kind === 'done' && p.kind === 'agent' && p.chat !== 'new' ? NS.store.chatTasks(p.chat) : []; return tk.length > 0 && tk.every((x) => x.status === 'cancelled' || x.status === 'reverted'); };
   const stateOf = (p) => (p.kind !== 'agent' || p.chat === 'new' ? 'talk' : L.chatState(NS.store.chatTasks(p.chat)).kind);
   const short = (s) => (s.length > TITLE_MAX ? s.slice(0, TITLE_MAX - 1) + '…' : s);
 
@@ -312,7 +314,7 @@
       h('span', { class: 'tab-ic' + (p.kind === 'term' ? ' is-term' : '') }, p.kind === 'term' ? h('span', { class: 't-glyph', 'aria-hidden': 'true', text: '>_' }) : p.env ? envIcon(env && env.custom ? 'custom' : p.env) : ic('i-dash')),
       h('span', { class: 'tab-t' }, h('span', { class: 'tab-l', text: short(title) })),
       n > 1 ? h('small', { class: 'tab-n', text: String(n), title: n + ' · ' + t('tabs.label') }) : null,
-      h('i', { class: 'tdot ' + kind, 'aria-hidden': 'true' }), h('span', { class: 'sr-only', text: t(word) }),
+      h('i', { class: 'tdot ' + kind + (stamped(p, kind) ? ' stamp' : ''), 'aria-hidden': 'true' }), h('span', { class: 'sr-only', text: t(word) }),
       h('button', { type: 'button', class: 'tab-x', 'aria-label': t('tabs.close'), text: '×', onclick: (e) => { e.stopPropagation(); closeTab(tb.id); } }));
       return el;
     }

@@ -101,3 +101,4 @@ dialog.wide .act-log { max-height: 60vh; margin-bottom: 14px; border: 1px solid 
 .pane-lamp { width: 10px; height: 10px; box-shadow: 0 0 0 2px color-mix(in srgb, var(--onair) 28%, transparent), 0 0 11px 2px var(--glow-onair); }
 .pane-lamp.calling { box-shadow: 0 0 0 2px color-mix(in srgb, var(--human) 30%, transparent), 0 0 11px 2px color-mix(in srgb, var(--human) 60%, transparent); }
 @keyframes lamp-breathe { 50% { filter: brightness(.8); } }
+.tab .tdot.stamp { background: transparent; box-shadow: none; border: 1.5px dashed var(--ink3); width: 8px; height: 8px; box-sizing: border-box; }
