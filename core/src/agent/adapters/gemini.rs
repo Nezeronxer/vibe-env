@@ -79,7 +79,7 @@ impl Adapter for Gemini {
         let mut c = Command::new(find_bin(&self.bin).unwrap_or_else(|| self.bin.clone().into()));
         let mode = if run.is_read_only() { "plan" } else { "yolo" };
         c.current_dir(&run.cwd).args(["--output-format", "stream-json"]).arg(format!("--approval-mode={mode}"));
-        if let Some(m) = &run.model {
+        if let Some(m) = cli_model(run) {
             c.args(["-m", m]);
         }
         c.envs(run.extra_env.iter().map(|(k, v)| (k, v)));

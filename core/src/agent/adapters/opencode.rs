@@ -86,7 +86,7 @@ impl Adapter for OpenCode {
         c.current_dir(&run.cwd).args(["run", "--format", "json", "--print-logs", "--log-level", "ERROR", "--dir"]).arg(&run.cwd);
         // No read-only flag here (`--agent plan` is unverified): the engine runs read-only roles in a throwaway copy.
         c.arg("--auto");
-        if let Some(m) = &run.model {
+        if let Some(m) = cli_model(run) {
             c.args(["-m", m]);
         }
         c.envs(run.extra_env.iter().map(|(k, v)| (k, v)));

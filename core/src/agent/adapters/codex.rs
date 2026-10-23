@@ -117,7 +117,7 @@ impl Adapter for Codex {
         // writes only inside the working copy; the reviewer cannot write at all
         let sandbox = if run.is_read_only() { "read-only" } else { "workspace-write" };
         c.current_dir(&run.cwd).args(["exec", "--json", "--skip-git-repo-check", "--sandbox", sandbox]);
-        if let Some(m) = &run.model {
+        if let Some(m) = cli_model(run) {
             c.args(["-m", m]);
         }
         if let Some(schema) = run.json_schema.as_deref() {

@@ -52,7 +52,7 @@ impl Adapter for Cursor {
         } else {
             c.arg("--force");
         }
-        if let Some(m) = &run.model {
+        if let Some(m) = cli_model(run) {
             c.args(["--model", m]);
         }
         c.envs(run.extra_env.iter().map(|(k, v)| (k, v)));

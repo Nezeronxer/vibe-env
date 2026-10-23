@@ -120,7 +120,7 @@ impl Adapter for Claude {
         c.current_dir(&run.cwd).args(["-p", "--output-format", "stream-json", "--verbose", "--include-partial-messages"]);
         let mode = if run.is_read_only() { "plan" } else { "bypassPermissions" };
         c.args(["--permission-mode", mode, "--settings", &settings_json(supports_wildcard_domain(&self.bin))]);
-        if let Some(m) = &run.model {
+        if let Some(m) = cli_model(run) {
             c.args(["--model", m]);
         }
         if let Some(s) = &run.json_schema {

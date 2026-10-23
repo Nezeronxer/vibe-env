@@ -34,7 +34,7 @@ impl Pty {
     /// At quit: the folders and text go to `file`, the processes end (story 253, 303).
     pub fn save_and_end(&self, file: &Path) {
         if let Ok(text) = serde_json::to_string(&self.terms.snapshot()) {
-            let _ = std::fs::write(file, text);
+            let _ = write_private(file, text.as_bytes());
         }
         for t in self.terms.list() {
             let _ = self.terms.close(&t.id);
@@ -42,9 +42,25 @@ impl Pty {
     }
 }
 
-/// What the last run left (empty when nothing or unreadable).
+/// Terminal output can hold anything typed or printed: only the owner reads the file (0600, like kit secrets).
+/// The old file is removed first, since the mode applies only to a file being created.
+fn write_private(file: &Path, bytes: &[u8]) -> std::io::Result<()> {
+    use std::io::Write;
+    #[cfg(unix)]
+    use std::os::unix::fs::OpenOptionsExt;
+    let _ = std::fs::remove_file(file);
+    let mut o = std::fs::OpenOptions::new();
+    o.write(true).create_new(true);
+    #[cfg(unix)]
+    o.mode(0o600);
+    o.open(file)?.write_all(bytes)
+}
+
+/// What the last run left (empty when nothing or unreadable); the file is removed once read, so the text does not stay on disk.
 pub fn load_saved(file: &Path) -> Vec<TermSaved> {
-    std::fs::read_to_string(file).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default()
+    let text = std::fs::read_to_string(file).ok();
+    let _ = std::fs::remove_file(file);
+    text.and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default()
 }
 
 fn send(app: &AppHandle, ch: &Channel<InvokeResponseBody>, id: &str, c: TermChunk) {
@@ -124,4 +140,23 @@ pub async fn term_ack(p: State<'_, Pty>, id: String, bytes: usize) -> Res<()> {
 #[tauri::command]
 pub async fn term_list(p: State<'_, Pty>) -> Res<Vec<TermInfo>> {
     Ok(p.terms.list())
+}
+
+#[cfg(all(test, unix))]
+mod tests {
+    use super::*;
+    use std::os::unix::fs::PermissionsExt;
+
+    /// Audit v4: the snapshot holds terminal output, so only the owner reads it, and it does not outlive the start.
+    #[test]
+    fn the_terminal_snapshot_is_private_and_gone_after_the_start() {
+        let t = crate::testkit::Scratch::new("terms");
+        let f = t.0.join("terms.json");
+        std::fs::write(&f, "[]").unwrap();
+        std::fs::set_permissions(&f, std::fs::Permissions::from_mode(0o644)).unwrap();
+        Pty::default().save_and_end(&f);
+        assert_eq!(std::fs::metadata(&f).unwrap().permissions().mode() & 0o777, 0o600);
+        assert!(load_saved(&f).is_empty());
+        assert!(!f.exists(), "loaded at start, then removed");
+    }
 }

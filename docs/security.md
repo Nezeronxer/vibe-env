@@ -1,8 +1,7 @@
 # Security map
 
 This is the map of trust boundaries that the pre-publication security audit works through. It states
-what the design intends and where to look. **It is not an audit result.** The audit has not been run
-yet; its report goes into the last section.
+what the design intends and where to look. The audit results are in the last section.
 
 Reporting a vulnerability: `<SECURITY_CONTACT>` (placeholder, set before publishing).
 
@@ -57,11 +56,36 @@ file with mode 0600 (the app says so). Git copies live in a worktrees folder nex
 
 ## Audit report
 
-<!-- Filled in after the audit. One row per finding: id, area, severity, status
-(fixed / not confirmed / deferred with a reason), how to re-check. -->
+Status: **run.** Last audit: 23.10.2026 (v4). Each audit was a set of independent checkers, and every finding
+was re-checked by a fresh agent before it counted. Threat model: the attacker is the author of a foreign kit or
+catalog item, a models.dev entry, or the contents of a repository an agent works on; the user and the machine
+are trusted.
 
-Status: **not run yet.**
+### v1-v3 (22.10-23.10.2026)
 
 | Id | Area | Finding | Status | Re-check command |
 |---|---|---|---|---|
-| - | - | - | - | - |
+| F1.1 | Kits | kit env variables were filtered by a deny list, so `CLAUDE_ENV_FILE`, `CLAUDE_CODE_SHELL_PREFIX`, `OPENCODE_CONFIG(_CONTENT)`, `CODE_ASSIST_ENDPOINT` passed | fixed: allow list of secret-like names only (`*_API_KEY`, `*_KEY`, `*_TOKEN`, `*_SECRET`, `*_PASSWORD`) | `cargo test -p nightshift-core --test kits` |
+| F1.2 | Kits | kit settings that change a provider address or auth (opencode `baseURL`/`apiKey`, Codex `model_provider`, `[model_providers.*]`, `*_base_url`, `profiles`) were written silently | fixed: per-env allow list of safe top-level keys, the rest is held until ticked | `cargo test -p nightshift-core --test kits` |
+| F1.3 | Kits | skills and subagents with `hooks`/`mcpServers`/`permissionMode`/`allowed-tools`/`tools` in frontmatter or a `` !`cmd` `` line installed without a tick | fixed: held as `ScriptedSkill` and shown whole | `cargo test -p nightshift-core --test kits` |
+| F1.4 | Rights and boundaries | `Settings.protected_paths` was never read: an agent-made `.env` or key could be committed, merged and pushed | fixed: protected paths unstaged after `git add -A`, checked over `base..HEAD` before merge, push and PR; Claude gets `Read(~/.ssh/**)` deny | `cargo test -p nightshift-core --test git --test engine_e2e` |
+| F2.1 | Secrets | a `.env` symlink in the task copy was not read, so its values were not scrubbed from the feed and log | fixed: symlinked files read through `metadata` | `cargo test -p nightshift-core --test adapters` |
+| F2.2 | Secrets | the feed cut 20 lines / 120 characters before scrubbing, so a multi-line secret (PEM) leaked in part | fixed: scrub first, then cut | `cargo test -p nightshift-core --test adapters` |
+| F2.3 | Secrets | `.env` search went depth-first and one deep folder used up the limit, so `server/.env` was not read | fixed: breadth-first search | `cargo test -p nightshift-core --test adapters` |
+| R1 | Command injection | branch name from `origin/HEAD` used as a git option | not confirmed: never reaches a dangerous call | - |
+| R2 | Command injection | `session_id` passed to `--resume` unchecked | not confirmed: the attacker does not control it (and it is checked by format) | - |
+| D1 | Dependencies | `glib` 0.18.5 (GHSA-wrw7-89jp-8q8g, medium) through the Tauri GTK stack (Linux) | deferred: the app passes it no attacker data; updates with Tauri | `cargo audit` |
+
+gitleaks for v1-v3: no record of a run is kept in the repository or the task notes; v4 below covers the whole history.
+
+### v4 (23.10.2026): terminals, catalogs, CLI updates, publishing
+
+| Id | Area | Finding | Status | Re-check command |
+|---|---|---|---|---|
+| F4.1 | Command injection | model ids from models.dev were not checked: an id like `--yolo` became a family and then the `-m` value of Qwen/Gemini, read as a flag (medium) | fixed: catalog ids must pass `is_model_id`; every adapter passes `-m`/`--model` only for a valid id | `cargo test -p nightshift-core --test updates --test adapters` |
+| F4.2 | Kits | a catalog skill hid `hooks`/`allowed-tools` with YAML quoting or escapes (`"hoo\x6bs":`) and installed without a tick (medium) | fixed, closed by default: a top-level frontmatter key that is not a plain identifier (quotes, `\`, `?`, `&`, `*`, `!`, `{`) holds the skill; keys compared case-blind with `-`/`_` ignored | `cargo test -p nightshift-core --test kits` |
+| F4.3 | Secrets | `terms.json` kept up to 2 MB of terminal output per session, mode 0644, never removed (low) | fixed: written 0600, removed right after it is loaded at start | `cargo test -p nightshift-app` |
+| F4.4 | Rights and boundaries | 0x1E/0x1F bytes in a commit subject forged history rows, so "Revert" on a forged row reverted a commit the attacker chose (low) | fixed: `log_page` reads NUL-separated records and drops any record that is not 7 fields with a hex sha, hex parents and a numeric time | `cargo test -p nightshift-core --test git_v4` |
+
+No v4 finding was refuted. gitleaks v4 (tree and whole history): only false positives, `api_message_id` in a test
+fixture and the minified xterm bundle.

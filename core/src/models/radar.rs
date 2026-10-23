@@ -33,6 +33,8 @@ pub fn chat_models(api: &Value, provider: &str) -> Vec<(String, String)> {
                 && m["modalities"]["output"] == serde_json::json!(["text"])
                 && m["status"] != "deprecated"
                 && !not_a_model().is_match(id)
+                // untrusted catalog: an id like `--yolo` would later be read as a CLI flag
+                && crate::agent::adapters::common::is_model_id(id)
         })
         .map(|(id, m)| (id.clone(), m["name"].as_str().unwrap_or(id).to_string()))
         .collect()

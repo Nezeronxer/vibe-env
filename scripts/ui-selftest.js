@@ -42,7 +42,7 @@ check('corners: pane, task card, input field, cards and the bar are rounded (bor
 process.stdout.write('\n' + out4.join('\n') + '\n');
 if (out4.some((l) => l.startsWith('FAIL'))) process.exitCode = 1;
 
-// the drawn window (dev-mock): ≤ 14 visible buttons in the main view outside the feed, computed corners > 0 - needs playwright-core
+// the drawn window (dev-mock): ≤ 14 visible buttons in the main view outside the feed and Clawd, computed corners > 0 - needs playwright-core
 // (NS_PLAYWRIGHT=<path to playwright-core>, NS_CHROME=<executable>); without it the check is skipped, not passed
 if (process.env.NS_PLAYWRIGHT) (async () => {
   const http = require('http');
@@ -54,7 +54,7 @@ if (process.env.NS_PLAYWRIGHT) (async () => {
   await p.waitForTimeout(1200);
   const r = await p.evaluate(() => {
     const vis = (el) => { const s = getComputedStyle(el), b = el.getBoundingClientRect(); return b.width > 0 && b.height > 0 && s.visibility !== 'hidden' && +s.opacity > 0; };
-    const buttons = [...document.querySelectorAll('button, [role=button]')].filter((x) => !x.closest('.cfeed') && vis(x));
+    const buttons = [...document.querySelectorAll('button, [role=button]')].filter((x) => !x.closest('.cfeed, .clawd') && vis(x)); // Clawd is a character in the tab corner, not a control
     const rad = (sel) => { const el = document.querySelector(sel); return el ? parseFloat(getComputedStyle(el).borderTopLeftRadius) : -1; };
     return { buttons: buttons.length, names: buttons.map((x) => x.getAttribute('aria-label') || x.textContent.trim()).slice(0, 20), pane: rad('.pane'), card: rad('.tcard'), field: rad('.composer'), bar: rad('.bar') };
   });

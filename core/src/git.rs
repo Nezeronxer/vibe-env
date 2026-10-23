@@ -762,15 +762,20 @@ pub fn log_page(path: &Path, skip: usize, limit: usize) -> Result<Vec<CommitRow>
         "--decorate-refs=refs/heads",
         "--decorate-refs=refs/tags",
         "--decorate-refs=refs/remotes",
-        "--format=%H%x1f%P%x1f%an%x1f%at%x1f%s%x1f%D%x1f%(trailers:key=Nightshift-Task,valueonly,separator=%x2C)%x1e",
+        // NUL between fields and records (`-z`): git refuses NUL in a message, so a subject cannot forge a row
+        "-z",
+        "--format=%H%x00%P%x00%an%x00%at%x00%s%x00%D%x00%(trailers:key=Nightshift-Task,valueonly,separator=%x2C)",
     ];
     args.extend(LOG_ORDER);
     args.extend([skip_arg.as_str(), n_arg.as_str()]);
     let out = ok(path, &args)?;
     let mut rows: Vec<CommitRow> = vec![];
-    for rec in out.split('\x1e').map(|r| r.trim_start_matches('\n')).filter(|r| !r.is_empty()) {
-        let f: Vec<&str> = rec.split('\x1f').collect();
-        let get = |i: usize| f.get(i).copied().unwrap_or("").trim();
+    let tokens: Vec<&str> = out.strip_suffix('\0').unwrap_or(&out).split('\0').collect();
+    for f in tokens.chunks(7) {
+        if !is_log_record(f) {
+            break; // out of step: nothing after it can be trusted
+        }
+        let get = |i: usize| f[i].trim();
         let sha = get(0).to_string();
         let parents: Vec<String> = get(1).split_whitespace().map(str::to_string).collect();
         if rows.len() == limit {
@@ -793,6 +798,12 @@ pub fn log_page(path: &Path, skip: usize, limit: usize) -> Result<Vec<CommitRow>
     }
     cache.lock().unwrap().insert(key, (fp, skip + rows.len(), lanes));
     Ok(rows)
+}
+
+/// A `log_page` record: 7 fields, a 40/64-hex sha, hex parents split by single spaces, a number for the time.
+fn is_log_record(f: &[&str]) -> bool {
+    let hex = |s: &str| matches!(s.len(), 40 | 64) && s.bytes().all(|b| b.is_ascii_hexdigit());
+    f.len() == 7 && hex(f[0]) && (f[1].is_empty() || f[1].split(' ').all(hex)) && !f[3].is_empty() && f[3].bytes().all(|b| b.is_ascii_digit())
 }
 
 /// Undoes `sha` with a new commit on the current branch (`revert` rules: trees only, the working copy is

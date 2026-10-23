@@ -1294,3 +1294,15 @@ fn the_structured_answer_of_our_roles_is_a_log_line_not_an_action() {
     assert_eq!(tools[0].0, "StructuredOutput");
     assert!(tools[0].1.contains("approve"), "{tools:?}");
 }
+
+#[test]
+fn a_model_that_reads_as_a_flag_never_reaches_argv() {
+    let mut r = run(Role::Worker);
+    r.model = Some("--yolo".into());
+    for a in [&Qwen::new() as &dyn Adapter, &Gemini::new(), &Codex::new(), &OpenCode::new(), &Claude::new(), &Cursor::new()] {
+        let v = args(a, &r);
+        assert!(!v.windows(2).any(|p| (p[0] == "-m" || p[0] == "--model") && p[1] == "--yolo"), "{}: {v:?}", a.id());
+    }
+    r.model = Some("qwen3-coder-plus".into());
+    assert_eq!(arg_after(&args(&Qwen::new(), &r), "-m"), "qwen3-coder-plus");
+}

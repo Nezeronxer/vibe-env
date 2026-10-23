@@ -271,3 +271,17 @@ fn live_check_of_the_installed_clis() {
         assert!(!st.cmd.iter().any(|a| a.contains("sudo")));
     }
 }
+
+#[test]
+fn a_models_dev_id_that_reads_as_a_flag_never_becomes_a_family() {
+    let m = serde_json::json!({"tool_call": true, "modalities": {"output": ["text"]}, "name": "x"});
+    let api = serde_json::json!({"alibaba": {"models": {"--yolo": m.clone(), "qwen 4 plus": m.clone(), "qwen4-plus": m}}});
+    let listed = models::radar::chat_models(&api, "alibaba");
+    let mut fams = vec![];
+    for (id, name) in &listed {
+        models::radar::place(&mut fams, id, name, "alibaba", true);
+    }
+    let ids: Vec<_> = fams.iter().flat_map(|f| f.exact.values().cloned().chain([f.id.clone()])).collect();
+    assert!(!ids.iter().any(|i| i == "--yolo" || i.contains(' ')), "{ids:?}");
+    assert!(ids.iter().any(|i| i == "qwen4-plus"), "{ids:?}");
+}

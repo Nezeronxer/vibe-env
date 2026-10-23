@@ -221,7 +221,22 @@ pub(crate) fn runs_in_markdown(b: &[u8]) -> bool {
     let fm = FM.get_or_init(|| {
         Regex::new(r#"(?i)(?:^|[\s{,?])["']?(hooks|mcp_?servers|permission_?mode|permissions?|allowed[-_]?tools|tools)["']?\s*:"#).unwrap()
     });
-    fm.is_match(&rest[..end])
+    let head = &rest[..end];
+    fm.is_match(head) || head.lines().any(top_key_hides_or_runs)
+}
+
+/// A top-level frontmatter line, read without a YAML parser and closed by default: held when its key is not a plain
+/// identifier (quotes, `\`, `?`, anchors, tags, flow `{`) or, compared case-blind with `-`/`_` dropped, is a key that runs.
+fn top_key_hides_or_runs(line: &str) -> bool {
+    static KEY: OnceLock<Regex> = OnceLock::new();
+    let line = line.trim_end();
+    if line.is_empty() || line.starts_with([' ', '\t', '#']) {
+        return false;
+    }
+    let key = KEY.get_or_init(|| Regex::new(r"^([A-Za-z_][A-Za-z0-9_-]*)[ \t]*:(?:[ \t]|$)").unwrap());
+    let Some(c) = key.captures(line) else { return true };
+    let k = c[1].to_ascii_lowercase().replace(['-', '_'], "");
+    ["hooks", "mcpservers", "permissionmode", "permission", "permissions", "allowedtools", "tools"].contains(&k.as_str())
 }
 
 /// Script files a hook command points to, as kit paths (`~/.claude/hooks/x.py` → `hooks/x.py`).

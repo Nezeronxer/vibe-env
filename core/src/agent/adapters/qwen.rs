@@ -51,7 +51,7 @@ impl Adapter for Qwen {
         if !run.is_read_only() {
             c.arg("--yolo");
         }
-        if let Some(m) = &run.model {
+        if let Some(m) = cli_model(run) {
             c.args(["-m", m]);
         }
         c.envs(run.extra_env.iter().map(|(k, v)| (k, v)));

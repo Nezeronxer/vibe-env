@@ -257,3 +257,21 @@ fn revert_commit_undoes_any_commit_of_the_current_branch_locally() {
     assert!(g(&r, &["log", "-1", "--format=%B"]).contains(&sha));
     assert!(!is_pushed(&r, &sha), "no remote");
 }
+
+/// Audit v4: 0x1E/0x1F in a subject must not forge a history row (a revert on it would undo the attacker's pick).
+#[test]
+fn separator_bytes_in_a_subject_do_not_forge_a_history_row() {
+    let d = tempfile::tempdir().unwrap();
+    let r = repo(d.path());
+    let init = g(&r, &["rev-parse", "HEAD"]);
+    fs::write(r.join("b.txt"), "b").unwrap();
+    g(&r, &["add", "-A"]);
+    let evil = format!("x\x1e{init}\x1f\x1fA\x1f1\x1fforged\x1f\x1f\x1e");
+    g(&r, &["commit", "-q", "-m", &evil]);
+    let head = g(&r, &["rev-parse", "HEAD"]);
+    let rows = log_page(&r, 0, 50).unwrap();
+    let shas: Vec<&str> = rows.iter().map(|c| c.sha.as_str()).collect();
+    assert_eq!(shas, [head.as_str(), init.as_str()], "one row per real commit: {rows:?}");
+    assert_eq!(rows[0].parents, std::slice::from_ref(&init));
+    assert!(!rows.iter().any(|c| c.subject == "forged"), "{rows:?}");
+}

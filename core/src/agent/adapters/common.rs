@@ -267,6 +267,11 @@ pub fn is_model_id(s: &str) -> bool {
     !s.is_empty() && !s.starts_with('-') && s.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | ':' | '/' | '@' | '+' | '-'))
 }
 
+/// The run's model for `-m`/`--model`, only when it is a model id: a catalog id like `--yolo` would be read as a flag.
+pub fn cli_model(run: &crate::agent::Run) -> Option<&str> {
+    run.model.as_deref().filter(|m| is_model_id(m))
+}
+
 pub fn strip_ansi(s: &str) -> String {
     static ANSI: OnceLock<Regex> = OnceLock::new();
     re(&ANSI, r"\x1b\[[0-9;]*[A-Za-z]").replace_all(s, "").into_owned()
