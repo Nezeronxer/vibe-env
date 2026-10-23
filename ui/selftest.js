@@ -711,10 +711,10 @@ eq('clawd: frozen - sleeps; "Нужен ты" still wakes him', [m.state(T0 + 2)
 m = C.machine(); m.task(tk('n', 'queued', { start: 'night' }), T0);
 eq('clawd: only a night queue waiting - sleeps', m.state(T0 + 1).name, 'sleep');
 eq('clawd: the priority of story 285 (+ sleep under the work, over idle)', C.PRIORITY, ['call', 'sad', 'type', 'run', 'think', 'cheer', 'sleep', 'idle']);
-// time-based: the same second at 60, 8 and 144 frames/s draws the same pixels (each state has particles or a jump)
+// time-based: the same second at 60, 12 and 144 frames/s draws the same pixels (each state has particles or a jump)
 const at60 = (st, fps, sec) => { const a = C.anim(st); for (let i = 0; i < fps * sec; i++) a.step(1 / fps); return JSON.stringify(a.pixels()); };
-eq('clawd: the frame after 1 s does not depend on the frame rate (60 / 8 / 144 fps), every state',
-  C.STATES.filter((st) => !(at60(st, 60, 1) === at60(st, 8, 1) && at60(st, 60, 1) === at60(st, 144, 1))), []);
+eq('clawd: the frame after 1 s does not depend on the frame rate (60 / 12 / 144 fps), every state',
+  C.STATES.filter((st) => !(at60(st, 60, 1) === at60(st, 12, 1) && at60(st, 60, 1) === at60(st, 144, 1))), []);
 eq('clawd: a long frame is clamped (a 5 s stall moves the clock by at most 0.1 s)', (() => { const a = C.anim('run'); a.step(5); return a.time(); })(), 0.1);
 eq('clawd: whole pixels only, inside the canvas, the body is #D97757', (() => { const px = C.anim('idle').pixels(); return [px.every(([x, y]) => Number.isInteger(x) && Number.isInteger(y) && x >= 0 && y >= 0 && x < C.W && y < C.H), px.some((p) => p[2] === '#d97757')]; })(), [true, true]);
 eq('clawd: the states differ on screen', new Set(C.STATES.map((st) => { const a = C.anim(st); a.step(0.05); a.step(0.3); return JSON.stringify(a.pixels()); })).size, C.STATES.length);
