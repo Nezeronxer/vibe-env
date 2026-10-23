@@ -4,6 +4,8 @@
 //! Sources, in order: the env's own list command (`Adapter::models`), the last good snapshot in the
 //! `Store`, the adapter's built-in hint list. Every catalog also carries "CLI default" (no flag)
 //! and the person's own models (`EnvSettings.custom_models`).
+pub mod radar;
+
 use crate::agent::Adapter;
 use crate::model::{Catalog, CatalogSource, ModelChoice, ModelFamily, ModelNote, ResolvedModel};
 use crate::store::Store;

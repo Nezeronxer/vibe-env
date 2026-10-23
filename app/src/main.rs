@@ -920,6 +920,8 @@ fn build_app(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     check_tray_host(&h);
     hb.start();
     start_timers(&h, &hb);
+    config::start(&h, hb.clone(), register_keys);
+    updates::start(&h, hb.clone());
     refresh_tray(&h);
     Ok(())
 }
@@ -1120,7 +1122,7 @@ fn main() {
             // v4 skeletons (tasks 19-25)
             market::market_search, market::market_item, market::market_plan, market::market_apply, market::market_installed,
             market::market_remove, market::market_sources, market::market_set_sources,
-            updates::cli_status, updates::cli_update, updates::updates_history,
+            updates::cli_status, updates::cli_update, updates::updates_history, updates::cli_update_mode,
             gitcmds::gh_publish, gitcmds::git_log_page, gitcmds::git_revert_commit,
             config::config_open, config::config_errors
         ])

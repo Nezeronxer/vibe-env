@@ -2,7 +2,7 @@
 //! output, one window attached at a time, flow control by acks.
 use serde::{Deserialize, Serialize};
 use portable_pty::{native_pty_system, ChildKiller, CommandBuilder, MasterPty, PtySize};
-use std::collections::VecDeque;
+use std::collections::{BTreeMap, VecDeque};
 use std::io::{Read, Write};
 use std::path::PathBuf;
 use std::sync::{mpsc, Arc, Condvar, Mutex, MutexGuard};
@@ -92,6 +92,29 @@ struct Session {
     killer: Mutex<Box<dyn ChildKiller + Send + Sync>>,
     shared: Mutex<Shared>,
     wake: Condvar,
+    env_id: Option<String>,
+    cli_version: Option<String>,
+}
+
+/// The last version seen of each env's CLI (set by `core::updates`): a tab remembers the one it started with, the
+/// window compares it with `cli-updated` to offer "updated - restart the tab" (story 299).
+static CLI_VERSIONS: Mutex<BTreeMap<String, String>> = Mutex::new(BTreeMap::new());
+
+pub fn set_cli_version(env: &str, version: &str) {
+    lk(&CLI_VERSIONS).insert(env.into(), version.into());
+}
+
+/// The env whose CLI `argv0` starts (by the binary's name).
+fn env_of(argv0: &str) -> Option<&'static str> {
+    match argv0.rsplit('/').next()? {
+        "claude" => Some("claude"),
+        "codex" => Some("codex"),
+        "gemini" => Some("gemini"),
+        "opencode" => Some("opencode"),
+        "qwen" => Some("qwen"),
+        "agent" | "cursor-agent" => Some("cursor"),
+        _ => None,
+    }
 }
 
 fn lk<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
@@ -169,6 +192,8 @@ impl Terms {
             killer: Mutex::new(child.clone_killer()),
             shared: Mutex::new(Shared { ring: VecDeque::new(), sink: None, in_flight: 0, exit: None, closed: false }),
             wake: Condvar::new(),
+            env_id: env_of(&argv[0]).map(String::from),
+            cli_version: env_of(&argv[0]).and_then(|e| lk(&CLI_VERSIONS).get(e).cloned()),
         });
         // reader: blocks on the pty, waits while the window is more than PAUSE_AT behind (then the OS stops the process)
         let (tx, rx) = mpsc::sync_channel::<Vec<u8>>(4);
@@ -301,7 +326,7 @@ impl Terms {
             .iter()
             .map(|s| {
                 let exit = lk(&s.shared).exit;
-                TermInfo { id: s.id.clone(), title: s.title.clone(), cwd: s.cwd.display().to_string(), pid: s.pid, running: exit.is_none(), exit: exit.flatten(), env_id: None, cli_version: None }
+                TermInfo { id: s.id.clone(), title: s.title.clone(), cwd: s.cwd.display().to_string(), pid: s.pid, running: exit.is_none(), exit: exit.flatten(), env_id: s.env_id.clone(), cli_version: s.cli_version.clone() }
             })
             .collect()
     }
