@@ -8,6 +8,8 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::OnceLock;
 
+/// Test repos are made with `init --template=`: a hook from the user's `init.templatedir` (e.g. one that writes
+/// files after each commit) would otherwise change them behind the test's back.
 fn g(dir: &Path, args: &[&str]) -> String {
     let o = Command::new("git").current_dir(dir).args(args).output().unwrap();
     assert!(o.status.success(), "git {args:?}: {}", String::from_utf8_lossy(&o.stderr));
@@ -42,7 +44,7 @@ esac
 fn repo(d: &Path) -> PathBuf {
     let r = d.join("r");
     fs::create_dir(&r).unwrap();
-    g(&r, &["init", "-q", "-b", "main"]);
+    g(&r, &["init", "-q", "--template=", "-b", "main"]);
     g(&r, &["config", "user.email", "t@e.com"]);
     g(&r, &["config", "user.name", "T"]);
     fs::write(r.join("a.txt"), "a").unwrap();
@@ -125,7 +127,7 @@ fn publish_errors_come_as_keys() {
 fn big_repo(d: &Path, n: usize) -> PathBuf {
     let r = d.join("big");
     fs::create_dir(&r).unwrap();
-    g(&r, &["init", "-q", "-b", "main"]);
+    g(&r, &["init", "-q", "--template=", "-b", "main"]);
     let mut s = String::new();
     let mut mark = 0;
     let mut t = 1_700_000_000u64;
@@ -233,7 +235,7 @@ fn task_commits_are_known_by_trailer_or_ns_branch_and_an_empty_repo_has_no_histo
 
     let empty = d.path().join("e");
     fs::create_dir(&empty).unwrap();
-    g(&empty, &["init", "-q"]);
+    g(&empty, &["init", "-q", "--template="]);
     assert_eq!(log_page(&empty, 0, 200).unwrap(), vec![]);
 }
 
