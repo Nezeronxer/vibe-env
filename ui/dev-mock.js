@@ -86,18 +86,18 @@
   const msgs = {
     inv: [M('inv', 1, 13, 58, 'human', 'Как у нас сейчас устроена пагинация в /invoices?'),
       M('inv', 2, 13, 58, 'model', 'Через offset: `?page=`, по 50 записей (src/invoices/routes.py). На большой таблице это медленно, а при вставках записи повторяются между страницами.', { model: 'Sonnet 5.5' }),
-      M('inv', 3, 13, 59, 'system', '', { tool: { name: 'read', arg: 'src/invoices/routes.py', result: '212 строк', ok: true } }),
+      M('inv', 3, 13, 59, 'system', '', { action: { id: 'ia1', name: 'Read', input: { kind: 'read', path: 'src/invoices/routes.py' }, output: Array.from({ length: 212 }, (_, i) => 'line ' + i).join('\n'), ok: true, done: true } }),
       M('inv', 4, 14, 1, 'human', 'Сделай курсорную пагинацию. Старый мобильный клиент не сломай.'),
       M('inv', 5, 14, 1, 'system', 'Это задача.', { kind: 'task', task_id: 't-inv' }),
       M('inv', 6, 14, 2, R('planner'), 'План без смены схемы:\n\n- курсор = (created_at, id), непрозрачный\n- ?limit по умолчанию 50, максимум 200\n- старый ?page= пока остаётся', { model: 'Opus 5.5' }),
       M('inv', 7, 14, 4, R('critic'), 'created_at не уникален, без id записи пропадут на границе страниц. И нужен ответ на битый курсор: 400 invalid_cursor.', { model: 'Sonnet 5.5' }),
       M('inv', 8, 14, 8, R('test_author'), '9 тестов, все красные, как и должно быть до кода.', { model: 'Sonnet 5.5' }),
-      M('inv', 9, 14, 8, 'system', '', { tool: { name: 'write', arg: 'tests/test_invoices_pagination.py', result: '+118', ok: true } }),
-      M('inv', 10, 14, 9, 'system', '', { tool: { name: 'run', arg: 'pytest tests/test_invoices_pagination.py', result: '9 failed', ok: false } }),
+      M('inv', 9, 14, 8, 'system', '', { action: { id: 'ia2', name: 'Write', input: { kind: 'write', path: 'tests/test_invoices_pagination.py', lines: 118, head: 'import pytest\nfrom app.invoices import list_invoices\n\n\ndef test_first_page_has_next_cursor(client):\n    r = client.get("/invoices?limit=2")\n    assert r.json()["next_cursor"]' }, ok: true, done: true } }),
+      M('inv', 10, 14, 9, 'system', '', { action: { id: 'ia3', name: 'Bash', input: { kind: 'bash', command: 'pytest tests/test_invoices_pagination.py' }, output: 'FAILED tests/test_invoices_pagination.py::test_first_page_has_next_cursor\nFAILED tests/test_invoices_pagination.py::test_invalid_cursor_returns_400\n9 failed in 0.62s', ok: false, done: true } }),
       M('inv', 11, 14, 11, R('worker'), 'Курсор и валидация готовы, подключаю к запросу.', { model: 'Opus 5.5' }),
-      M('inv', 12, 14, 11, 'system', '', { tool: { name: 'edit', arg: 'src/invoices/routes.py', result: '+64 −12', ok: true } }),
-      M('inv', 13, 14, 12, 'system', '', { tool: { name: 'edit', arg: 'src/invoices/cursor.py', result: 'новый, +41', ok: true } }),
-      M('inv', 14, 14, 12, 'system', '', { tool: { name: 'run', arg: 'pytest tests/test_invoices_pagination.py', result: '7 passed, 2 failed', ok: false } }),
+      M('inv', 12, 14, 11, 'system', '', { action: { id: 'ia4', name: 'Edit', input: { kind: 'edit', path: 'src/invoices/routes.py', diff: '--- a/src/invoices/routes.py\n+++ b/src/invoices/routes.py\n@@ -41,5 +41,8 @@ def list_invoices(cursor=None, limit=50):\n     user = current_user()\n-    rows = db.query(Invoice).offset(page * 50).limit(50)\n-    return {"items": rows}\n+    after = decode_cursor(cursor) if cursor else None\n+    q = db.query(Invoice).order_by(Invoice.created_at, Invoice.id)\n+    rows = q.limit(min(limit, 200) + 1).all()\n+    return {"items": rows[:limit], "next_cursor": next_cursor(rows, limit)}\n' }, ok: true, done: true } }),
+      M('inv', 13, 14, 12, 'system', '', { action: { id: 'ia5', name: 'Write', input: { kind: 'write', path: 'src/invoices/cursor.py', lines: 41, head: 'import base64\nimport json\n\n\ndef decode_cursor(value):\n    return json.loads(base64.urlsafe_b64decode(value))' }, ok: true, done: true } }),
+      M('inv', 14, 14, 12, 'system', '', { action: { id: 'ia6', name: 'Bash', input: { kind: 'bash', command: 'pytest tests/test_invoices_pagination.py' }, output: 'FAILED tests/test_invoices_pagination.py::test_invalid_cursor_returns_400\nFAILED tests/test_invoices_pagination.py::test_limit_over_max\n7 passed, 2 failed in 0.74s', ok: false, done: true } }),
       M('inv', 15, 14, 13, R('verifier'), 'Тесты 7 из 9, линтер и типы чистые. Мержить пока нельзя.', { model: 'pytest · ruff · mypy' }),
       M('inv', 16, 14, 14, 'human', 'Курсор пусть будет непрозрачным, id наружу не свети.', { task_id: 't-inv', delivered_at: today(14, 15) }),
       M('inv', 17, 14, 15, R('worker'), 'Подписываю курсор, чиню два теста. Задал вопрос про старый клиент - он в карточке задачи.', { model: 'Opus 5.5' })],
@@ -441,6 +441,11 @@
     Object.assign(byId('t-lint'), { status: 'reviewing', steps: steps('review'),
       runs: [{ role: 'worker', model: 'Opus 5.5', state: 'done', started_at: ago(6), finished_at: ago(2) }, { role: 'reviewer', model: 'Sonnet 5.5', state: 'running', started_at: iso(now) }] });
     // a finished task whose actions come back from the log after a restart (story 230)
+    // a failed task: its last event is a failed command, so the chat shows it open (F9)
+    LOGS['t-pf'] = (LOGS['t-pf'] || []).concat([
+      { at: ago(5), kind: 'tool', role: 'worker', text: 'Read', action: { id: 'pf1', name: 'Read', input: { kind: 'read', path: 'site/search.js' }, output: 'a\nb', done: true, ok: true } },
+      { at: ago(4), kind: 'tool', role: 'worker', text: 'Edit', action: { id: 'pf2', name: 'Edit', input: { kind: 'edit', path: 'site/search.js', diff: '@@ -1,2 +1,3 @@\n import index from "./index"\n+import { search } from "pagefind"\n export default index\n' }, done: true, ok: true } },
+      { at: ago(3), kind: 'tool', role: 'worker', text: 'Bash', action: { id: 'pf3', name: 'Bash', input: { kind: 'bash', command: 'npm test' }, output: 'FAIL search.test.js\nCannot find module "pagefind"\n1 failed, 3 passed', done: true, ok: false } }]);
     LOGS['t-cur'] = LOGS['t-cur'].concat([
       { at: ago(176), kind: 'tool', role: 'worker', text: 'Read', action: { id: 'x1', name: 'Read', input: { kind: 'read', path: 'src/payments/models.py' }, output: 'a\nb\nc', done: true, ok: true } },
       { at: ago(175), kind: 'tool', role: 'worker', text: 'Edit', action: { id: 'x2', name: 'Edit', input: { kind: 'edit', path: 'src/payments/models.py', diff: '@@ -12,3 +12,4 @@ class Payment(Base):\n     amount = Column(Integer, nullable=False)\n+    currency = Column(String(3), nullable=False, default="RUB")\n     created_at = Column(DateTime)\n' }, done: true, ok: true } },

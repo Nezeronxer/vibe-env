@@ -39,6 +39,18 @@
     'import.done': 'Конфиг «{name}» установлен. Откатить можно в «Конфигах».',
   };
   const ru = Object.assign({}, TERMS, {
+    // F9: the minimal chat
+    'side.g_wait': 'Ждёт тебя', 'side.g_run': 'Работает', 'side.g_done': 'Готово', 'side.g_talk': 'Разговоры',
+    'f9.ex1_d': 'Новая функция или правка', 'f9.ex2_d': 'Ошибка, которую ты описал', 'f9.ex3_d': 'Разбор кода без изменений',
+    'composer.ph': 'Что сделать?', 'composer.keys': 'Enter - отправить · Shift+Enter - новая строка', 'composer.stop': 'Остановить', 'composer.send_d': 'Отправить',
+    'feed.empty_title': 'Что сделать?', 'feed.empty': 'Спроси про проект или опиши задачу.',
+    'live.thinking': 'Думаю…', 'live.writing': 'Пишу код…', 'live.running': 'Запускаю команду…', 'live.reading': 'Читаю…', 'live.reviewing': 'Проверяю…', 'live.web': 'Ищу в сети…',
+    'live.planning': 'Составляю план…', 'live.answering': 'Пишу ответ…',
+    'st.read': 'Прочитал', 'st.edit': 'Изменил', 'st.write': 'Создал', 'st.bash': 'Запустил', 'st.search': 'Искал', 'st.web': 'Открыл', 'st.other': 'Вызвал',
+    'st.read_r': 'Читаю', 'st.edit_r': 'Меняю', 'st.write_r': 'Создаю', 'st.bash_r': 'Запускаю', 'st.search_r': 'Ищу', 'st.web_r': 'Открываю', 'st.other_r': 'Вызываю',
+    'st.of': '{a} из {b}', 'st.error': 'ошибка', 'st.group_1': '{n} действие', 'st.group_2': '{n} действия', 'st.group_5': '{n} действий', 'st.open': 'Показать подробности', 'st.shut': 'Свернуть',
+    'work.stop': 'Стоп', 'work.edit': 'правит {a}', 'work.read': 'читает {a}', 'work.write': 'создаёт {a}', 'work.bash': 'запускает {a}', 'work.search': 'ищет {a}', 'work.web': 'открывает {a}',
+    'work.think': 'думает', 'work.answer': 'пишет ответ', 'work.label': 'Что делает агент',
     // F8: clarity - visible switches, entrances to settings and the factory, the "+" menu
     'composer.tune': 'Настроить', 'composer.tune_d': 'Настроить Качество и Рой: шаги проверки, режим роя, когда начать',
     'composer.quality_d': 'Качество: план, тесты до кода, ревью перед merge', 'composer.swarm_d': 'Рой: несколько агентов решают одну задачу, берётся лучшее решение',
@@ -84,6 +96,16 @@
     'adv.errors': 'Ошибки конфига', 'adv.err_line': 'строка {line}, `{key}` - {msg}', 'adv.config_missing': 'Конфиг-файл пока не подключён: команда config_open ещё не построена',
   });
   const en = {
+    // F9: the minimal chat
+    'side.g_wait': 'Needs you', 'side.g_run': 'Working', 'side.g_done': 'Done', 'side.g_talk': 'Talks',
+    'f9.ex1_d': 'A new feature or a change', 'f9.ex2_d': 'A bug you describe', 'f9.ex3_d': 'Read the code, change nothing',
+    'composer.ph': 'What should be done?', 'composer.keys': 'Enter - send · Shift+Enter - new line', 'composer.stop': 'Stop', 'composer.send_d': 'Send',
+    'feed.empty_title': 'What should be done?', 'feed.empty': 'Ask about the project or describe a task.',
+    'st.read': 'Read', 'st.edit': 'Changed', 'st.write': 'Created', 'st.bash': 'Ran', 'st.search': 'Searched', 'st.web': 'Opened', 'st.other': 'Called',
+    'st.read_r': 'Reading', 'st.edit_r': 'Changing', 'st.write_r': 'Creating', 'st.bash_r': 'Running', 'st.search_r': 'Searching', 'st.web_r': 'Opening', 'st.other_r': 'Calling',
+    'st.of': '{a} of {b}', 'st.error': 'error', 'st.group_1': '{n} action', 'st.group_2': '{n} actions', 'st.group_5': '{n} actions', 'st.open': 'Show details', 'st.shut': 'Collapse',
+    'work.stop': 'Stop', 'work.edit': 'editing {a}', 'work.read': 'reading {a}', 'work.write': 'creating {a}', 'work.bash': 'running {a}', 'work.search': 'searching {a}', 'work.web': 'opening {a}',
+    'work.think': 'thinking', 'work.answer': 'writing the answer', 'work.label': 'What the agent is doing',
     // F8: clarity
     'composer.tune': 'Tune', 'composer.tune_d': 'Tune Quality and Swarm: check steps, swarm mode, when to start',
     'composer.quality_d': 'Quality: a plan, tests before code, review before merge', 'composer.swarm_d': 'Swarm: several agents solve one task, the best result is taken',

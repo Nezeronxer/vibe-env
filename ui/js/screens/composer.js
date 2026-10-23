@@ -1,5 +1,5 @@
-// The input field: exactly five controls - the model, "Качество", "Рой", "настроить", "Отправить ↵" (G19).
-// v4 (story 246): one line that grows with the text, a `❯` prompt, the controls are quiet labels inside it.
+// The input field: the model, "Качество", "Рой", "Настроить" and a round send button (G19).
+// F9: a rounded field that grows from 1 to 8 lines, the controls in a row under the text, the plate "what the agent does · Стоп" on top while it works.
 // Everything rarer lives under "настроить" (quality steps, swarm mode/count, "Когда начать").
 (function () {
   const NS = window.NS;
@@ -9,6 +9,7 @@
   const QUALITY0 = { on: true, spec: true, plan: true, tests_first: true, e2e: false, best_of_n: 2 };
   const STEPS = [['spec', 'q.spec', 'q.spec_d'], ['plan', 'q.plan', ''], ['tests_first', 'q.tests', 'q.tests_d'], ['gates', 'q.gates', 'q.always', true],
     ['reviewer', 'q.review', 'q.review_d', true], ['e2e', 'q.e2e', 'q.e2e_d'], ['best_of_n', 'q.bestn', 'q.bestn_d']];
+  const MAX_H = 8 * 22;       // eight lines of the field
   const MODES = [['race', 'swarm.race', 'swarm.race_d'], ['crew', 'swarm.crew', 'swarm.crew_d'], ['council', 'swarm.council', 'swarm.council_d']];
 
   function makeSwitch(text, on, onToggle, title) {
@@ -31,12 +32,29 @@
     let mode = { kind: 'message', task: null };
     const form = h('form', { class: 'composer', onsubmit: (e) => { e.preventDefault(); send(); } });
     const ta = h('textarea', { id: 'taskText' + sfx, rows: 1, 'aria-label': t('composer.label'), spellcheck: false });
-    const grow = () => { NS.setVars(ta, { height: 'auto' }); NS.setVars(ta, { height: Math.min(ta.scrollHeight, 220) + 'px' }); };
+    const grow = () => { NS.setVars(ta, { height: 'auto' }); NS.setVars(ta, { height: Math.min(ta.scrollHeight, MAX_H) + 'px' }); };
     const modebar = h('div', { class: 'modebar', hidden: true });
     const hint = h('p', { class: 'cmp-hint', role: 'alert', hidden: true });
     const swhint = h('small', { class: 'swhint', hidden: true });
     const envText = h('span'), pickBtn = h('button', { type: 'button', class: 'envpick', 'aria-expanded': 'false', 'aria-haspopup': 'listbox', 'aria-controls': 'modelPop' + sfx }, h('span', { class: 'icw' }, envIcon(envId)), envText, ic('i-chev', 'chev'));
-    const sendBtn = h('button', { type: 'submit', class: 'send4', id: 'sendBtn' + sfx, 'aria-label': t('composer.send'), title: t('composer.send') + ' ↵' }, h('span', { 'aria-hidden': 'true', text: '↵' }));
+    const SVGNS = 'http://www.w3.org/2000/svg';
+    const svgOf = (cls, paths, fill) => { const v = document.createElementNS(SVGNS, 'svg'); v.setAttribute('viewBox', '0 0 16 16'); v.setAttribute('class', cls); v.setAttribute('aria-hidden', 'true');
+      for (const d of paths) { const p = document.createElementNS(SVGNS, 'path'); p.setAttribute('d', d); if (fill) p.setAttribute('fill', 'currentColor'); v.append(p); } return v; };
+    const sendBtn = h('button', { type: 'submit', class: 'send4', id: 'sendBtn' + sfx, 'aria-label': t('composer.send'), title: t('composer.send') + ' (Enter)' }, svgOf('send-g', ['M8 13V3', 'M3.5 7.5L8 3l4.5 4.5']));
+    const stopBtn = h('button', { type: 'button', class: 'send4 stop4', id: 'stopBtn' + sfx, 'aria-label': t('composer.stop'), title: t('composer.stop'), hidden: true }, svgOf('stop-g', ['M4.5 4.5h7v7h-7z'], true));
+    // the plate over the field: who works and on what, with "Стоп" when there is a task to cancel (pin-85)
+    let work = null;
+    const wbWho = h('b'), wbWhat = h('span');
+    const wbStop = h('button', { type: 'button', class: 'wb-stop', text: t('work.stop'), title: t('composer.stop') });
+    const plate = h('div', { class: 'workbar', role: 'status', 'aria-label': t('work.label'), hidden: true }, h('span', { class: 'wb-dot', 'aria-hidden': 'true' }), h('div', { class: 'wb-t' }, wbWho, wbWhat), wbStop);
+    const doStop = () => { if (work && work.stop) work.stop(); };
+    stopBtn.onclick = doStop; wbStop.onclick = doStop;
+    function setWork(w) {
+      work = w || null;
+      plate.hidden = !work;
+      if (work) { wbWho.textContent = work.who || ''; wbWhat.textContent = work.what ? ' · ' + work.what : ''; wbStop.hidden = !work.stop; }
+      drawHint();
+    }
     const tuneBtn = h('button', { type: 'button', class: 'tune4', id: 'tune' + sfx, 'aria-expanded': 'false', 'aria-controls': 'tunePanel' + sfx, 'aria-label': t('composer.tune'), title: t('composer.tune_d') }, ic('i-gear'), h('span', { class: 'tune-w', text: t('composer.tune') }));
     const modelPop = h('div', { class: 'pop mmenu', id: 'modelPop' + sfx, hidden: true });
     const tunePanel = h('div', { class: 'pop', id: 'tunePanel' + sfx, hidden: true, role: 'dialog' });
@@ -72,6 +90,8 @@
     function drawHint() {
       const v = L.validateSend(ta.value);
       sendBtn.disabled = !v.ok;
+      const showStop = !!(work && work.stop) && !ta.value.trim();           // working and nothing typed: the round button stops the run
+      stopBtn.hidden = !showStop; sendBtn.hidden = showStop;
       hint.hidden = v.reason !== 'too_long';
       hint.textContent = v.reason === 'too_long' ? t('composer.too_long') : '';
       const sh = swarm ? L.swarmHint((L.limitsView(st.s.limits.get(envId)).windows), swarm.n || 3) : null;
@@ -176,16 +196,16 @@
 
     qSw = makeSwitch(t('composer.quality'), true, (v) => { quality.on = v; save(); if (!tunePanel.hidden) drawTune(); }, t('composer.quality_d'));
     sSw = makeSwitch(t('composer.swarm'), false, (v) => { swarm = v ? { mode: 'race', n: 3 } : null; save(); drawHint(); if (!tunePanel.hidden) drawTune(); }, t('composer.swarm_d'));
-    form.append(modebar,
-      h('div', { class: 'cmp-line' }, h('span', { class: 'pr', 'aria-hidden': 'true', text: '❯' }), ta,
-        h('div', { class: 'comp-row' }, pickBtn, qSw, sSw, tuneBtn, sendBtn)),
+    form.append(plate, modebar, h('div', { class: 'cmp-line' }, ta),
+      h('div', { class: 'comp-row' }, pickBtn, qSw, sSw, tuneBtn, h('span', { class: 'comp-gap' }), stopBtn, sendBtn),
       hint, swhint, modelPop, tunePanel);
-    if (chat === 'new' || !chat) form.append(h('p', { class: 'cmp-note', text: t('composer.note_new') }));
+    // under the field, quiet: the keys, and in a new chat where the terminal is
+    const box = h('div', { class: 'cmpbox' }, form, h('p', { class: 'cmp-keys', text: t('composer.keys') }), chat === 'new' || !chat ? h('p', { class: 'cmp-note', text: t('composer.note_new') }) : null);
     refresh();
     if (ta.value) setTimeout(grow, 0);
     // an example from the empty chat goes into the field, it is not sent (story 239)
     function insert(text) { ta.value = text; ta.dispatchEvent(new Event('input')); ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); }
-    return { el: form, ta, refresh, setMode, drawHint, focus: () => ta.focus(), closePops, insert,
+    return { el: box, form, ta, refresh, setMode, setWork, drawHint, focus: () => ta.focus(), closePops, insert,
       destroy() { usedN.delete(n); offSettings(); document.removeEventListener('click', onDoc); document.removeEventListener('keydown', onKey); } };
   }
 

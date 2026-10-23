@@ -242,9 +242,14 @@
     }
     const g = L.groupChats(chats, NS.store.envTasks(e.id), s.projects, Date.now());
     const seen = new Set();
-    for (const grp of g.groups) {
-      side.append(h('div', { class: 'pgroup' }, h('h3', { text: grp.name }),
-        h('ul', { class: 'tasks' }, grp.items.map((it) => { seen.add(it.chat.id); return rowFor(it, s.route.chat === it.chat.id); }))));
+    // F9: the list is grouped by what it needs from me - "Ждёт тебя", "Работает", "Готово" (chats without a task: "Разговоры"), the newest first
+    const flat = g.groups.flatMap((x) => x.items);
+    const when = (it) => Date.parse(it.chat.updated_at) || 0;
+    for (const [kinds, key] of [[['wait', 'fail'], 'side.g_wait'], [['run', 'queue'], 'side.g_run'], [['done'], 'side.g_done'], [['talk'], 'side.g_talk']]) {
+      const items = flat.filter((it) => kinds.includes(it.kind)).sort((x, y) => when(y) - when(x));
+      if (!items.length) continue;
+      side.append(h('div', { class: 'pgroup' }, h('h3', { text: t(key) }),
+        h('ul', { class: 'tasks' }, items.map((it) => { seen.add(it.chat.id); return rowFor(it, s.route.chat === it.chat.id); }))));
     }
     if (g.archive.length) {
       side.append(h('details', { class: 'archive' }, h('summary', { text: t('side.archive', { n: g.archive.length }) }),
@@ -252,7 +257,7 @@
     }
     for (const id of [...rowCache.keys()]) if (!seen.has(id)) rowCache.delete(id);
   }
-  // ⌘B: hidden by default (story 246); the "Classic" look keeps it open
+  // ⌘B: the chat list is shown by default since F9 (a user who hid it keeps it hidden: ns.side = 0)
   function toggleSide(force) {
     const v = force === undefined ? !document.body.classList.contains('side-on') : !!force;
     document.body.classList.toggle('side-on', v);
@@ -340,5 +345,5 @@
     mountScreen: (id, params) => mount(id, params),
     get current() { return current; } };
   NS.nav = nav;
-  if (NS.storage.get('ns.side') === '1') document.body.classList.add('side-on');
+  { const saved = NS.storage.get('ns.side'); if (saved === '1' || (saved == null && window.innerWidth >= 900)) document.body.classList.add('side-on'); }
 })();

@@ -1,7 +1,7 @@
 /* v4 frame: the canvas holds rounded panels with a gap like a tiling WM - an optional chat list (⌘B), the workspace or a full
    screen, and the bar along the bottom. The canvas shows between them; nothing is drawn on it. */
 .app { display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) auto; gap: var(--gap); padding: var(--gap); height: 100vh; background: var(--canvas); }
-body.side-on:not(.is-empty) .app { grid-template-columns: 252px minmax(0, 1fr); }
+body.side-on:not(.is-empty) .app { grid-template-columns: 240px minmax(0, 1fr); }
 .side { display: none; }
 body.side-on:not(.is-empty) .side { display: flex; }
 body.is-empty .app { padding: 0; gap: 0; }

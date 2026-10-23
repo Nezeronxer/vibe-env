@@ -110,8 +110,8 @@
     function humanNode(m, isPending) {
       const note = !isPending && m.task_id;
       const to = m.to ? ' · ' + (m.to === 'reviewer' ? t('swarm.to_reviewer') : t('swarm.to_variant', { v: m.to })) : '';     // a note to a swarm: who gets it (story 156)
-      // v4 (story 244): my message is a prompt line `❯ text`, the time and delivery at the right edge
-      return h('div', { class: 'me' }, h('span', { class: 'pr', 'aria-hidden': 'true', text: '❯' }), h('div', { class: 'me-b' }, h('span', { class: 'sr-only', text: t('feed.you') }), richText(m.text)),
+      // F9: my message is a grey bubble on the right; the time and delivery sit under it and show on hover
+      return h('div', { class: 'me' + (isPending ? ' sending' : '') }, h('div', { class: 'me-b' }, h('span', { class: 'sr-only', text: t('feed.you') }), richText(m.text)),
         h('small', { class: 'me-m' }, NS.hhmm(m.at), isPending ? ' · ' + t('msg.sending') : note ? ' · ' + (m.delivered_at ? t('msg.delivered', { time: NS.hhmm(m.delivered_at) }) : t('msg.will_pass')) + to : ''));
     }
     function systemNodes(m) {
@@ -131,12 +131,6 @@
           h('button', { type: 'button', class: 'linkb', text: t('feed.retry'), onclick: () => NS.api.call('retry_chat', { id: chatId, msgId: m.reply_to || m.id }).catch((e) => NS.shell.toast(NS.errHuman(NS.api.errText(e)), true)) })));
       } else out.push(h('div', { class: 'sysline' + (m.kind === 'warn' ? ' bad' : '') }, ic(m.kind === 'warn' ? 'i-warn' : 'i-check'), h('span', { text: NS.errHuman(m.text) })));
       return out;
-    }
-    // vendor mark of the model that answers (the env mark when the family is unknown)
-    function modelIcon() {
-      const cat = S.catalogs.get(envId), ch = st.envSettings(envId).default_model;
-      const fam = cat && (cat.families || []).find((f) => f.id === (ch ? ch.family : (L.defaultFamily(cat) || {}).id));
-      return fam ? vendorIcon(fam.vendor, 'mlogo') : envIcon(envId, 'mlogo');
     }
     // the body of an agent message: markdown, or a word-by-word print of a live message (story 227)
     function bodyOf(m) {
@@ -164,26 +158,101 @@
       const model = m.model ? m.model + ' · ' + t('feed.separate_run') : '';
       if (who.kind === 'model' || !rk) {
         const mlabel = m.model || NS.models.label(envId) || '';
-        return h('div', { class: 'msg ai' }, h('span', { class: 'av' }, envIcon(envId)),
-          h('div', {}, h('div', { class: 'msg-h' }, h('b', { text: env.name }), h('small', {}, modelIcon(), mlabel), h('time', { text: NS.hhmm(m.at) })), bodyOf(m)));
+        return h('div', { class: 'msg ai' }, h('div', { class: 'msg-h' }, h('span', { class: 'av' }, envIcon(envId)), h('b', { text: env.name }), mlabel ? h('small', { text: mlabel }) : null, h('time', { text: NS.hhmm(m.at) })), bodyOf(m));
       }
-      return h('div', { class: 'msg' }, roleIcon(rk), h('div', {}, h('div', { class: 'msg-h' }, h('span', { class: 'rname r-' + rk, text: t('role.' + rk) + (m.variant ? ' ' + m.variant : '') }), h('small', { text: model }), h('time', { text: NS.hhmm(m.at) })),
-        bodyOf(m)));
+      return h('div', { class: 'msg' }, h('div', { class: 'msg-h' }, roleIcon(rk), h('span', { class: 'rname r-' + rk, text: t('role.' + rk) + (m.variant ? ' ' + m.variant : '') }), model ? h('small', { text: model }) : null, h('time', { text: NS.hhmm(m.at) })),
+        bodyOf(m));
     }
     // the answer while chat-delta pieces arrive: plain text with a caret, markdown once the whole message is there
     function streamNode(sx) {
       const mlabel = NS.models.label(envId) || '';
-      return h('div', { class: 'msg ai streaming' }, h('span', { class: 'av' }, envIcon(envId)),
-        h('div', {}, h('div', { class: 'msg-h' }, h('b', { text: env.name }), h('small', {}, modelIcon(), mlabel)),
-          h('div', { class: 'msg-b' }, richText(sx.text), h('span', { class: 'caret', 'aria-hidden': 'true' }))));
+      return h('div', { class: 'msg ai streaming' }, h('div', { class: 'msg-h' }, h('span', { class: 'av' }, envIcon(envId)), h('b', { text: env.name }), mlabel ? h('small', { text: mlabel }) : null),
+        h('div', { class: 'msg-b' }, richText(sx.text), h('span', { class: 'caret', 'aria-hidden': 'true' })));
     }
-    const emptyNode = () => {
-      const ex = [['onb3.ex1', 'onb3.ex1_t'], ['onb3.ex2', 'onb3.ex2_t'], ['onb3.ex3', 'onb3.ex3_t']];
-      const proj = st.project(selProject);
-      return h('div', { class: 'newchat-empty' }, envIcon(envId), h('h2', { text: t('feed.empty_title', { env: env.name }) }), h('p', { text: proj ? t('onb3.ex_d') : t('feed.empty') }),
-        proj ? h('div', { class: 'examples', role: 'group', 'aria-label': t('onb3.ex_title') }, ex.map(([label, text]) => h('button', { type: 'button', class: 'btn ex', text: t(label),
-          onclick: () => composer.insert(t(text)) }))) : null);
-    };
+    const emptyNode = () => h('div', { class: 'newchat-empty' }, h('h2', { text: t('feed.empty_title', { env: env.name }) }), st.project(selProject) ? null : h('p', { text: t('feed.empty') }));
+    // examples as three quiet cards under the field; a click puts the text into the field, it is not sent (story 239)
+    const EX = [['onb3.ex1', 'onb3.ex1_t', 'f9.ex1_d'], ['onb3.ex2', 'onb3.ex2_t', 'f9.ex2_d'], ['onb3.ex3', 'onb3.ex3_t', 'f9.ex3_d']];
+    const blankEx = h('div', { class: 'examples', role: 'group', 'aria-label': t('onb3.ex_title'), hidden: true }, EX.map(([label, text, d]) => h('button', { type: 'button', class: 'ex',
+      onclick: () => composer.insert(t(text)) }, h('b', { text: t(label) }), h('span', { text: t(d) }))));
+
+    // ---------- steps of the agent (F9): one quiet line per action, the details open on a click ----------
+    // The line says what happened ("Изменил test_calc.py +1 −0"); the old action block (diff, output, parameters) lives inside and is built on the first open.
+    const SVGNS = 'http://www.w3.org/2000/svg';
+    const GLYPHS = {
+      read: ['M4 1.75h5l3 3v9.5H4z', 'M9 1.75v3h3'], edit: ['M10.5 2.5l3 3-8 8H2.5v-3z', 'M9 4l3 3'], write: ['M4 1.75h5l3 3v9.5H4z', 'M9 1.75v3h3', 'M8 7.5v4', 'M6 9.5h4'],
+      bash: ['M3 4.5l3.5 3.5L3 11.5', 'M8.5 12h4.5'], search: ['M7 2.5a4.5 4.5 0 1 0 0 9a4.5 4.5 0 1 0 0-9z', 'M10.3 10.3l3.2 3.2'],
+      web: ['M8 2a6 6 0 1 0 0 12a6 6 0 1 0 0-12z', 'M2 8h12', 'M8 2c2.2 2 2.2 10 0 12', 'M8 2c-2.2 2-2.2 10 0 12'], other: ['M9 1.75L3.75 9H8l-1 5.25L12.25 7H8z'] };
+    function glyph(kind) {
+      const svg = document.createElementNS(SVGNS, 'svg');
+      svg.setAttribute('viewBox', '0 0 16 16'); svg.setAttribute('class', 'stp-g'); svg.setAttribute('aria-hidden', 'true');
+      for (const d of GLYPHS[kind] || GLYPHS.other) { const pth = document.createElementNS(SVGNS, 'path'); pth.setAttribute('d', d); svg.append(pth); }
+      return svg;
+    }
+    const baseName = (x) => String(x || '').split('/').filter(Boolean).pop() || String(x || '');
+    const tailPath = (x) => String(x || '').split('/').filter(Boolean).slice(-2).join('/');
+    const firstLine = (x, n) => String(x == null ? '' : x).split('\n')[0].slice(0, n);
+    const KINDS = ['read', 'edit', 'write', 'bash', 'search', 'web'];
+    // what the line shows for an action: kind, verb, argument, "+1 −0", the result of a command ("7 из 9")
+    function stepInfo(action, live) {
+      const inp = V.inputOf(action), kind = KINDS.includes(inp.kind) ? inp.kind : 'other';
+      const running = !action.done && live !== false, bad = action.done && action.ok === false;
+      const out = action.output == null ? '' : String(action.output);
+      let arg = '', title = '', stat = null, res = '';
+      if (kind === 'read' || kind === 'edit' || kind === 'write') { arg = baseName(inp.path); title = inp.path || ''; }
+      else if (kind === 'bash') { arg = firstLine(inp.command, 140); title = inp.command || ''; }
+      else { arg = firstLine(NS.actions.argOf(inp, action) || action.name || '', 140); title = arg; }
+      if (kind === 'edit' && inp.diff) { const d = V.diffStat(V.parseDiff(inp.diff)); stat = [d.add, d.del]; }
+      else if (kind === 'write') stat = [inp.lines != null ? Number(inp.lines) : String(inp.head || '').split('\n').length, null];
+      if (kind === 'bash' && action.done) {
+        const ps = /(\d+)\s+passed/.exec(out), fl = /(\d+)\s+failed/.exec(out);
+        if (ps || fl) { const a = ps ? +ps[1] : 0, b = a + (fl ? +fl[1] : 0); res = t('st.of', { a, b }); }
+      }
+      if (bad && !res) res = t('st.error');
+      return { kind, running, bad, arg, title, stat, res, inp, verb: t('st.' + kind + (running ? '_r' : '')) };
+    }
+    const fold = new Map();         // step / group key -> the user's choice (true = open); no entry = the default
+    const stepKeys = (e) => 'f:' + String(e.action.id || e.key);
+    function stepNode(e, o) {
+      const a = e.action, info = stepInfo(a, o.live), key = stepKeys(e);
+      const dflt = info.bad && !!o.last;                       // a failed command stays open only while it is the last event
+      const isOpen = () => (fold.has(key) ? fold.get(key) : dflt);
+      const body = h('div', { class: 'stp-b', hidden: true });
+      const stat = info.stat ? h('span', { class: 'stp-s' }, h('span', { class: 'plus', text: '+' + info.stat[0] }), info.stat[1] != null ? [' ', h('span', { class: 'minus', text: '−' + info.stat[1] })] : null) : null;
+      const btn = h('button', { type: 'button', class: 'stp-h', 'aria-expanded': 'false', title: info.title || '' }, glyph(info.kind), h('span', { class: 'stp-v', text: info.verb }),
+        info.arg ? h('span', { class: 'stp-a', text: info.arg }) : null, stat, info.res ? h('span', { class: 'stp-r' + (info.bad ? ' bad' : ''), text: '· ' + info.res }) : null, ic('i-chev', 'stp-chev'));
+      const el = h('div', { class: 'stp k-' + info.kind + ' s-' + (info.running ? 'run' : info.bad ? 'bad' : 'ok'), dataset: { act: String(a.id || '') } }, btn, body);
+      const draw = () => {
+        const v = isOpen();
+        btn.setAttribute('aria-expanded', String(v)); body.hidden = !v; el.classList.toggle('on', v);
+        if (v && !body.firstChild) NS.append(body, [info.kind === 'bash' && info.inp.command ? h('div', { class: 'stp-cmd' }, h('span', { 'aria-hidden': 'true', text: '$ ' }), info.inp.command) : null, NS.actions.actionNode(a, { open, live: o.live })]);
+      };
+      btn.onclick = () => { fold.set(key, !isOpen()); draw(); };
+      draw();
+      return el;
+    }
+    // two or more actions of one role in a row: one group "3 действия" that folds, the lines inside go in a ladder
+    function groupNode(entries, o) {
+      const infos = entries.map((e) => stepInfo(e.action, o.live)), key = 'g:' + entries[0].key;
+      const running = infos.some((x) => x.running), lastBad = infos[infos.length - 1].bad;
+      const dflt = !!o.last && (running || lastBad);
+      const isOpen = () => (fold.has(key) ? fold.get(key) : dflt);
+      const n = entries.length, count = t('st.group_' + L.plural(n, ['1', '2', '5'], NS.lang()), { n });
+      const tail = infos.slice(0, 3).map((x) => [x.verb, x.arg].filter(Boolean).join(' ')).join(' · ');
+      const list = h('div', { class: 'agrp-b', hidden: true });
+      const btn = h('button', { type: 'button', class: 'stp-h agrp-h', 'aria-expanded': 'false' }, h('span', { class: 'agrp-dot' + (running ? ' run' : lastBad ? ' bad' : ''), 'aria-hidden': 'true' }),
+        h('span', { class: 'stp-v', text: count }), h('span', { class: 'stp-a agrp-t', text: tail }), ic('i-chev', 'stp-chev'));
+      const el = h('div', { class: 'agrp s-' + (running ? 'run' : lastBad ? 'bad' : 'ok') }, btn, list);
+      const draw = () => {
+        const v = isOpen();
+        btn.setAttribute('aria-expanded', String(v)); list.hidden = !v; el.classList.toggle('on', v);
+        if (v && !list.firstChild) NS.append(list, entries.map((e, i) => stepNode(e, { live: o.live, last: o.last && i === entries.length - 1 })));
+      };
+      btn.onclick = () => { fold.set(key, !isOpen()); draw(); };
+      draw();
+      return el;
+    }
+    // actions of one role in a row, in order
+    const bySpeaker = (run) => { const out = []; for (const e of run) { const l = out[out.length - 1]; if (l && l[0].role === e.role) l.push(e); else out.push([e]); } return out; }
     const toArr = (x) => [].concat(x);
     const actOpts = (e) => ({ open, live: e.taskId ? isLiveTask(S.tasks.get(e.taskId)) : !!(streams.size || typing.size || [...acts.values()].some((x) => !x.taskId && !x.action.done)) });
 
@@ -215,12 +284,18 @@
       };
       const items = timeline();
       if (olderLog.size) put('older', 'older', () => [h('button', { type: 'button', class: 'linkb older', text: t('act3.older'), onclick: loadOlderLog })]);
-      if (!items.length && !pending.length) put('empty', String(selProject), () => [emptyNode()]);
+      const blank = !items.length && !pending.length;
+      if (blank) put('empty', String(selProject), () => [emptyNode()]);
+      convoEl.classList.toggle('blank', blank);                    // an empty chat: the question, the field and the examples in the middle (pin-25)
+      blankEx.hidden = !(blank && st.project(selProject));
       let run = [];
-      const flush = () => {
-        for (const g of V.groupActions(run)) {
-          if (g.type === 'group') { const o = actOpts(g.items[0]); put('g:' + g.items[0].key, g.items.map((e) => e.key + (e.action.done ? '1' : '0')).join() + o.live, () => [NS.actions.groupNode(g.items, o)]); }
-          else { const o = actOpts(g.item); put('a:' + g.item.key, JSON.stringify(g.item.action) + o.live, () => [NS.actions.actionNode(g.item.action, o)]); }
+      const flush = (isLast) => {
+        const segs = bySpeaker(run);
+        for (const [si, seg] of segs.entries()) {
+          const lastSeg = !!isLast && si === segs.length - 1;
+          const sigOf = (e) => e.key + (e.action.done ? '1' : '0') + (e.action.ok === false ? 'x' : '');
+          if (seg.length > 1) { const o = actOpts(seg[0]); put('g:' + seg[0].key, seg.map(sigOf).join() + o.live + lastSeg, () => [groupNode(seg, Object.assign({ last: lastSeg }, o))]); }
+          else { const e = seg[0], o = actOpts(e); put('a:' + e.key, JSON.stringify(e.action) + o.live + lastSeg, () => [stepNode(e, Object.assign({ last: lastSeg }, o))]); }
         }
         run = [];
       };
@@ -230,7 +305,7 @@
         if (it.type === 'msg') put('m:' + it.m.id, JSON.stringify(it.m) + (it.m.task_id && cards.has(it.m.task_id) ? '+' : ''), () => toArr(msgNode(it.m)));
         else put('s:' + it.id, it.s.text, () => [streamNode(it.s)]);
       }
-      flush();
+      flush(!pending.length);
       for (const p of pending) put('p:' + p.id, p.text, () => [humanNode(p, true)]);
       for (const k of [...cache.keys()]) if (!used.has(k)) cache.delete(k);
       nodes.push(live.el);
@@ -250,20 +325,31 @@
         const run = runningRun(tk), rk = run && L.roleKey(run.role);
         const last = lastOf((e) => e.taskId === tk.id);
         const streaming = streams.size > 0 || typing.size > 0;
+        composer.setWork({ who: rk ? t('role.' + rk) : env.name, what: workText(last, streaming), stop: () => NS.api.call('cancel', { id: tk.id }).catch((e) => NS.shell.toast(NS.errHuman(NS.api.errText(e)), true)) });
         return live.set({ verbKey: V.actionVerb(last && last.action, streaming && (!last || last.action.done), { role: rk, lastRole: last && last.role }), since: ts(run && run.started_at) || ts(tk.started_at),
           who: [rk ? t('role.' + rk) : null, run && run.model].filter(Boolean).join(' · '), plan: planOf((e) => e.taskId === tk.id) });
       }
       const queued = mine.find((x) => x.status === 'queued');
       const q = queued && V.queueInfo([...S.tasks.values()], queued.id, (S.settings && S.settings.max_parallel) || 3);
-      if (q) return live.set({ queue: q.after ? t('live.queue', q) : t('live.queue_short', q) });
+      if (q) { composer.setWork(null); return live.set({ queue: q.after ? t('live.queue', q) : t('live.queue_short', q) }); }
       const chatLast = lastOf((e) => !e.taskId);
       const chatBusy = streams.size > 0 || typing.size > 0 || (chatLast && !chatLast.action.done);
       if (chatBusy) {
         const sx = [...streams.values()][0];
+        composer.setWork({ who: env.name, what: workText(chatLast, streams.size > 0 || typing.size > 0), stop: null });
         return live.set({ verbKey: V.actionVerb(chatLast && !chatLast.action.done ? chatLast.action : null, streams.size > 0 || typing.size > 0), since: (sx && sx.at) || (chatLast && chatLast.at) || Date.now(),
           who: [env.name, NS.models.label(envId)].filter(Boolean).join(' · '), plan: planOf((e) => !e.taskId) });
       }
+      composer.setWork(null);
       live.set(null);
+    }
+    // the plate over the field: what the agent is doing right now ("правит cursor.py")
+    function workText(last, streaming) {
+      if (streaming && (!last || last.action.done)) return t('work.answer');
+      if (!last) return t('work.think');
+      const info = stepInfo(last.action, true);
+      if (last.action.done && !['edit', 'write'].includes(info.kind)) return t('work.think');
+      return KINDS.includes(info.kind) ? t('work.' + info.kind, { a: info.kind === 'bash' || info.kind === 'search' || info.kind === 'web' ? firstLine(info.arg, 40) : tailPath(info.title) }) : t('work.think');
     }
     // the card of the running or waiting task stays at the top while the history scrolls (G24.2)
     function pin() {
@@ -306,6 +392,7 @@
     }
     wrap.addEventListener('scroll', () => { if (wrap.scrollTop < 60) loadOlder(); });
 
+    const convoEl = h('section', { class: 'convo' });
     const composer = NS.composer.create({ envId, chat: chatId, hooks: {
       projectId: () => selProject, activeTask, noteTo: ext.noteTo,
       addPending(p) { pending.push(p); renderFeed(); toBottom(); },
@@ -320,7 +407,8 @@
     } });
 
     const convoy = chatObj && chatObj.convoy && NS.factory ? NS.factory.convoyBar(chatId) : null;       // "Поручение": overall progress "3 из 5" (story 163)
-    root.append(h('section', { class: 'convo' }, header, convoy ? convoy.el : null, wrap, composer.el));
+    NS.append(convoEl, [header, convoy ? convoy.el : null, wrap, composer.el, blankEx]);
+    root.append(convoEl);
     if (ext.decorate) ext.decorate(composer);
     if (isNew) fillProjects();
     drawHeader();

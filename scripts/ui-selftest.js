@@ -60,12 +60,14 @@ if (process.env.NS_PLAYWRIGHT) (async () => {
     return { buttons: buttons.length, names: buttons.map((x) => x.getAttribute('aria-label') || x.textContent.trim()).slice(0, 20), pane: rad('.pane'), card: rad('.tcard'), field: rad('.composer'), bar: rad('.bar') };
   });
   const out = [];
-  out.push((r.buttons <= 17 ? 'PASS ' : 'FAIL ') + 'main view: at most 17 visible buttons outside the feed (14 + the three entrances of F8) (' + r.buttons + ')' + (r.buttons <= 17 ? '' : ' ' + JSON.stringify(r.names)));
+  out.push((r.buttons <= 18 ? 'PASS ' : 'FAIL ') + 'main view: at most 18 visible buttons outside the feed (14 + the three entrances of F8 + "Новый чат" of the chat list that F9 shows by default) (' + r.buttons + ')' + (r.buttons <= 18 ? '' : ' ' + JSON.stringify(r.names)));
   out.push((r.pane > 0 && r.card > 0 && r.field > 0 && r.bar > 0 ? 'PASS ' : 'FAIL ') + 'computed border-radius > 0: pane ' + r.pane + ', card ' + r.card + ', field ' + r.field + ', bar ' + r.bar);
   await f5(b, 'http://127.0.0.1:' + srv.address().port, out);
   await f7(b, 'http://127.0.0.1:' + srv.address().port, out);
   await b.close(); b = await launch();       // F8 runs in a fresh browser: after F5 and F7 in one browser it died on the next page (headless Chrome on macOS)
   await f8(b, 'http://127.0.0.1:' + srv.address().port, out);
+  await b.close(); b = await launch();       // F9 in a fresh browser too
+  await f9(b, 'http://127.0.0.1:' + srv.address().port, out);
   process.stdout.write(out.join('\n') + '\n');
   if (out.some((l) => l.startsWith('FAIL'))) process.exitCode = 1;
   await b.close(); srv.close();
@@ -233,4 +235,81 @@ async function f8(b, base, out) {
   await q.click('.t-dead-x'); await q.waitForTimeout(700);
   ok('F8 5: "Закрыть вкладку" closes the tab', await q.evaluate((n) => NS.tabs.state.tabs.length < n || !document.querySelector('.t-dead:not([hidden])'), n0), n0);
   await q.close();
+}
+
+// F9 - the minimal chat on the drawn window (dev-mock): the column, steps folded, bubbles, the empty chat, the chat list on a clean start, the plate with "Стоп"
+async function f9(b, base, out) {
+  const ok = (name, cond, detail) => out.push((cond ? 'PASS ' : 'FAIL ') + name + (cond ? '' : ' ' + JSON.stringify(detail)));
+  const p = await b.newPage({ viewport: { width: 1440, height: 900 } });
+  await p.goto(base + '/index.html?lang=ru&platform=mac');
+  await p.waitForTimeout(1600);
+  // 5: a clean start shows the chat list; ⌘B hides it and the choice survives a reload
+  const side = () => p.evaluate(() => { const e = document.querySelector('.side'); return { on: document.body.classList.contains('side-on'), w: e ? e.getBoundingClientRect().width : 0, saved: NS.storage.get('ns.side') }; });
+  const s0 = await side();
+  ok('F9 5: on a clean start (ns.side not set) the chat list is visible, about 240 px', s0.on && s0.w > 200 && s0.w < 290 && s0.saved == null, s0);
+  const key = () => p.evaluate(() => document.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyB', key: 'b', metaKey: true, bubbles: true, cancelable: true })));
+  await key(); await p.waitForTimeout(250);
+  const s1 = await side();
+  await p.reload(); await p.waitForTimeout(1500);
+  const s2 = await side();
+  ok('F9 5: ⌘B hides the chat list and a reload remembers it', !s1.on && s1.w === 0 && s1.saved === '0' && !s2.on && s2.w === 0, { s1, s2 });
+  await key(); await p.waitForTimeout(250);
+  ok('F9 5: ⌘B shows it again', (await side()).on, null);
+  // 1 and 3: the column, the type, the bubbles
+  const L = await p.evaluate(() => {
+    const feed = document.querySelector('.cfeed'), fr = feed.getBoundingClientRect();
+    const msg = document.querySelector('.msg .msg-b'), me = document.querySelector('.me .me-b');
+    const cs = (el) => getComputedStyle(el), mr = me && me.getBoundingClientRect();
+    return { feedW: fr.width, text: msg && cs(msg).fontFamily, size: msg && cs(msg).fontSize, lh: msg && cs(msg).lineHeight, mono: cs(document.documentElement).getPropertyValue('--mono'),
+      meRight: mr && Math.round(fr.right - mr.right), meBg: me && cs(me).backgroundColor, meRadius: me && cs(me).borderTopLeftRadius, msgBg: msg && cs(msg).backgroundColor, msgRight: msg && Math.round(fr.right - msg.getBoundingClientRect().right) };
+  });
+  ok('F9 1: the feed column is at most 780 px wide on a 1440 window', L.feedW > 300 && L.feedW <= 780, L);
+  ok('F9 1: the answer text is proportional (not the mono stack), 14-15 px', L.text && !/monospace|Menlo|Consolas/i.test(L.text) && parseFloat(L.size) >= 14 && parseFloat(L.size) <= 15, L);
+  ok('F9 3: my message is a grey bubble pushed to the right edge of the column, the answer has no background', L.meBg && L.meBg !== 'rgba(0, 0, 0, 0)' && L.meRight <= 20 && parseFloat(L.meRadius) >= 12 && L.msgBg === 'rgba(0, 0, 0, 0)' && L.msgRight <= 20, L);
+  // 2: steps are folded, a click opens the diff, a group folds into one line
+  const f0 = await p.evaluate(() => ({ lines: document.querySelectorAll('.cfeed .stp-h, .cfeed .agrp-h').length, diffs: [...document.querySelectorAll('.cfeed .dg')].filter((x) => x.getBoundingClientRect().height > 0).length,
+    groups: [...document.querySelectorAll('.cfeed .agrp')].map((g) => ({ head: g.querySelector('.agrp-h .stp-v').textContent, shown: !g.querySelector('.agrp-b').hidden })) }));
+  ok('F9 2: the demo chat has step lines and groups ("3 действия") folded, no diff is visible', f0.lines >= 3 && f0.diffs === 0 && f0.groups.length >= 2 && f0.groups.every((g) => !g.shown) && f0.groups.some((g) => /^3 действия$/.test(g.head)), f0);
+  await p.evaluate(() => { for (const g of document.querySelectorAll('.cfeed .agrp-h')) g.click(); });
+  await p.waitForTimeout(150);
+  await p.evaluate(() => document.querySelector('.cfeed .stp.k-edit .stp-h').click()); await p.waitForTimeout(200);
+  const f1 = await p.evaluate(() => { const d = [...document.querySelectorAll('.cfeed .dg')].find((x) => x.getBoundingClientRect().height > 0); return { diff: !!d, mono: d && getComputedStyle(d).fontFamily, add: d ? d.querySelectorAll('.dl.a').length : 0, del: d ? d.querySelectorAll('.dl.d').length : 0 }; });
+  ok('F9 2: a click on "Изменил …" opens the tinted diff in a monospace font', f1.diff && /monospace|Menlo|Consolas/i.test(f1.mono) && f1.add > 0 && f1.del > 0, f1);
+  await p.evaluate(() => document.querySelector('.cfeed .stp.k-edit .stp-h').click()); await p.waitForTimeout(150);
+  ok('F9 2: a second click folds it again', await p.evaluate(() => ![...document.querySelectorAll('.cfeed .dg')].some((x) => x.getBoundingClientRect().height > 0)), null);
+  // 4: the empty chat
+  await p.evaluate(() => NS.tabs.newTab()); await p.waitForTimeout(900);
+  const e0 = await p.evaluate(() => { const r = (q) => { const e = document.querySelector(q); return e ? e.getBoundingClientRect() : null; }; const ta = r('.composer textarea'), h2 = r('.newchat-empty h2');
+    return { title: (document.querySelector('.newchat-empty h2') || {}).textContent, h2: h2 && h2.height, ta: ta && ta.width, ex: [...document.querySelectorAll('.examples:not([hidden]) .ex')].filter((x) => x.getBoundingClientRect().height > 0).map((x) => x.querySelector('b').textContent), exVisible: !!r('.examples') && r('.examples').height > 0,
+      ph: (document.querySelector('.composer textarea') || {}).placeholder, keys: (document.querySelector('.cmp-keys') || {}).textContent, radius: parseFloat(getComputedStyle(document.querySelector('.cmpbox .composer')).borderTopLeftRadius) }; });
+  ok('F9 4: the empty chat shows "Что сделать?", the field with a short placeholder and three examples', e0.title === 'Что сделать?' && e0.ta > 400 && e0.exVisible && e0.ex.length === 3 && e0.ph === 'Что сделать?' && /Enter - отправить/.test(e0.keys) && e0.radius >= 16, e0);
+  const before = await p.evaluate(() => document.querySelectorAll('.me').length);
+  await p.click('.examples:not([hidden]) .ex >> nth=0'); await p.waitForTimeout(300);
+  const e1 = await p.evaluate(() => ({ v: document.querySelector('.composer textarea').value, me: document.querySelectorAll('.me').length }));
+  ok('F9 4: a click on an example puts the text into the field and does not send it', /^Сделай/.test(e1.v) && e1.me === before, e1);
+  await p.close();
+  // 6: the plate over the field and "Стоп" while a task runs
+  const q = await b.newPage({ viewport: { width: 1440, height: 900 } });
+  await q.goto(base + '/index.html?lang=ru&platform=mac&env=claude&chat=cache');
+  await q.waitForTimeout(3800);
+  const w0 = await q.evaluate(() => { const pl = document.querySelector('.workbar'), sb = document.querySelector('.stop4'); return { plate: pl && !pl.hidden && pl.getBoundingClientRect().height > 0, text: pl && pl.textContent, stop: sb && !sb.hidden && sb.getBoundingClientRect().width > 0, send: document.querySelector('#sendBtn').hidden }; });
+  ok('F9 6: while the agent works a plate "Исполнитель · правит …" and "Стоп" show over the field, the round button is a stop square', w0.plate && /Исполнитель · /.test(w0.text) && /Стоп/.test(w0.text) && w0.stop && w0.send, w0);
+  await q.click('.workbar .wb-stop'); await q.waitForTimeout(700);
+  const w1 = await q.evaluate(() => ({ plate: !!document.querySelector('.workbar') && !document.querySelector('.workbar').hidden, status: [...NS.store.s.tasks.values()].find((x) => x.id === 't-cache').status }));
+  ok('F9 6: "Стоп" cancels the task and the plate goes away', w1.status === 'cancelled' && !w1.plate, w1);
+  await q.close();
+  // 3: a failed command stays open only while it is the last event
+  const r = await b.newPage({ viewport: { width: 1440, height: 900 } });
+  await r.goto(base + '/index.html?lang=ru&platform=mac&env=codex&chat=pf');
+  await r.waitForTimeout(1800);
+  const x0 = await r.evaluate(() => { const bad = document.querySelector('.cfeed .stp.s-bad'); return { bad: !!bad, open: !!bad && !bad.querySelector('.stp-b').hidden, text: bad ? bad.querySelector('.stp-b').textContent : '' }; });
+  ok('F9 3: a failed command is a red line, open by default when it is the last event', x0.bad && x0.open && /Cannot find module/.test(x0.text), x0);
+  await r.close();
+  const r2 = await b.newPage({ viewport: { width: 1440, height: 900 } });
+  await r2.goto(base + '/index.html?lang=ru&platform=mac');
+  await r2.waitForTimeout(1600);
+  await r2.evaluate(() => { for (const g of document.querySelectorAll('.cfeed .agrp-h')) g.click(); });
+  const x1 = await r2.evaluate(() => [...document.querySelectorAll('.cfeed .stp.s-bad')].map((e) => !e.querySelector('.stp-b').hidden));
+  ok('F9 3: a failed command that is not the last event is folded', x1.length >= 1 && x1.every((v) => !v), x1);
+  await r2.close();
 }
