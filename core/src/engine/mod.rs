@@ -12,6 +12,7 @@ mod council;
 mod crew;
 mod edits;
 mod flow;
+mod handoff;
 mod lanes;
 mod ops;
 mod practices;
@@ -390,6 +391,7 @@ impl Engine {
         // the claim orders two clicks (and the drive thread finishing its step); the second
         // finds the task no longer waiting
         let _h = self.hold(id, false)?;
+        self.guard_taken(id)?;
         let Some(t) = self.task(id).filter(|t| asks(t)) else { return Err("not_waiting".into()) };
         let special = self.state(id).special;
         let stage = self.pending(id).stage.unwrap_or(Status::Working);
@@ -417,6 +419,7 @@ impl Engine {
     /// Stops the agent / check process, removes the worktree and the task branch.
     pub fn cancel(&self, id: &str) -> Result<(), String> {
         let _h = self.hold(id, true)?;
+        self.guard_taken(id)?;
         self.do_cancel(id)
     }
 
@@ -446,6 +449,7 @@ impl Engine {
     /// task landed once). Done-not-pushed: push / open the PR again.
     pub fn retry(&self, id: &str) -> Result<(), String> {
         let _h = self.hold(id, false)?;
+        self.guard_taken(id)?;
         let mut t = self.task(id).ok_or("task_not_found")?;
         let p = self.project(&t.project_id).ok_or("project_not_found")?;
         match t.status {
@@ -490,6 +494,7 @@ impl Engine {
             self.cancel(id)?;
         }
         let _h = self.hold(id, true)?;
+        self.guard_taken(id)?;
         let t = self.task(id).ok_or("task_not_found")?;
         if let (Some(wt), Some(p)) = (&t.worktree, self.project(&t.project_id)) {
             self.rm_wt(&p.path, wt, true).map_err(|e| e.to_string())?;
@@ -807,8 +812,16 @@ impl Engine {
     }
 
     fn save(&self, t: &Task) -> Result<(), String> {
-        lk(&self.store).upsert_task(t).map_err(|e| e.to_string())?;
-        self.emit(EngineEvent::TaskChanged(t.clone()));
+        // the "До мержа" list is edited by the person while a step runs on a copy of the task: the stored list wins
+        let mut t = t.clone();
+        {
+            let mut st = lk(&self.store);
+            if let Some(cur) = st.task(&t.id) {
+                t.todos = cur.todos;
+            }
+            st.upsert_task(&t).map_err(|e| e.to_string())?;
+        }
+        self.emit(EngineEvent::TaskChanged(t));
         Ok(())
     }
 

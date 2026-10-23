@@ -29,6 +29,66 @@
   };
   const workPath = (task) => task.worktree || (NS.store.project(task.project_id) || {}).path;
 
+  // ---------- F13: snapshots of the copy ("Вернуть код сюда"), shared with the chat ----------
+  const snapCache = new Map(), snapWatch = new Map();
+  let snapBus = false;
+  const snapsOf = (taskId) => {
+    if (!snapCache.has(taskId)) snapCache.set(taskId, NS.api.call('task_snapshots', { taskId }).then((l) => l || []).catch(() => []));
+    return snapCache.get(taskId);
+  };
+  const rollbackable = (task) => !!task && !!task.worktree && !task.taken_from && !(L.kindOf(task) === 'run' && L.info(task.status).live) && !['done', 'cancelled', 'reverted'].includes(task.status);
+  // a button that asks twice (the current state is saved, so this is reversible, but it still moves the code); pick(list) = the snapshot it returns to
+  function rollbackBtn(taskId, pick, cls) {
+    const b = h('button', { type: 'button', class: cls || 'linkb snap-back', hidden: true, title: t('snap.rollback_d') });
+    let n = null;
+    const label = () => { b.textContent = t('snap.rollback'); b.prepend(ic('i-back')); };
+    const refresh = async () => {
+      const task = NS.store.s.tasks.get(taskId);
+      const sn = rollbackable(task) ? pick(await snapsOf(taskId)) : null;
+      n = sn ? sn.n : null;
+      b.hidden = n == null;
+      if (!b.dataset.armed) label();
+    };
+    b.onclick = async () => {
+      if (!b.dataset.armed) { b.dataset.armed = '1'; b.textContent = t('snap.sure'); setTimeout(() => { delete b.dataset.armed; label(); }, 3000); return; }
+      delete b.dataset.armed; label();
+      try {
+        const saved = await NS.api.call('restore_snapshot', { taskId, n });
+        snapCache.delete(taskId);
+        NS.shell.toast(t('snap.done', { n, saved }));
+        refresh();
+      } catch (e) { fail(e); }
+    };
+    if (!snapBus) { snapBus = true; NS.store.on('task', (task) => { snapCache.delete(task.id); for (const f of [...(snapWatch.get(task.id) || [])]) f(); }); }
+    const set = snapWatch.get(taskId) || new Set();
+    snapWatch.set(taskId, set);
+    const again = () => { if (!b.isConnected && b.dataset.seen) set.delete(again); else { if (b.isConnected) b.dataset.seen = '1'; refresh(); } };
+    set.add(again);
+    refresh();
+    return b;
+  }
+  // the snapshot taken first at or after a moment: what the code was when the person wrote
+  const snapAfter = (at) => (list) => list.find((s) => Date.parse(s.at) >= Date.parse(at) - 1000) || null;
+
+  // ---------- F13: the list "До мержа" ----------
+  const todoDraft = new Map();
+  function todoList(task) {
+    const todos = task.todos || [];
+    const locked = ['cancelled', 'reverted'].includes(task.status);
+    const list = h('ul', { class: 'todos' }, todos.map((x) => h('li', { class: x.done ? 'done' : '' },
+      h('label', {}, h('input', { type: 'checkbox', checked: !!x.done, disabled: locked, 'aria-label': x.text, onchange: (e) => call('todo_set', { taskId: task.id, todoId: x.id, done: e.target.checked }) }),
+        h('span', { text: x.text }), x.by === 'reviewer' ? h('small', { class: 'by', text: t('todo.by_reviewer') }) : null),
+      locked ? null : h('button', { type: 'button', class: 'linkb', 'aria-label': t('todo.remove'), title: t('todo.remove'), text: '×', onclick: () => call('todo_remove', { taskId: task.id, todoId: x.id }) }))));
+    if (locked) return todos.length ? list : null;
+    const input = h('input', { type: 'text', class: 'todo-in', placeholder: t('todo.add'), 'aria-label': t('todo.add'), value: todoDraft.get(task.id) || '', maxlength: '200' });
+    const add = () => { const v = input.value.trim(); if (!v) return; todoDraft.delete(task.id); input.value = ''; call('todo_add', { taskId: task.id, text: v }); };
+    input.oninput = () => todoDraft.set(task.id, input.value);
+    input.onkeydown = (e) => { if (e.key === 'Enter') { e.preventDefault(); add(); } };
+    return h('div', { class: 'todo-box' }, todos.length ? list : h('p', { class: 'hint', text: t('todo.empty') }),
+      h('div', { class: 'todo-add' }, input, h('button', { type: 'button', class: 'btn sm', text: t('todo.add_btn'), onclick: add })));
+  }
+  NS.rollbackBtn = rollbackBtn; NS.snapAfter = snapAfter;
+
   // ---------- the block "Нужен ты" ----------
   let closeMenu = null;   // the open "▾" menu of this card, if any (one card per task, one menu at a time)
   function needBlock(task, hooks) {
@@ -37,6 +97,12 @@
     const role = t('role.' + workerRole(task));
     const snoozed = NS.store.s.snoozed.has(task.id);
     const answer = (text) => call('answer', { id: task.id, text });
+    if (task.status === 'needs_human' && task.question && /^todos_open/.test(task.question.text)) {
+      const el = needEl('question', t('need.todos_open'), t('step.merge'), NS.errHuman(task.question.text),
+        [h('button', { type: 'button', class: 'btn sm human', text: t('need.todos_cont'), onclick: () => answer('Continue') })]);
+      el.insertBefore(todoList(task), el.querySelector('.acts'));
+      return el;
+    }
     if (task.status === 'needs_human' && task.question) {
       const q = task.question;
       return needEl('question', t('need.question'), role, q.text, [
@@ -85,6 +151,14 @@
       h('p', { text }), h('div', { class: 'acts' }, acts));
   }
 
+  // "Забрать к себе" / "Отдать агенту": the project folder on the task's branch and back
+  const canTake = (task) => !!task.worktree && !task.taken_from && ['failed', 'needs_human'].includes(task.status);
+  function takeBtn(task, which) {
+    const cmd = which === 'give' ? 'give_to_agent' : 'take_to_main';
+    return h('button', { type: 'button', class: 'btn sm', text: t('take.' + which), title: t('take.' + which + '_d'),
+      onclick: async () => { try { await NS.api.call(cmd, { taskId: task.id }); NS.shell.toast(t('take.done_' + which)); } catch (e) { fail(e); } } });
+  }
+
   // quiet one-line states: done, not pushed, paused, handed off, night start
   function stateLine(task) {
     const o = task.outcome || {}, project = NS.store.project(task.project_id);
@@ -96,6 +170,9 @@
       const cmd = L.retryPushCommand(project);
       return h('div', { class: 'tc-done warn' }, ic('i-warn'), NS.errHuman(o.error) || t('st.done_not_pushed'),
         h('button', { type: 'button', class: 'btn sm', text: t('act.retry_push'), onclick: () => (cmd === 'retry' ? call('retry', { id: task.id }) : call('push_base', { projectId: task.project_id })) }));
+    }
+    if (task.taken_from) {
+      return h('div', { class: 'tc-done' }, ic('i-branch'), t('take.taken', { prev: t('take.taken_prev', { prev: task.taken_from }) }), takeBtn(task, 'give'));
     }
     if (task.status === 'handed_off') return h('div', { class: 'tc-done' }, ic('i-run'), t('card.handed'), h('button', { type: 'button', class: 'btn sm', text: t('act.take_back'), onclick: () => call('take_back', { taskId: task.id }) }));
     if (task.status === 'paused_limit') return h('div', { class: 'tc-done' }, ic('i-pause'), task.resume_at ? t('card.paused_until', { time: NS.hhmm(task.resume_at) }) : t('card.paused'));
@@ -121,7 +198,7 @@
   }
 
   function createCard(task0, hooks) {
-    let task = task0, open = false, files = null, selFile = null;
+    let task = task0, open = false, files = null, selFile = null, snaps = null;
     const diffs = new Map();
     const el = h('article', { class: 'tcard', dataset: { task: task.id } });
     const top = h('div', { class: 'tc-top' }), det = h('div', { class: 'tc-det', hidden: true });
@@ -146,6 +223,7 @@
     async function loadFiles() {
       if (files) return;
       try { files = (await NS.api.call('get_diffstat', { taskId: task.id })) || []; } catch (e) { files = []; }
+      snaps = await snapsOf(task.id);
     }
     function changesBlock() {
       const o = task.outcome || {};
@@ -204,11 +282,25 @@
           ' ', h('small', { text: t('runst.' + (st || 'pending')) }));
       });
       const acts = L.taskActions(task).map((a) => actionBtn(a));
+      if (task.taken_from) acts.push(takeBtn(task, 'give'));
+      else if (canTake(task)) acts.push(takeBtn(task, 'take'));
       return h('section', { class: 'db' }, h('h3', { text: t('det.details') }),
         h('p', { class: 'fline' }, ic('i-branch'), task.branch, sep, model ? [fam ? vendorIcon(fam.vendor, 'mlogo') : envIcon(task.agent, 'mlogo'), model + ', ' + t('det.attempt', { n: Math.min(task.attempts + 1, maxTries), m: maxTries })] : null, sep, cost),
         roster.length ? h('p', { class: 'rline' }, roster) : null,
         h('small', { text: t('det.each_role', { env: envObj ? envObj.name : '' }) }),
         acts.length ? h('div', { class: 'acts-row' }, acts) : null);
+    }
+    function todosBlock() {
+      if (task.status === 'cancelled' || task.status === 'reverted') return null;
+      if (task.status === 'done' && !(task.todos || []).length) return null;
+      const open = (task.todos || []).filter((x) => !x.done).length;
+      return h('section', { class: 'db todos-db' }, h('h3', {}, t('todo.title'), open ? h('small', { text: t('todo.open', { n: open }) }) : null), h('p', { class: 'hint', text: t('todo.hint') }), todoList(task));
+    }
+    function turnsBlock() {
+      if (!rollbackable(task) || !snaps || !snaps.length) return null;
+      return h('section', { class: 'db turns-db' }, h('h3', { text: t('snap.title') }), h('p', { class: 'hint', text: t('snap.hint') }),
+        h('ul', { class: 'turns' }, snaps.map((s) => h('li', {}, h('span', { text: t('snap.row', { n: s.n, role: t('role.' + (L.roleKey(s.label) || s.label)), time: NS.hhmm(s.at) }) }),
+          rollbackBtn(task.id, (list) => list.find((x) => x.n === s.n) || null)))));
     }
     function actionBtn(a) {
       const project = NS.store.project(task.project_id);
@@ -229,7 +321,9 @@
     function renderDet() {
       // v4: blocks of other tasks (handoff note, ports and base, …) come from the registry ('details')
       const extra = NS.registry.points('details').map((d) => { try { return d.render(task, NS.shell.ctxFor({ task: task.id })); } catch (e) { return null; } }).filter(Boolean);
-      clear(det).append(changesBlock(), checksBlock(), detailsBlock(), ...extra);
+      const typing = document.activeElement && det.contains(document.activeElement) && document.activeElement.classList.contains('todo-in');
+      clear(det).append(...[changesBlock(), checksBlock(), todosBlock(), turnsBlock(), detailsBlock(), ...extra].filter(Boolean));
+      if (typing) { const i = det.querySelector('.todo-in'); if (i) { i.focus(); i.setSelectionRange(i.value.length, i.value.length); } }
     }
     async function setOpen(v) {
       open = v; det.hidden = !v; el.classList.toggle('open', v);
@@ -240,7 +334,7 @@
     renderTop();
     return {
       el, get id() { return task.id; }, get open() { return open; },
-      update(next) { task = next; files = null; renderTop(); if (open) { renderDet(); loadFiles().then(renderDet); } },
+      update(next) { task = next; files = null; snaps = null; renderTop(); if (open) { renderDet(); loadFiles().then(renderDet); } },
       close() { if (open) setOpen(false); },
       tick() { const e = top.querySelector('.elapsed'); if (e) e.textContent = elapsed(task); },
       setPinned(v) { el.classList.toggle('pinned', !!v && !open); },

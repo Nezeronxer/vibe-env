@@ -492,3 +492,76 @@ pub fn load_token() -> Option<String>; pub fn save_token(t: &str) -> Result<(), 
 - Всё скачанное - недоверенное: лимиты 20 МБ на элемент, 100 МБ распаковки, пути без `..`/абсолютных/симлинков наружу; исполняемое выключено до галочки.
 - Обновление CLI - никогда `sudo`; при идущих запусках среды ждёт.
 - Ни `innerHTML` для вывода терминала и данных из сети.
+
+### Из таска 18 - каркас v4 и терминал-мультиплексор
+
+- `core::term`: `Terms::new/open(TermSpec)->Result<TermId>/write/resize/close/attach(id, Sink)->Result<Vec<u8>>/detach/ack(id, usize)/list()->Vec<TermInfo>/snapshot()->Vec<TermSaved>`; `TermChunk{Data(Vec<u8>), Exit(Option<i32>)}`; ошибки `term_not_found/bad_cwd/pty_failed`. `TermInfo.env_id` и `cli_version` пока всегда `None` - заполняет таск 20 (обновления) / 23.
+- Команды: `term_open{spec}`, `term_write{id,data}`, `term_resize`, `term_close`, `term_attach{id,channel}` (сначала буфер Raw, потом живой поток, в конце JSON `{"exit":code}`), `term_detach`, `term_ack{id,bytes}`, `term_list`; `window_detach{tabSpec}->id`, `window_tab{id}` (отдаёт tabSpec новому окну), `window_return{tabSpec}` → событие `window-return{tabSpec}` в main; события `term-exit{id,code}`, `windows-changed`, при старте `terms-restored` (TermSaved из `terms.json`).
+- **Обязательно для ui (таск 23):** при скрытии окна (`visibilitychange` hidden) сессии отключаются (detach), при показе - attach заново: WebKit в скрытой странице почти останавливает таймеры, xterm перестаёт подтверждать запись, и flow control ставит процесс на паузу. Rust делает то же при скрытии main.
+- CSP: `style-src 'self' 'unsafe-inline'` (xterm 6 пишет `<style>`), `script-src 'self'` без изменений - тест охраняет; запись в `docs/security.md` - таск 26.
+- Заглушки `not_built`: `net::{Fetch, FetchOut, CurlFetch, FakeFetch}`, `market::{Market, Kind, Source, Page, Item, ItemDetail, Scope, InstallPlan, Installed}`, `updates::{Updates, Method, CliStatus, UpdateLog, NewModel}`, `config::{Config, ConfigError}` (`load` -> Result); app-команды `market_*`, `cli_status/cli_update/updates_history`, `gh_publish/git_log_page/git_revert_commit`, `config_open/config_errors`. Расширений `core::git` нет - их вводит таск 21 в `git.rs`.
+- ui: `ui/js/v4/mock-loader-v4.js` (грузит `mock-*.js` без Tauri), `ui/js/v4/term-probe.js` - временная панель `?term=1` (англ. кнопки Detach/Return; убирает таск 23). Не сделано: `onBinary` (мышь X10), определение простаивающего shell для вопроса при закрытии - таск 23.
+- Замер release: отклик ввода медиана 7 мс; 200 000 строк без потерь за ~0,21 с; `cat` 7,9 МБ за ~0,35 с; Ctrl-C останавливает за 61 мс; память WebContent ~525 МБ стабильно. Отрисовка в замер не вошла (экран был заблокирован) - перепроверить в живом прогоне (таск 26).
+
+### Из таска 21 - GitHub, история, приёмы экономии
+
+- `core::git`: `publish(path, name, private, desc) -> Result<String, PublishError>` (`{kind}`: gh_missing, gh_not_logged_in, name_taken, bad_name, protected_in_history{paths}, publish_failed{detail}); `protected_in_history(repo)`; `log_page(path, skip, limit) -> Vec<CommitRow{sha, parents, author, time: i64, subject, refs, task: Option<String>, lane: u16, edges: Vec<(u16,u16)>}>`; `revert_commit(path, sha) -> String`; `is_pushed(path, sha)`; `TASK_TRAILER = "Nightshift-Task"`.
+- app: `gh_publish{path,name,private,desc}` → url, ошибка `{kind}`; `git_log_page{path,skip,limit}` (limit ≤ 1000) → `[CommitRow]`; `git_revert_commit{path,sha}` → `{sha, pushed}`; path обязан быть папкой известного проекта, иначе `project_not_found`.
+- model (serde default): `Task.context_pct: Option<f32>`, `Task.handoff: Option<String>`, `Task.port: Option<u16>`, `Task.db_name: Option<String>`; `Project.isolate_ports: bool`; `Settings.compress_output: bool` (true); `Settings.role_tools: BTreeMap<RoleKind, Vec<String>>`.
+- agent: `AgentEvent::Context{used, window}`, `Run.allowed_tools`, `Adapter::compact_prompt(keep)`, `Adapter::fast_model()` (Claude - haiku, Gemini - flash), `default_tools(role, checks)`, `agent::tax::startup_tax(env, home, project) -> StartupTax{rules[{path, lines, tokens, long}], skills, skill_tokens, agents, agent_tokens, mcp_servers, total_tokens}`, `FakeStep::Context(used, window)`.
+- engine: `Engine::compact(id, keep: Option<&str>)` (ошибка `nothing_to_compact`); строки ленты `handoff: <limit_fallback|model_switch|compact>`, `compact_queued`, `compacted: ok|failed`, `ports: N, db: X`, `prepared_in: Ns`; переменные копии `PORT`, `NIGHTSHIFT_PORT_BASE` (4000 + 10·N), `NIGHTSHIFT_DB_NAME`; служебная `.nightshift/` в копии (не в коммитах): `handoff.md`, `out/<check>.log`.
+- Нет команды app для `startup_tax` и `compact` - добавляет таск 25 (зона `app/src/gitcmds.rs` свободна после 21; таск 25 получает её). `context_pct` есть в `Task`, не в событиях чата.
+
+### Из таска 22 - интерфейс v4 (точки расширения)
+
+- `NS.registry.extend(point, def)` / `.points(point)` / `.onExtend(fn)`. Точки:
+  - `command`: {id, labelKey|label, group?, keys?, order?, when?(ctx), run(ctx)} → палитра ⌘K.
+  - `settings`: {id, level:'basic'|'advanced', labelKey, order?, build(env, fx)→Node[]} → раздел «Вид и конфиг»; advanced - ещё на «Расширенное» с поиском.
+  - `bar`: {id, side:'left'|'right', order?, render(el, ctx)→{update?(evt), destroy?}}; события route/focus/task/limits/catalog/settings/envs/side.
+  - `paneHeader`: {id, kinds?, order?, render(el, pane, ctx)→{update?, destroy?}}.
+  - `details`: {id, order?, render(task, ctx)→Node|null} - «Подробнее» карточки задачи.
+  - `paneKind`: {kind, labelKey, mount(el, pane, ctx)→{update?, focus?, destroy?}, title?(pane), sig?(pane), create?(ctx)→поля}. Для 'term': `NS.tabs.split('h'|'v', 'term')`, `NS.tabs.newTab('term')`.
+  - `tabsCorner`: {id, mount(el, ctx)→{update?, destroy?}} - побеждает последний (Clawd).
+- Тема: `NSTheme.current.{xterm, font, look}`, `NSTheme.onTheme(fn)`, `NSTheme.vars/xterm(name, look)`, `NS.applyTheme(look, env)`; Clawd читает `look.clawd` = 'animate'|'static'|'hide'.
+- Раскладка: `{split:{dir,ratio,a,b}}|{pane:{id,kind,…}}` (NSPanes), в `settings.ui.tabs = {v:2, tabs, active, look}`. `api.js` открывает все команды и события v4.
+- Вид (акцент, шрифт, радиус, зазор, прозрачность, Clawd, пресет) хранится в `settings.ui.tabs.look`, не в `LookSettings` ядра; конфиг-ключи таска 20 должны писать туда же.
+- Полоса сред снимается и бар добавляется в `shell.js` при загрузке (`ui/index.html` не трогали). Термины 289 - блок `TERMS` в `i18n-shell.js`.
+
+### Из таска 19 - каталоги и моды
+
+- `net`: `NetError{CurlMissing, NotHttps, TooLarge, Timeout, Failed}.key()`, `CurlFetch` (только https, обрезка по лимиту), `FakeFetch::new().with(url, body)/.answer(url, Result)/.set()/.calls()`.
+- `market`: `Market::new(fetch, cache_dir).with_kits(Arc<Kits>)`; `sources/set_sources/search/known(id)/from_link(kind, link)/item/install/plan(id)/apply/installed/remove`. Типы: `Source{…, api, name, builtin, note}`, `Item` (описание, автор, лицензия, дата, популярность, version, homepage, origin), `Page{…, offline[{source, reason, cached_at}]}`, `ItemDetail{readme, env_vars, runs, needs}`, `InstallPlan{writes, executable, runs, needs, warnings, texts, installed, kit}`, `Installed{id, version, update, name, kind, scope, snapshot, at}`, `MarketError` → `{kind, detail}`.
+- app: `market_plan{item:{id}|{kind,link}, env, scope}`, `market_apply{plan:{id}, enabledExec}`, остальные `market_*` по «Границам v4».
+- `kits`: `Group::Mods` (только claude, `~/.claude/mods/<имя>`), `HeldKind::Mod`, SCRIPT_EXT + jsx/tsx/cts; папка скилла с `.claude-plugin/plugin.json` не ставится до галочки. ui должен знать группу `mods` и вид `mod`.
+- По умолчанию выключены SkillsMP и Smithery (не ответили за 20 с). Официальный реестр MCP медленный (~21 с на живом прогоне).
+
+### Из таска 20 - обновления, радар моделей, конфиг
+
+- `Updates::new(fetch, adapters).with_dir(dir).with_busy(..)`; `check(env)->CliStatus{installed,latest,method,cmd,major,path}`; `update(env)->UpdateLog{env,from,to,ok,output,at,method,rolled_back}` (ошибки env_not_found/not_installed/no_update_command/major_jump/env_busy); `history(env)`; `interrupted()`; `updating(env)`; `mode/set_mode(env, Mode{Auto,Notify,Off})` - режим в `<dir>/updates.json`, не в Settings; `models_radar(&Mutex<Store>, cli_lists) -> Vec<NewModel{env,id,name,auto}>` (ETag и показанные id - в updates.json).
+- `term::set_cli_version(env, v)`; `TermInfo.env_id/cli_version` - по имени бинаря в argv[0].
+- `Config::{new, default_path, load, apply(&Settings), write_key, write_settings, create_default, watch}`, `config::keys()`; ключи `look.font-px` и т.п., синоним `font-size`; ошибки unknown_key, need_number, need_bool, `out_of_range: a..b`, bad_value, bad_line. В конфиг не входят `ui` (вид из таска 22 живёт в `settings.ui.tabs.look`!), telegram, paused, default_project.
+- app: `cli_status{env}` (+mode, updating), `cli_update{env}`, `updates_history{env}`, `cli_update_mode{env, mode}`, `config_open` → {path, created}, `config_errors` → {path, errors}; события `cli-updated{env,from,to}`, `cli-update-failed{env,from?,to?,error,rolled_back,cmd}`, `cli-update-available{env,from,to,major}`, `new-model{env,id,name,auto}`, `catalog-changed`, `config-changed{errors}`.
+
+### Из таска 23 - терминальные панели
+
+- `NSTerm{prefixStep, keyName, fileRefs, resolvePath, acker, looksIdle, cliArgv(env,model,resume), modelArg}`; `NSTermSettings{THEMES, parseTheme(text,name), termLook, fromSettings, themeOf, xterm, appVars}`; `NS.term{open, envTerm, detachToWindow, newWindow, offWindow, refreshSessions, views}`.
+- Настройки терминала - `settings.ui.tabs.look.term {theme, custom, font, size, line_height, ligatures, cursor, blink, scrollback, padding, copy_select, osc52, notify_secs, external, global_key, prefix}`; ключи конфига (таск 20) должны писать сюда же.
+- tabSpec `{kind:'term', termId, env, argv, cwd, title}`; окно ждёт событие `focus-term`. `mock-loader-v4.js` смотрит на `__MOCK__`.
+- Обходы чужих файлов: значок/состояние вкладки - MutationObserver; фокус перед выносом - синтетический pointerdown; цифры префикса шлют ⌘N.
+- Нужно в `app` (таск F4): глобальная клавиша из `look.term.global_key` → показать окно + `focus-term`; команда `notify`; `window_off` (⌘⇧W); `open_editor(path, line)`; `term_write` с байтами (onBinary).
+
+### Из таска 24 - каталог, публикация, история
+
+- Экраны `catalog` {env, kind: skill|mcp|mod} и `history` {project}; `NS.publish.open(projectId, {onDone})`, `NS.market.open`, `NS.history.open`; команды палитры market.skill/mcp/mod, history.open, publish.open; модуль бара «Каталог». Чистые `NSMarket`, `NSHistory`, `NSPublishLogic`.
+- Нужны в app: `commit_stat{path, sha}` и `commit_file_diff{path, sha, file}` (ядро есть) - добавляются в `NS.api.COMMANDS` на лету; до них файлы и дифф не-задачных коммитов дают ошибку.
+- «Что уйдёт» - ветка и число коммитов, без числа файлов (нет команды).
+
+### Таск 25 (Clawd, обновления, приёмы) - что выставлено
+- tauri: `startup_tax{env, project?}` → StartupTax (`project_not_found`); `compact{taskId, keep?}` → () (`nothing_to_compact`); `commit_stat{path, sha}` → `[{path, insertions, deletions}]`; `commit_file_diff{path, sha, file}` → `{lines, binary, size_kb, truncated}`; path - известный проект или `project_not_found`, sha - hex 4-64 или `bad_sha`.
+- JS: `NSClawd{machine, anim, frame, loop, PRIORITY, STATES, HOLD_MS, CHEER_MS}`, `NS.updates{pop, onNewModel}`, `NS.practices{taxBlock(env, fx), WARN_PCT}`; реестр: tabsCorner `clawd`, settings `envs4`/`roles4`/`save4`, paneHeader `ctx`, details `handoff`, command `upd.open`.
+- Открыто: рисованная проверка `scripts/ui-selftest.js` (NS_PLAYWRIGHT) считает 15 кнопок при лимите 14 - пятнадцатая кнопка Clawd; стартовый налог показан в Настройки → Среды (отдельной карточки среды нет).
+
+### F5 (живой прогон) - что выставлено
+- `paneKind.beforeClose(pane) → Promise<bool>`; `NS.tabs.closePane/closeTab` - async; `NS.tabs.placeOf(paneId)`, `NS.tabs.putBack(kind, place)`; `NSPanes.wsPlaceOf(st, paneId) → {tab, index, sibling, dir, first}|null`, `NSPanes.wsPut(st, place, pane, newTabId)`; `tabSpec.place`.
+- `NSPalette.QUIET`, `NSPalette.quiet(attrs)` - атрибуты без автозамены; `h()` в `core/dom.js` пишет autocorrect/autocapitalize/spellcheck/autocomplete через setAttribute.
+- app: `QuitGate::ask` (один вопрос выхода за раз), `menu_label(entry, ru)`; `app/Info.plist` - CFBundleLocalizations en, ru.

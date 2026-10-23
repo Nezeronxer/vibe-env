@@ -615,6 +615,8 @@ impl Engine {
     /// What a verdict does: approved goes to the merge queue, changes go back to the executor (up to the cap).
     pub(super) fn apply_verdict(&self, t: &mut Task, approved: bool, issues: Vec<String>) -> Res {
         t.outcome.review = Some(Review { approved, issues: issues.clone() });
+        // a finding becomes an item of "До мержа"; the reviewer's own items close when it approves
+        t.todos = self.review_todos(&t.id, approved, &issues)?;
         if approved {
             self.set_step(t, Step::Review, StepState::Done)?;
             self.set(t, Status::Merging)?;
@@ -642,6 +644,10 @@ impl Engine {
             }
         }
         if t.outcome.commit.is_none() {
+            // the "До мержа" list: an open item keeps the task out of the queue
+            if self.open_todos_now(&t.id) > 0 {
+                return self.park_on_todos(t, p);
+            }
             let lock = self.merge_lock(&p.id);
             // the place in the queue: `Queued(since)` while another task merges, `Running` for the one that does (G08.4)
             self.set_step(t, Step::Merge, StepState::Queued(self.now()))?;
@@ -698,6 +704,10 @@ impl Engine {
                 let keys = if self.protects(t) { git::protected_committed(&wt, &p.base_branch).map_err(gerr)? } else { vec![] };
                 if !keys.is_empty() {
                     return Err(format!("protected_file_committed: {}", keys.join(", ")));
+                }
+                // an item added while the task waited in the queue or rebased
+                if self.open_todos_now(&t.id) > 0 {
+                    return self.park_on_todos(t, p);
                 }
                 let stats = git::diffstat(&wt, &p.base_branch);
                 t.outcome.files_changed = stats.len() as u32;

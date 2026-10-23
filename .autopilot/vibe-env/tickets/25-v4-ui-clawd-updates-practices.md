@@ -2,7 +2,7 @@
 
 **Требования:** G46, G47, G43, G53
 **Зависит от:** 18, 22
-**Зона:** `ui/js/v4/clawd.js` · `ui/js/v4/updates.js` · `ui/js/v4/practices.js` · `ui/js/v4/i18n-clawd.js` · `ui/js/v4/mock-clawd.js` · `ui/css/v4-clawd.css` · `ui/css/v4-updates.css` · `README.md` · `docs/clawd.md`
+**Зона:** `ui/js/v4/clawd.js` · `ui/js/v4/updates.js` · `ui/js/v4/practices.js` · `ui/js/v4/i18n-clawd.js` · `ui/js/v4/mock-clawd.js` · `ui/css/v4-clawd.css` · `ui/css/v4-updates.css` · `README.md` · `docs/clawd.md` · `app/src/gitcmds.rs`
 **Волна:** 14
 **Ревью:** нет
 **Модель:** сильная
@@ -16,6 +16,8 @@
 **Обновления:** Настройки → Среды (через реестр): версия, последняя, способ, «Авто / Только сообщать / Выкл», «Проверить сейчас», история (`cli_status`, `cli_update`, `updates_history`); всплывашки `new-model` («теперь X (было Y)» [Вернуть] или вопрос для закреплённых) и `cli-updated`.
 
 **Приёмы:** полоса контекста в шапке панели агента и «Сжать» с полем; «стартовый налог» в карточке среды; передаточная записка в «Деталях»; флаг проекта «Изолировать порты и базу»; Настройки → Роли: модели служебных ролей и разрешённые инструменты.
+
+**Команды app для приёмов** (в `app/src/gitcmds.rs`, где уже команды таска 21): `startup_tax{env, project?}` → `StartupTax`, `compact{taskId, keep?}` → `Engine::compact`.
 
 **Ремонт по приёмке (291):** рой на заглушке - флаг «Рой» при отправке на `dev-mock` даёт «· рой», дорожки и отдельный чат (правка в `mock-clawd.js`-подобном модуле поверх `dev-mock`, не трогая файл таска 22).
 

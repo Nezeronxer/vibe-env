@@ -222,7 +222,7 @@
     const c = item.chat, tk = item.task;
     if (!tk) return c.last || c.last_text || '';
     const need = tk.question && tk.question.text;
-    if (item.kind === 'wait') return need || t(L.labelKey(tk));
+    if (item.kind === 'wait') return (need && NS.errHuman(need)) || t(L.labelKey(tk));
     if (item.kind === 'fail') return NS.errHuman(tk.outcome && tk.outcome.error) || t(L.labelKey(tk));
     if (item.kind === 'run') return s.lastLog.get(tk.id) || t(L.labelKey(tk));
     if (item.kind === 'queue') return t('line.queue');

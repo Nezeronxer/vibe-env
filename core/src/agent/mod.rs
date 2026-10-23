@@ -255,6 +255,7 @@ pub fn run_blocking_with(
         }
     })?;
     if let Some((ok, err)) = r {
+        let err = strip_cli_warnings(&err);
         if !ok && !err.is_empty() {
             all_text.push_str(&err);
         }
@@ -264,6 +265,16 @@ pub fn run_blocking_with(
         }
     }
     Ok(events)
+}
+
+/// What the CLI says on stderr besides errors: `Warning: ...` lines and the notice that the organisation's policy
+/// blocked its MCP servers. These are not the reason a run failed, so they never reach the person as one.
+pub fn strip_cli_warnings(text: &str) -> String {
+    let noise = |l: &str| {
+        let l = l.trim_start().to_lowercase();
+        l.starts_with("warning:") || l.starts_with("[warn]") || l.contains("blocked by enterprise policy")
+    };
+    text.lines().filter(|l| !noise(l)).collect::<Vec<_>>().join("\n")
 }
 
 /// Runs `cmd` in its own process group and passes each stdout line to `on_line`.

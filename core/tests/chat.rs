@@ -846,3 +846,20 @@ fn the_answer_streams_into_its_own_message_and_its_actions_come_with_their_resul
     let started: Vec<&str> = evs.iter().filter_map(|e| if let ChatEvent::Action { msg_id, action, .. } = e { (!action.done).then_some(msg_id.as_str()) } else { None }).collect();
     assert_eq!(started, [stored.id.as_str()], "the start is sent under the id its result is stored with");
 }
+
+#[test]
+fn a_side_question_is_answered_read_only_with_the_chat_context_and_leaves_the_feed_alone() {
+    let r = rig(vec![vec![done("The build uses cargo.")], vec![done("It is src/main.rs.")]]);
+    let id = r.chats.send(new_target(&r.p), "s1", "How is it built?").unwrap();
+    wait_feed(&r, &id, "the first answer", |m| m.iter().any(|x| x.who == Who::Model));
+    let before = feed(&r, &id);
+    let session = r.chats.list("fake")[0].clone();
+    assert_eq!(r.chats.side_ask(&id, "  ").unwrap_err(), "empty_or_too_long");
+    assert_eq!(r.chats.side_ask(&id, "Where is main?").unwrap(), "It is src/main.rs.");
+    let calls = r.fa.calls();
+    let side = calls.last().unwrap();
+    assert!(side.read_only && side.resume.is_none(), "read-only and not the chat's session");
+    assert!(side.prompt.contains("How is it built?") && side.prompt.contains("Where is main?"), "the context holds the talk: {}", side.prompt);
+    assert_eq!(feed(&r, &id), before, "nothing is written to the feed");
+    assert_eq!(r.chats.list("fake")[0].last, session.last);
+}

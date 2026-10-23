@@ -26,3 +26,20 @@
 .sum-row.wait .tx b { color: var(--human); }
 /* v3: a tab whose task waits for you */
 .tdot.wait { background: var(--human); }
+
+/* ---- F13: the list "До мержа", the turns with their rollback, the folder handoff ---- */
+.todos, .turns { list-style: none; margin: 0; padding: 0; }
+.todos li, .turns li { display: flex; align-items: center; gap: 8px; padding: 3px 0; font-size: 12.5px; }
+.todos li label { display: flex; align-items: baseline; gap: 8px; flex: 1; min-width: 0; color: var(--ink2); cursor: pointer; }
+.todos li.done label span { color: var(--ink3); text-decoration: line-through; }
+.todos input[type=checkbox] { accent-color: var(--amber); transform: translateY(2px); }
+.todos .by { color: var(--ink3); border: 1px solid var(--line); border-radius: 3px; padding: 0 5px; font-size: 10.5px; }
+.todos .linkb { margin-left: auto; font-size: 15px; line-height: 1; text-decoration: none; }
+.todo-add { display: flex; gap: 8px; margin-top: 8px; }
+.todo-add .todo-in { flex: 1; min-width: 0; }
+.tc-need .todo-box { margin: 8px 0 10px; }
+.tc-need .todos li label { color: var(--ink); }
+.turns li > span { flex: 1; min-width: 0; color: var(--ink2); }
+.snap-back { display: inline-flex; gap: 4px; align-items: center; }
+.snap-back .ic { width: 12px; height: 12px; }
+.me:focus-within .me-m { opacity: 1; }

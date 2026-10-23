@@ -220,6 +220,10 @@ pub fn remove_worktree(repo: &Path, wt: &Path, delete_branch: bool) -> Result<()
         ok(repo, &["worktree", "remove", "--force", &wt.to_string_lossy()])?;
     }
     let _ = run(repo, &["worktree", "prune"]);
+    // the snapshots of a task go with its copy (the copy's folder is named by the task id)
+    if let Some(id) = wt.file_name().and_then(|n| n.to_str()) {
+        drop_snapshots(repo, id);
+    }
     if delete_branch {
         if let Some(b) = branch.filter(|b| b.starts_with(NS_PREFIX)) {
             ok(repo, &["branch", "-D", &b])?;
@@ -1172,4 +1176,170 @@ pub fn clone_shallow(url: &str, dest: &Path) -> Result<(), GitError> {
     } else {
         Err(GitError::Other(format!("git clone: {}", String::from_utf8_lossy(&o.stderr).trim())))
     }
+}
+
+// ---- v5: snapshots of a task's copy (turn rollback), main-folder handoff ----
+
+const SNAP_PREFIX: &str = "refs/nightshift/";
+
+/// One saved state of a task's copy.
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+pub struct Snapshot {
+    pub n: u32,
+    pub sha: String,
+    /// RFC 3339 time of the snapshot; `label` is what the caller put in the message (a role).
+    pub at: String,
+    pub label: String,
+}
+
+fn snap_task_ok(task: &str) -> Result<(), GitError> {
+    if task.is_empty() || !task.chars().all(|c| c.is_ascii_alphanumeric() || c == '-') {
+        return Err(GitError::Other(format!("bad task id: {task}")));
+    }
+    Ok(())
+}
+
+/// A scratch index next to the copy's own, so the real index and the files stay as they are.
+struct TmpIndex(PathBuf);
+impl TmpIndex {
+    fn new(wt: &Path) -> Result<TmpIndex, GitError> {
+        let gd = hidden_list(wt).ok_or_else(|| GitError::Other(format!("not a worktree: {}", wt.display())))?;
+        Ok(TmpIndex(gd.with_file_name(format!("ns-snap-index-{}", std::process::id()))))
+    }
+    fn run(&self, wt: &Path, args: &[&str]) -> Result<String, GitError> {
+        let o = git_cmd(wt).env("GIT_INDEX_FILE", &self.0).args(args).output().map_err(|e| GitError::Other(format!("git {}: {e}", args.join(" "))))?;
+        if o.status.success() {
+            Ok(String::from_utf8_lossy(&o.stdout).trim_end().to_string())
+        } else {
+            Err(GitError::Other(format!("git {}: {}", args.join(" "), String::from_utf8_lossy(&o.stderr).trim())))
+        }
+    }
+    /// The whole tree as it is now (tracked, untracked, uncommitted), without the copied local files and keys.
+    fn fill(&self, wt: &Path) -> Result<(), GitError> {
+        let hidden = hidden_specs(wt)?;
+        if has_commit(wt) {
+            self.run(wt, &["read-tree", "HEAD"])?;
+        }
+        self.run(wt, &["add", "-A"])?;
+        let mut out: Vec<String> = hidden.iter().map(|h| h.trim_start_matches(":(literal)").to_string()).collect();
+        let listed = self.run(wt, &["ls-files", "-z"])?;
+        out.extend(listed.split('\0').filter(|p| !p.is_empty() && secret_path(p)).map(str::to_string));
+        for p in out {
+            let _ = self.run(wt, &["rm", "-q", "-r", "-f", "--cached", "--ignore-unmatch", "--", &literal(&p)]);
+        }
+        Ok(())
+    }
+}
+impl Drop for TmpIndex {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_file(&self.0);
+    }
+}
+
+/// Saves the copy as it is now (committed and not) under `refs/nightshift/<task>/<n>`: a commit that is
+/// on no branch, so history and `git branch` do not show it. Returns the new number.
+pub fn snapshot(wt: &Path, task: &str, label: &str) -> Result<u32, GitError> {
+    snap_task_ok(task)?;
+    let n = snapshots(wt, task).iter().map(|s| s.n).max().map_or(1, |m| m + 1);
+    let idx = TmpIndex::new(wt)?;
+    idx.fill(wt)?;
+    let tree = idx.run(wt, &["write-tree"])?;
+    let msg = format!("nightshift snapshot {n}: {label}");
+    let sha = if has_commit(wt) {
+        ok(wt, &["commit-tree", &tree, "-p", "HEAD", "-m", &msg])?
+    } else {
+        ok(wt, &["commit-tree", &tree, "-m", &msg])?
+    };
+    ok(wt, &["update-ref", &format!("{SNAP_PREFIX}{task}/{n}"), &sha])?;
+    Ok(n)
+}
+
+pub fn snapshots(repo: &Path, task: &str) -> Vec<Snapshot> {
+    if snap_task_ok(task).is_err() {
+        return vec![];
+    }
+    let fmt = "%(refname)\t%(objectname)\t%(committerdate:iso-strict)\t%(subject)";
+    let out = run(repo, &["for-each-ref", &format!("--format={fmt}"), &format!("{SNAP_PREFIX}{task}/")]).map(|o| o.stdout).unwrap_or_default();
+    let mut v: Vec<Snapshot> = out
+        .lines()
+        .filter_map(|l| {
+            let f: Vec<&str> = l.splitn(4, '\t').collect();
+            let n = f.first()?.rsplit('/').next()?.parse().ok()?;
+            let label = f.get(3)?.split_once(": ").map_or("", |x| x.1).to_string();
+            Some(Snapshot { n, sha: f.get(1)?.to_string(), at: f.get(2)?.to_string(), label })
+        })
+        .collect();
+    v.sort_by_key(|s| s.n);
+    v
+}
+
+pub fn drop_snapshots(repo: &Path, task: &str) {
+    for s in snapshots(repo, task) {
+        let _ = run(repo, &["update-ref", "-d", &format!("{SNAP_PREFIX}{task}/{}", s.n)]);
+    }
+}
+
+/// Puts the copy back to snapshot `n`: the branch, the files, the files that were added since. The state it
+/// leaves is saved as a snapshot first (returned), so the rollback itself can be rolled back.
+/// The copied local files (`.env`) are not touched. Refused in the middle of a rebase.
+pub fn restore_snapshot(wt: &Path, task: &str, n: u32) -> Result<u32, GitError> {
+    snap_task_ok(task)?;
+    if rebase_in_progress(wt) {
+        return Err(GitError::Other("rebase_in_progress".into()));
+    }
+    let snap = snapshots(wt, task).into_iter().find(|s| s.n == n).ok_or_else(|| GitError::Other(format!("no_snapshot: {n}")))?;
+    let saved = snapshot(wt, task, "before_restore")?;
+    let idx = TmpIndex::new(wt)?;
+    idx.fill(wt)?;
+    // files of the current state that the snapshot lacks are removed, the others are put as the snapshot has them
+    idx.run(wt, &["read-tree", "--reset", "-u", &format!("{}^{{tree}}", snap.sha)])?;
+    // the branch goes to where it was; the files stay (as uncommitted changes against it)
+    if let Ok(parent) = ok(wt, &["rev-parse", "--verify", "--quiet", &format!("{}^", snap.sha)]) {
+        ok(wt, &["reset", "-q", "--mixed", &parent])?;
+    }
+    Ok(saved)
+}
+
+/// The base of the main-folder handoff: the folder must be on a named branch, clean, not in the middle of something.
+fn main_ready(repo: &Path) -> Result<String, GitError> {
+    let info = repo_info(repo);
+    if !info.is_repo {
+        return Err(GitError::Other("not_a_repo".into()));
+    }
+    if rebase_in_progress(repo) || try_out(repo, &["rev-parse", "--verify", "--quiet", "MERGE_HEAD"]).is_some() {
+        return Err(GitError::Other("main_busy".into()));
+    }
+    if info.dirty {
+        return Err(GitError::AdvanceBlocked("main_dirty".into()));
+    }
+    info.current_branch.ok_or_else(|| GitError::Other("main_detached".into()))
+}
+
+/// "Забрать к себе": the project folder goes to the task's branch. A branch lives in one place only, so the
+/// task's copy lets go of it (detached at the same commit, files untouched) and keeps its files. Returns the
+/// branch the folder was on. Nothing is forced: a dirty folder is refused, and a failed switch puts the copy back.
+pub fn take_to_main(repo: &Path, wt: &Path, branch: &str) -> Result<String, GitError> {
+    if !branch.starts_with(NS_PREFIX) {
+        return Err(GitError::Other(format!("only {NS_PREFIX}* branches are taken: {branch}")));
+    }
+    let prev = main_ready(repo)?;
+    ok(wt, &["checkout", "-q", "--detach"])?;
+    if let Err(e) = ok(repo, &["checkout", "-q", branch]) {
+        let _ = run(wt, &["checkout", "-q", branch]);
+        return Err(e);
+    }
+    Ok(prev)
+}
+
+/// "Отдать агенту": the folder returns to `prev` (the base branch if that is gone), the copy takes its branch back.
+pub fn give_to_agent(repo: &Path, wt: &Path, branch: &str, prev: &str, fallback: &str) -> Result<(), GitError> {
+    let on = repo_info(repo).current_branch;
+    if on.as_deref() == Some(branch) {
+        let back = if branch_exists(repo, prev) { prev } else { fallback };
+        main_ready(repo)?;
+        ok(repo, &["checkout", "-q", back])?;
+    }
+    // if this fails the folder is already back and the copy stays as it is (detached, files intact): try again
+    ok(wt, &["checkout", "-q", branch])?;
+    Ok(())
 }

@@ -210,6 +210,25 @@ pub struct Task {
     /// `NIGHTSHIFT_DB_NAME` of the copy when the project isolates ports.
     #[serde(default)]
     pub db_name: Option<String>,
+    // v5 (F13)
+    /// "До мержа": the list of things to finish before the merge; an open item stops the merge step.
+    #[serde(default)]
+    pub todos: Vec<Todo>,
+    /// Set while the project folder sits on this task's branch ("Забрать к себе"): the branch it was on before.
+    #[serde(default)]
+    pub taken_from: Option<String>,
+}
+
+/// One item of a task's "До мержа" list.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct Todo {
+    pub id: String,
+    pub text: String,
+    #[serde(default)]
+    pub done: bool,
+    /// "human" or "reviewer".
+    #[serde(default)]
+    pub by: String,
 }
 
 impl Default for Task {
@@ -249,6 +268,8 @@ impl Default for Task {
             handoff: None,
             port: None,
             db_name: None,
+            todos: vec![],
+            taken_from: None,
         }
     }
 }

@@ -8,7 +8,7 @@
     'answer', 'approve_outward', 'cancel', 'retry', 'remove_task', 'undo', 'push_base', 'pull_base', 'pause_all', 'list_agents',
     'get_settings', 'set_settings', 'github_info', 'delete_merged_branches', 'pr_state', 'open_path', 'open_editor', 'open_terminal', 'get_diffstat',
     // v2 (app)
-    'list_envs', 'get_catalog', 'refresh_catalog', 'get_limits', 'list_chats', 'get_chat', 'send_chat', 'retry_chat', 'remove_chat', 'note',
+    'list_envs', 'get_catalog', 'refresh_catalog', 'get_limits', 'list_chats', 'get_chat', 'send_chat', 'retry_chat', 'side_ask', 'remove_chat', 'note',
     'answer_outward', 'resume_failed', 'pick_variant', 'stop_swarm', 'nudge', 'switch_model', 'freeze', 'hand_off', 'take_back', 'start_now',
     'not_a_task', 'submit_convoy', 'summary_since', 'diff_file', 'check_custom', 'install_env', 'login_env',
     'kits_inventory', 'kits_export', 'kits_preview', 'kits_install', 'kits_enable', 'kits_snapshots', 'kits_rollback', 'kits_check_update', 'set_secret',
@@ -22,6 +22,7 @@
     'term_open', 'term_write', 'term_resize', 'term_close', 'term_attach', 'term_detach', 'term_ack', 'term_list',
     'window_detach', 'window_tab', 'window_return',
     'market_search', 'market_item', 'market_plan', 'market_apply', 'market_installed', 'market_remove', 'market_sources', 'market_set_sources',
+    'task_snapshots', 'restore_snapshot', 'todo_add', 'todo_set', 'todo_remove', 'take_to_main', 'give_to_agent',
     'cli_status', 'cli_update', 'updates_history', 'gh_publish', 'git_log_page', 'git_revert_commit', 'config_open', 'config_errors',
   ]);
   const EVENTS = new Set(['task-changed', 'task-log', 'task-removed', 'project-changed', 'chat-msg', 'limits-changed', 'catalog-changed', 'frozen',

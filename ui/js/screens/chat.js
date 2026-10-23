@@ -13,7 +13,8 @@
     const env = st.env(envId);
     const isNew = chatId === 'new';
     const chatObj = isNew ? null : st.findChat(chatId);
-    let msgs = [], more = false, loading = false, pending = [];
+    let msgs = [], more = false, loading = false, pending = [], queue = [];       // queue: F12 #8, messages held while the executor works
+    let sending = 0;
     const cards = new Map();                            // task id -> card controller (kept across re-renders: open state lives there)
     const openGroups = new Set();
     let selProject = (chatObj && chatObj.project_id) || NS.projects.current();     // F11: no silent first project; the last explicit choice is offered
@@ -29,8 +30,11 @@
     const menuBtn = h('button', { type: 'button', class: 'btn sm menu-btn', 'aria-haspopup': 'menu', 'aria-label': t('chat.menu'), text: '⋯' });
     // v4: this header is the pane's title row (tabs.js adds the registry slots and the pane tools); env, model and limits are in the bar
     const lamp = h('span', { class: 'pane-lamp', role: 'img', hidden: true });     // the tally lamp: red = an agent of this chat is on air, amber = it calls you
+    // F12 #9: the side question: a narrow panel on the right, ⌘; or this button
+    const side = !isNew && NS.sidechat ? NS.sidechat.create(chatId) : null;
+    const sideBtn = side ? h('button', { type: 'button', class: 'btn sm side-btn', 'aria-label': t('chatx.side'), title: t('chatx.side_d'), text: t('chatx.side'), onclick: () => side.toggle() }) : null;
     const header = h('header', { class: 'convo-h pane-h' }, h('span', { class: 'pane-ic' }, envIcon(env.custom ? 'custom' : envId)), lamp,
-      title, sub, !isNew ? menuBtn : null);
+      title, sub, sideBtn, !isNew ? menuBtn : null);
     // F11: a new chat starts with the project button above the field (the menu: recent, open a folder, create)
     const pj = isNew ? NS.projects.picker(() => selProject, (p) => { selProject = p.id; drawHeader(); renderFeed(); composer.focus(); }) : null;
     function drawLamp() {
@@ -98,6 +102,16 @@
       const mine = st.chatTasks(chatId).filter((x) => x.status !== 'handed_off' && ['wait', 'run', 'queue'].includes(L.kindOf(x)));
       return mine.find((x) => x.status === 'needs_human' && x.question) || mine[0] || null;
     }
+    // the executor is on its way (not waiting for an answer): a new message waits its turn
+    const busy = () => { const a = activeTask(); return !!a && L.kindOf(a) !== 'wait'; };
+    async function pump() {
+      if (!queue.length || busy() || Date.now() < sending) return;
+      const q = queue.shift(); sending = Date.now() + 1500; renderFeed();
+      try { await composer.deliver(q.text, q.id); }
+      catch (e) { queue.unshift(q); sending = 0; renderFeed(); NS.shell.toast(NS.errHuman(NS.api.errText(e)), true); }
+      composer.drawHint();
+    }
+    const qid = () => (crypto.randomUUID ? crypto.randomUUID() : 'q-' + Date.now() + Math.random().toString(16).slice(2));
     const hooks = {
       answerMode: (task) => composer.setMode('answer', task), hintMode: (task) => composer.setMode('hint', task),
     };
@@ -115,7 +129,18 @@
       const to = m.to ? ' · ' + (m.to === 'reviewer' ? t('swarm.to_reviewer') : t('swarm.to_variant', { v: m.to })) : '';     // a note to a swarm: who gets it (story 156)
       // F9: my message is a grey bubble on the right; the time and delivery sit under it and show on hover
       return h('div', { class: 'me' + (isPending ? ' sending' : '') }, h('div', { class: 'me-b' }, h('span', { class: 'sr-only', text: t('feed.you') }), richText(m.text)),
-        h('small', { class: 'me-m' }, NS.hhmm(m.at), isPending ? ' · ' + t('msg.sending') : note ? ' · ' + (m.delivered_at ? t('msg.delivered', { time: NS.hhmm(m.delivered_at) }) : t('msg.will_pass')) + to : ''));
+        h('small', { class: 'me-m' }, NS.hhmm(m.at), isPending ? ' · ' + t('msg.sending') : note ? ' · ' + (m.delivered_at ? t('msg.delivered', { time: NS.hhmm(m.delivered_at) }) : t('msg.will_pass')) + to : '',
+        note && NS.rollbackBtn ? [' ', NS.rollbackBtn(m.task_id, NS.snapAfter(m.at))] : null));   // F13: "Вернуть код сюда" (only when the task has a snapshot after this message)
+    }
+    // F12 #8: a message that waits for the agent: grey, can be edited or removed until it is sent
+    function queuedNode(q) {
+      const edit = h('button', { type: 'button', class: 'q-act', text: t('chatx.edit'), onclick: () => {
+        queue = queue.filter((x) => x.id !== q.id); renderFeed();
+        composer.insert(q.text + (composer.ta.value ? '\n' + composer.ta.value : ''));
+      } });
+      const drop = h('button', { type: 'button', class: 'q-act', 'aria-label': t('chatx.drop'), title: t('chatx.drop'), text: '×', onclick: () => { queue = queue.filter((x) => x.id !== q.id); renderFeed(); composer.drawHint(); } });
+      return h('div', { class: 'me queued' }, h('div', { class: 'me-b' }, h('span', { class: 'sr-only', text: t('feed.you') }), richText(q.text)),
+        h('small', { class: 'me-m' }, t('chatx.queued') + ' · ' + t('chatx.queued_d'), edit, drop));
     }
     function systemNodes(m) {
       const out = [];
@@ -129,6 +154,9 @@
         out.push(h('div', { class: 'sysline' }, ic('i-check'), h('span', { text: t('feed.task_made') }), box ? showBtn : null,
           canUndo ? h('button', { type: 'button', class: 'linkb', text: t('feed.was_question'), onclick: () => NS.api.call('not_a_task', { taskId: m.task_id }).catch((e) => NS.shell.toast(NS.errHuman(NS.api.errText(e)), true)) }) : null));
         if (box) out.push(box);
+      } else if (m.text === 'stopped' || m.text.startsWith('not_answered: stopped')) {      // F12: the person stopped the run: a calm line, not a failure
+        out.push(h('div', { class: 'sysline calm' }, ic('i-warn'), h('span', { text: t('feed.stopped') }),
+          h('button', { type: 'button', class: 'linkb', text: t('feed.retry'), onclick: () => NS.api.call('retry_chat', { id: chatId, msgId: m.reply_to || m.id }).catch((e) => NS.shell.toast(NS.errHuman(NS.api.errText(e)), true)) })));
       } else if (m.kind === 'error') {
         out.push(h('div', { class: 'sysline bad' }, ic('i-fail'), h('span', { text: t('feed.no_answer', { why: NS.errHuman(m.text) }) }),
           h('button', { type: 'button', class: 'linkb', text: t('feed.retry'), onclick: () => NS.api.call('retry_chat', { id: chatId, msgId: m.reply_to || m.id }).catch((e) => NS.shell.toast(NS.errHuman(NS.api.errText(e)), true)) })));
@@ -136,9 +164,41 @@
       return out;
     }
     // the body of an agent message: markdown, or a word-by-word print of a live message (story 227)
+    // F12 #12: "Выполнить" on a shell block: the command goes into a terminal and waits for Enter, it never runs by itself
+    const SHELL = /^(bash|sh|zsh|shell|console|terminal)$/;
+    function shellOf(pre) {
+      const lang = pre.dataset.lang || '', lines = pre.textContent.replace(/\n$/, '').split('\n');
+      if (SHELL.test(lang)) return lines.map((x) => x.replace(/^\$ /, '')).join('\n').trim();
+      if (!lang && lines.some((x) => x.startsWith('$ '))) return lines.filter((x) => x.startsWith('$ ')).map((x) => x.slice(2)).join('\n').trim();
+      return '';
+    }
+    function runnable(node) {
+      for (const pre of node.querySelectorAll('pre.md-code')) {
+        const cmd = shellOf(pre);
+        if (!cmd) continue;
+        const btn = h('button', { type: 'button', class: 'runcmd', text: t('chatx.run'), title: t('chatx.run_d'), onclick: () => runInTerminal(cmd) });
+        const wrapEl = h('div', { class: 'codewrap' }); pre.replaceWith(wrapEl); wrapEl.append(pre, btn);
+      }
+      return node;
+    }
+    async function runInTerminal(cmd) {
+      if (!NS.term || !NS.term.open) return;
+      const pj = st.project(chatObj ? chatObj.project_id : selProject), before = new Set(NS.term.views.keys());
+      NS.term.open({ cwd: pj ? pj.path : null, title: t('chatx.run_title') });
+      let v = null;
+      for (let i = 0; i < 40 && !v; i++) {
+        await new Promise((r) => setTimeout(r, 100));
+        const k = [...NS.term.views.keys()].find((x) => !before.has(x)), w = k && NS.term.views.get(k);
+        if (w && w.id() && w.running()) v = w;
+      }
+      if (!v) return;
+      // several lines go as one paste (bracketed), so the shell does not run the first line at once
+      v.write(cmd.includes('\n') ? '\x1b[200~' + cmd + '\x1b[201~' : cmd);
+      NS.shell.toast(t('chatx.run_toast'));
+    }
     function bodyOf(m) {
       const body = h('div', { class: 'msg-b' });
-      if (!typing.has(m.id)) { body.append(richText(m.text)); return body; }
+      if (!typing.has(m.id)) { body.append(runnable(richText(m.text))); return body; }
       const plan = V.typePlan(m.text);
       const caret = h('span', { class: 'caret', 'aria-hidden': 'true' });
       let i = 0, shown = '';
@@ -147,7 +207,7 @@
         // the printed part goes through markdown too: no raw ** or backticks on screen even mid-word (story 228)
         if (i < plan.chunks.length) { shown += plan.chunks[i++]; const stick = nearBottom(); clear(body).append(richText(shown), caret); setTimeout(step, plan.ms); if (stick) toBottom(); return; }
         typing.delete(m.id);
-        clear(body).append(richText(m.text));
+        clear(body).append(runnable(richText(m.text)));
         drawLive();
       };
       setTimeout(step, 0);
@@ -287,7 +347,7 @@
       };
       const items = timeline();
       if (olderLog.size) put('older', 'older', () => [h('button', { type: 'button', class: 'linkb older', text: t('act3.older'), onclick: loadOlderLog })]);
-      const blank = !items.length && !pending.length;
+      const blank = !items.length && !pending.length && !queue.length;
       if (blank) put('empty', String(selProject), () => [emptyNode()]);
       convoEl.classList.toggle('blank', blank);                    // an empty chat: the question, the field and the examples in the middle (pin-25)
       blankEx.hidden = !blank;
@@ -310,6 +370,7 @@
       }
       flush(!pending.length);
       for (const p of pending) put('p:' + p.id, p.text, () => [humanNode(p, true)]);
+      for (const q of queue) put('q:' + q.id, q.text, () => [queuedNode(q)]);
       for (const k of [...cache.keys()]) if (!used.has(k)) cache.delete(k);
       nodes.push(live.el);
       const same = nodes.length === feed.childNodes.length && nodes.every((n, i) => feed.childNodes[i] === n);
@@ -319,7 +380,24 @@
       if (stick) toBottom(); else wrap.scrollTop = prevTop;
     }
     // the live line: verb by the last action of the running task (or of the chat answer), timer of the step, role and model, the plan
+    // F12 #11: the next step as a grey line, from rules by the state (no model call)
+    let lastHint;
+    function nextHint() {
+      if (isNew || busy() || !loaded || queue.length) return null;
+      const talk = msgs.filter((m) => !m.action && !m.tool && m.kind !== 'error' && m.text);
+      const lastTalk = talk[talk.length - 1], lastTask = st.chatTasks(chatId).slice().sort((a, b) => ts(b.created_at) - ts(a.created_at))[0];
+      if (lastTalk && L.whoOf(lastTalk).kind === 'human' && !(lastTask && ts(lastTask.finished_at) > ts(lastTalk.at))) return null;      // the agent has not answered yet
+      if (lastTask) {
+        if (lastTask.status === 'done_not_pushed') return t('chatx.h_push');
+        if (lastTask.status === 'done') return /тест|test/i.test(lastTask.title) ? t('chatx.h_mobile') : t('chatx.h_tests', { title: firstLine(lastTask.title, 40) });
+        if (lastTask.status === 'failed') return t('chatx.h_why');
+        return null;
+      }
+      return lastTalk && L.whoOf(lastTalk).kind !== 'human' ? t('chatx.h_do') : null;
+    }
     function drawLive() {
+      const hintNow = nextHint();
+      if (hintNow !== lastHint) { lastHint = hintNow; composer.suggest(hintNow); }
       const mine = st.chatTasks(chatId);
       const tk = mine.filter(isLiveTask).sort((a, b) => ts(b.started_at || b.created_at) - ts(a.started_at || a.created_at))[0];
       const lastOf = (pred) => { let best = null; for (const e of acts.values()) if (pred(e) && V.inputOf(e.action).kind !== 'plan' && (!best || e.at >= best.at)) best = e; return best; };
@@ -397,7 +475,14 @@
 
     const convoEl = h('section', { class: 'convo' });
     const composer = NS.composer.create({ envId, chat: chatId, hooks: {
-      projectId: () => selProject, activeTask,
+      projectId: () => selProject, activeTask, busy,
+      enqueue(text) { queue.push({ id: qid(), text, at: new Date().toISOString() }); renderFeed(); toBottom(); },
+      async now(text) {                        // "Сразу": stop the current run; the message is first in the queue and goes as soon as the run is over
+        const tk = activeTask();
+        queue.unshift({ id: qid(), text, at: new Date().toISOString() }); renderFeed(); toBottom();
+        if (!tk) return pump();
+        try { await NS.api.call('cancel', { id: tk.id }); } catch (e) { NS.shell.toast(NS.errHuman(NS.api.errText(e)), true); }
+      },
       needProject: () => { if (!isNew || st.project(selProject)) return false; NS.shell.toast(t('pj.need')); pj.open(); return true; }, noteTo: ext.noteTo,
       addPending(p) { pending.push(p); renderFeed(); toBottom(); },
       dropPending(id) { pending = pending.filter((p) => p.id !== id); schedule(); },
@@ -411,7 +496,7 @@
     } });
 
     const convoy = chatObj && chatObj.convoy && NS.factory ? NS.factory.convoyBar(chatId) : null;       // "Поручение": overall progress "3 из 5" (story 163)
-    NS.append(convoEl, [header, convoy ? convoy.el : null, wrap, composer.el, blankEx]);
+    NS.append(convoEl, [header, convoy ? convoy.el : null, wrap, composer.el, blankEx, side ? side.el : null]);
     root.append(convoEl);
     if (ext.decorate) ext.decorate(composer);
     drawHeader();
@@ -435,7 +520,10 @@
     st.loadCatalog(envId).then(() => { if (!alive.v) return; drawHeader(); composer.refresh(); cards.forEach((c, id) => S.tasks.get(id) && c.update(S.tasks.get(id))); });
     const tick = setInterval(() => cards.forEach((c) => c.tick()), 30000);
     // Esc closes pop-ups first (composer.js), then an open task card
-    const onKey = (e) => { if (e.key === 'Escape' && !e.defaultPrevented) for (const c of cards.values()) if (c.open) { c.close(); break; } };
+    const onKey = (e) => {
+      if (side && (e.metaKey || e.ctrlKey) && e.code === 'Semicolon' && (convoEl.contains(document.activeElement) || (NS.tabs && NS.tabs.active && NS.tabs.active.chat === chatId))) { e.preventDefault(); side.toggle(); return; }
+      if (e.key === 'Escape' && !e.defaultPrevented) for (const c of cards.values()) if (c.open) { c.close(); break; }
+    };
     document.addEventListener('keydown', onKey);
 
     return {
@@ -445,7 +533,7 @@
           const c = cards.get(payload.id);
           if (c) c.update(payload);               // only this card is redrawn
           drawLamp();
-          if (payload.chat_id === chatId) schedule();   // a card that arrived after its "Это задача" line, the live line, action spinners
+          if (payload.chat_id === chatId) { schedule(); pump(); }   // a card that arrived after its "Это задача" line, the live line, action spinners
           pin();
         } else if (evt === 'chatmsg') {
           if (payload.chat_id !== chatId) return;
@@ -455,7 +543,7 @@
           if (streams.has(payload.id)) streams.delete(payload.id);                     // the streamed answer is complete: markdown replaces it
           else if (loaded && !known && agent && !reduced()) typing.set(payload.id, true);   // no partial messages from this CLI: print by words
           msgs = L.mergeMsgs(msgs, [payload]);
-          schedule();
+          schedule(); pump();
         } else if (evt === 'taskaction') {
           const tk = S.tasks.get(payload.id);
           if (!tk || tk.chat_id !== chatId) return;

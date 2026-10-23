@@ -56,12 +56,13 @@
   const steps = (cur, spec) => STEPS7.map((s, i) => [s, s === 'spec' ? { skipped: spec || 'задача не расплывчатая' } : i < STEPS7.indexOf(cur) ? 'done' : s === cur ? 'running' : 'pending']);
   const T = (id, project_id, agent, chat_id, title, status, extra) => Object.assign({ id, project_id, chat_id, agent, title, prompt: title, status, branch: (extra && extra.branch) || 'ns/' + id.slice(2, 8) + '-' + title.toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 22),
     worktree: '/Users/dev/.nightshift/wt/' + id, session: 's-' + id, attempts: 0, review_rounds: 0, question: null, resume_at: null, outcome: {}, created_at: ago(30), started_at: ago(14), finished_at: null,
-    quality: { on: true }, steps: steps('code'), runs: [], start: 'now', models: { worker: { family: 'opus', version: null } }, cost_usd: 1.84, budget_usd: 5,
+    quality: { on: true }, steps: steps('code'), runs: [], start: 'now', todos: [], taken_from: null, models: { worker: { family: 'opus', version: null } }, cost_usd: 1.84, budget_usd: 5,
     rendered_prompt: 'Цель. Курсорная пагинация в GET /invoices.\nОграничения. Схему БД не менять, старый ?page= не ломать.\nГотово, когда. Новые тесты зелёные, ответ содержит next_cursor.' }, extra);
   const RUNS = [{ role: 'planner', model: 'Opus 5.5', state: 'done' }, { role: 'critic', model: 'Sonnet 5.5', state: 'done' }, { role: 'test_author', model: 'Sonnet 5.5', state: 'done' }, { role: 'worker', model: 'Opus 5.5', state: 'running' }, { role: 'reviewer', model: 'Opus 5.5', state: 'pending' }, { role: 'integrator', model: 'Sonnet 5.5', state: 'pending' }];
   const RED = { passed: false, tail: 'FAILED tests/test_invoices_pagination.py::test_invalid_cursor_returns_400\nFAILED tests/test_invoices_pagination.py::test_limit_over_max\n7 passed, 2 failed' };
   let tasks = scenario === 'empty' ? [] : [
-    T('t-inv', 'p1', 'claude', 'inv', 'Пагинация в /invoices', 'needs_human', { branch: 'ns/invoices-pagination', runs: RUNS, outcome: { tests: RED, files_changed: 4, insertions: 184, deletions: 31 },
+    T('t-inv', 'p1', 'claude', 'inv', 'Пагинация в /invoices', 'needs_human', { branch: 'ns/invoices-pagination', runs: RUNS,
+      todos: [{ id: 'a1', text: 'Обновить docs/api.md под next_cursor', done: false, by: 'human' }, { id: 'a2', text: 'Ответ 400 invalid_cursor на битый курсор', done: true, by: 'reviewer' }], outcome: { tests: RED, files_changed: 4, insertions: 184, deletions: 31 },
       question: { kind: 'agent', text: 'Мобильный клиент ещё шлёт ?page=. Оставить старый параметр на переходный период или убрать сразу?', options: ['Оставить page', 'Убрать сразу'] } }),
     T('t-round', 'p1', 'claude', 'round', 'Округление в итогах', 'checking', { branch: 'ns/rounding-totals', steps: steps('gates'), started_at: ago(7), runs: RUNS.map((r) => Object.assign({}, r, { state: r.role === 'worker' ? 'done' : r.state })) }),
     T('t-chlog', 'p1', 'claude', 'chlog', 'Changelog 2.4', 'queued', { steps: steps('plan').map((p) => [p[0], 'pending']), started_at: null, cost_usd: null }),
@@ -105,7 +106,7 @@
       M('inv', 16, 14, 14, 'human', 'Курсор пусть будет непрозрачным, id наружу не свети.', { task_id: 't-inv', delivered_at: today(14, 15) }),
       M('inv', 17, 14, 15, R('worker'), 'Подписываю курсор, чиню два теста. Задал вопрос про старый клиент - он в карточке задачи.', { model: 'Opus 5.5' })],
     how: [M('how', 1, 13, 40, 'human', 'Как устроен биллинг? Коротко.'), M('how', 9, 13, 40, 'system', '', { action: { id: 'h1', name: 'Grep', input: { kind: 'search', pattern: 'class .*Service', hits: 3 }, output: 'a\nb\nc', ok: true, done: true } }),
-      M('how', 8, 13, 40, 'system', '', { action: { id: 'h2', name: 'Bash', input: { kind: 'bash', command: 'tree -L 2 src/billing' }, output: Array.from({ length: 12 }, (_, i) => 'src/billing/f' + i + '.py').join('\n') + '\n[output_truncated: 81234 bytes]', ok: true, done: true } }), M('how', 2, 13, 40, 'model', 'Три слоя: `routes` принимают запрос, `service` считает суммы и налоги, `repo` ходит в Postgres. Деньги хранятся в копейках, валюта в отдельном поле.', { model: 'Sonnet 5.5' })],
+      M('how', 8, 13, 40, 'system', '', { action: { id: 'h2', name: 'Bash', input: { kind: 'bash', command: 'tree -L 2 src/billing' }, output: Array.from({ length: 12 }, (_, i) => 'src/billing/f' + i + '.py').join('\n') + '\n[output_truncated: 81234 bytes]', ok: true, done: true } }), M('how', 2, 13, 40, 'model', 'Три слоя: `routes` принимают запрос, `service` считает суммы и налоги, `repo` ходит в Postgres. Деньги хранятся в копейках, валюта в отдельном поле.\n\nПосмотреть структуру и прогнать тесты:\n\n```bash\ntree -L 2 src/billing\npytest tests/billing -q\n```', { model: 'Sonnet 5.5' })],
     round: [M('round', 1, 13, 50, 'human', 'Сделай: округление в итогах'), M('round', 2, 13, 50, 'system', '', { kind: 'task', task_id: 't-round' })],
     cxl: [M('cxl', 1, 10, 40, 'human', 'Сделай: удалить старые миграции'), M('cxl', 2, 10, 40, 'system', '', { kind: 'task', task_id: 't-cxl' })],
     rev: [M('rev', 1, 9, 50, 'human', 'Сделай: логи запросов в stdout'), M('rev', 2, 9, 50, 'system', '', { kind: 'task', task_id: 't-rev' })],
@@ -113,9 +114,11 @@
     pf: [M('pf', 1, 13, 10, 'human', 'Сделай поиск на Pagefind'), M('pf', 2, 13, 10, 'system', '', { kind: 'task', task_id: 't-pf' })],
     acc: [M('acc', 1, 13, 20, 'human', 'Переименуй customer_id в account_id'), M('acc', 2, 13, 20, 'system', '', { kind: 'task', task_id: 't-acc' }),
       M('acc', 3, 13, 40, R('watcher'), 'Исполнитель 15 минут без вывода. Подтолкнул, жду. Если не оживёт за 5 минут - предложу сменить агента.', { model: 'GPT mini 5.1' })],
-    avif: [M('avif', 1, 13, 15, 'human', 'Что такое AVIF и стоит ли переходить?'), M('avif', 2, 13, 15, 'model', 'Формат картинок на основе AV1. При том же качестве обычно легче WebP. Браузеры его поддерживают, но кодирование медленнее - для сборки сайта это не проблема.', { model: 'Gemini Pro 3' })],
+    avif: [M('avif', 1, 13, 15, 'human', 'Что такое AVIF и стоит ли переходить?'), M('avif', 2, 13, 15, 'model', 'Формат картинок на основе AV1. При том же качестве обычно легче WebP. Браузеры его поддерживают, но кодирование медленнее - для сборки сайта это не проблема.', { model: 'Gemini Pro 3' }), M('avif', 3, 13, 20, 'human', 'А в Safari он работает?'), M('avif', 4, 13, 20, 'system', 'stopped', { kind: 'warn', reply_to: 'avif-3' })],
   };
   const files = { 't-inv': [['src/invoices/routes.py', 64, 12], ['src/invoices/cursor.py', 41, 0], ['tests/test_invoices_pagination.py', 118, 0], ['docs/api.md', 9, 2]] };
+  const SNAPS = { 't-inv': [{ n: 1, label: 'test_author', at: today(14, 6) }, { n: 2, label: 'worker', at: today(14, 10) }, { n: 3, label: 'worker', at: today(14, 15) }].map((x) => Object.assign({ sha: 'a'.repeat(40) }, x)),
+    't-pf': [{ n: 1, label: 'worker', at: ago(46) }, { n: 2, label: 'worker', at: ago(30) }].map((x) => Object.assign({ sha: 'b'.repeat(40) }, x)) };
   const DIFF = [{ kind: 'hunk', text: '@@ def list_invoices(...)' }, { kind: 'del', text: '    rows = db.query(Invoice).offset(page * 50).limit(50)' }, { kind: 'add', text: '    after = decode_cursor(cursor) if cursor else None' },
     { kind: 'add', text: '    q = db.query(Invoice).order_by(Invoice.created_at, Invoice.id)' }, { kind: 'add', text: '    rows = q.limit(min(limit, 200) + 1).all()' }, { kind: 'ctx', text: '    return {"items": rows[:limit], "next_cursor": next_cursor}' }];
 
@@ -160,7 +163,7 @@
       }, 700);
       return id;
     },
-    remove_chat: ({ id }) => { chats = chats.filter((c) => c.id !== id); return null; }, retry_chat: () => null,
+    side_ask: ({ id, text }) => 'Это боковой ответ про «' + text.slice(0, 40) + '»: смотрю только на код, историю задачи не трогаю.', remove_chat: ({ id }) => { chats = chats.filter((c) => c.id !== id); return null; }, retry_chat: () => null,
     answer: ({ id, text }) => { const tk = byId(id); tk.status = 'working'; tk.question = null; changed(tk); pushMsg(M(tk.chat_id, 'a' + Date.now(), 0, 0, 'human', text, { at: iso(Date.now()), task_id: id })); return null; },
     note: ({ taskId, to, text }) => { const tk = byId(taskId); pushMsg(M(tk.chat_id, 'n' + Date.now(), 0, 0, 'human', text, { at: iso(Date.now()), task_id: taskId, to: to || null })); return null; },
     answer_outward: ({ taskId, choice }) => { const tk = byId(taskId); tk.status = choice === 'no' ? 'done_not_pushed' : 'done'; tk.question = null; changed(tk); return null; },
@@ -171,6 +174,14 @@
     start_now: ({ taskId }) => { const tk = byId(taskId); tk.status = 'working'; changed(tk); return null; }, not_a_task: () => null, freeze: ({ on }) => { emit('frozen', on); return null; },
     get_diffstat: ({ taskId }) => (files[taskId] || []).map(([path, insertions, deletions]) => ({ path, insertions, deletions })),
     diff_file: () => ({ lines: DIFF, binary: false }),
+    // F13: snapshots of the copy, the "До мержа" list, the project folder on a task's branch
+    task_snapshots: ({ taskId }) => (SNAPS[taskId] || []).slice(),
+    restore_snapshot: ({ taskId, n }) => { const l = SNAPS[taskId] || fail('no_snapshot: ' + n); if (!l.some((x) => x.n === n)) fail('no_snapshot: ' + n); const saved = Math.max(...l.map((x) => x.n)) + 1; l.push({ n: saved, sha: 'f'.repeat(40), at: new Date().toISOString(), label: 'before_restore' }); changed(byId(taskId)); return saved; },
+    todo_add: ({ taskId, text }) => { const tk = byId(taskId); tk.todos = [...(tk.todos || []), { id: 'n' + Date.now(), text, done: false, by: 'human' }]; changed(tk); return null; },
+    todo_set: ({ taskId, todoId, done }) => { const tk = byId(taskId); tk.todos = tk.todos.map((x) => (x.id === todoId ? Object.assign({}, x, { done }) : x)); changed(tk); return null; },
+    todo_remove: ({ taskId, todoId }) => { const tk = byId(taskId); tk.todos = tk.todos.filter((x) => x.id !== todoId); changed(tk); return null; },
+    take_to_main: ({ taskId }) => { const tk = byId(taskId); if (tk.taken_from) fail('already_taken'); tk.taken_from = 'main'; changed(tk); return null; },
+    give_to_agent: ({ taskId }) => { const tk = byId(taskId); if (!tk.taken_from) fail('not_taken'); tk.taken_from = null; changed(tk); return null; },
     open_path: () => null, open_editor: () => null, open_terminal: () => null, install_env: () => null, login_env: () => null, check_custom: () => 'ok',
   };
   // ================= task 15: swarm, factory, settings, kits, summary =================

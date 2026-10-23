@@ -1,5 +1,6 @@
 pub mod agent;
 pub mod chat;
+pub mod ci;
 pub mod config;
 pub mod engine;
 pub mod git;
@@ -10,7 +11,9 @@ pub mod model;
 pub mod net;
 pub mod notify;
 pub mod prompt;
+pub mod schedule;
 pub mod store;
+pub mod suggest;
 pub mod swarm;
 pub mod term;
 pub mod updates;

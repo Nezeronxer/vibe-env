@@ -1,5 +1,6 @@
 //! Window, tray, keys, notifications and the OS around the core: the commands are thin wrappers over `Hub`
 //! (see `hub.rs` and its neighbours, where the logic and its tests live).
+mod auto;
 mod config;
 mod custom;
 mod envs;
@@ -687,6 +688,12 @@ async fn retry_chat(s: State<'_, App>, id: String, msg_id: String) -> Res<()> {
     s.hub.chats.retry(&id, &msg_id)
 }
 
+/// F12 #9: a short read-only question with the chat's context; nothing is stored in the chat.
+#[tauri::command]
+async fn side_ask(s: State<'_, App>, id: String, text: String) -> Res<String> {
+    s.hub.chats.side_ask(&id, &text)
+}
+
 #[tauri::command]
 async fn remove_chat(s: State<'_, App>, id: String) -> Res<()> {
     s.hub.chats.remove(&id)
@@ -756,6 +763,42 @@ async fn take_back(s: State<'_, App>, task_id: String) -> Res<()> {
 #[tauri::command]
 async fn start_now(s: State<'_, App>, task_id: String) -> Res<()> {
     s.hub.engine.start_now(&task_id)
+}
+
+// F13: rollback to a turn, the "До мержа" list, the project folder on a task's branch
+#[tauri::command]
+async fn task_snapshots(s: State<'_, App>, task_id: String) -> Res<Value> {
+    Ok(serde_json::to_value(s.hub.engine.snapshots(&task_id)?).unwrap_or_default())
+}
+
+#[tauri::command]
+async fn restore_snapshot(s: State<'_, App>, task_id: String, n: u32) -> Res<u32> {
+    s.hub.engine.restore_snapshot(&task_id, n)
+}
+
+#[tauri::command]
+async fn todo_add(s: State<'_, App>, task_id: String, text: String) -> Res<()> {
+    s.hub.engine.todo_add(&task_id, &text, "human")
+}
+
+#[tauri::command]
+async fn todo_set(s: State<'_, App>, task_id: String, todo_id: String, done: bool) -> Res<()> {
+    s.hub.engine.todo_set(&task_id, &todo_id, done)
+}
+
+#[tauri::command]
+async fn todo_remove(s: State<'_, App>, task_id: String, todo_id: String) -> Res<()> {
+    s.hub.engine.todo_remove(&task_id, &todo_id)
+}
+
+#[tauri::command]
+async fn take_to_main(s: State<'_, App>, task_id: String) -> Res<()> {
+    s.hub.engine.take_to_main(&task_id)
+}
+
+#[tauri::command]
+async fn give_to_agent(s: State<'_, App>, task_id: String) -> Res<()> {
+    s.hub.engine.give_to_agent(&task_id)
 }
 
 #[tauri::command]
@@ -961,6 +1004,7 @@ fn build_app(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     start_timers(&h, &hb);
     config::start(&h, hb.clone(), register_keys);
     updates::start(&h, hb.clone());
+    auto::start(&h, hb.clone());
     refresh_tray(&h);
     Ok(())
 }
@@ -1173,8 +1217,9 @@ fn main() {
             list_agents, get_settings, set_settings,
             github_info, delete_merged_branches, pr_state, get_diffstat,
             open_path, open_editor, open_terminal,
+            task_snapshots, restore_snapshot, todo_add, todo_set, todo_remove, take_to_main, give_to_agent,
             list_envs, get_catalog, refresh_catalog, get_limits, check_custom, install_env, login_env,
-            list_chats, get_chat, send_chat, retry_chat, remove_chat, open_chat_terminal,
+            list_chats, get_chat, send_chat, retry_chat, side_ask, remove_chat, open_chat_terminal,
             note, answer_outward, resume_failed, pick_variant, stop_swarm, nudge, switch_model, freeze,
             hand_off, take_back, start_now, not_a_task, submit_convoy, summary_since, diff_file,
             kits_inventory, kits_export, kits_preview, kits_install, kits_enable, kits_snapshots, kits_rollback, kits_check_update, set_secret,
@@ -1187,7 +1232,9 @@ fn main() {
             market::market_remove, market::market_sources, market::market_set_sources,
             updates::cli_status, updates::cli_update, updates::updates_history, updates::cli_update_mode,
             gitcmds::gh_publish, gitcmds::git_log_page, gitcmds::git_revert_commit, gitcmds::startup_tax, gitcmds::compact, gitcmds::commit_stat, gitcmds::commit_file_diff,
-            config::config_open, config::config_errors
+            config::config_open, config::config_errors,
+            auto::auto_get, auto::auto_schedule_save, auto::auto_schedule_remove, auto::auto_schedule_toggle, auto::auto_suggest_scan,
+            auto::auto_suggest_do, auto::auto_suggest_dismiss, auto::auto_suggest_nightly, auto::auto_ci_set, auto::auto_ci_poll
         ])
         .build(tauri::generate_context!())
         .expect("error while building Nightshift");

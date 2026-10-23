@@ -32,7 +32,7 @@
       else if (b.type === 'h') box.append(h('h' + (b.level + 2), { class: 'md-h' }, inlineNodes(b.inline)));     // h3-h5: smaller than the screen title
       else if (b.type === 'ul') box.append(h('ul', {}, b.items.map((it) => h('li', {}, inlineNodes(it)))));
       else if (b.type === 'ol') box.append(h('ol', { start: b.start }, b.items.map((it) => h('li', {}, inlineNodes(it)))));
-      else if (b.type === 'code') box.append(h('pre', { class: 'md-code' }, NS.highlight(b.text, V.fenceLang(b.lang))));
+      else if (b.type === 'code') box.append(h('pre', { class: 'md-code', dataset: { lang: String(b.lang || '').toLowerCase() } }, NS.highlight(b.text, V.fenceLang(b.lang))));
       else if (b.type === 'table') box.append(h('pre', { class: 'md-table', text: b.text }));
       else if (b.type === 'quote') box.append(h('blockquote', {}, inlineNodes(b.inline)));
       else if (b.type === 'hr') box.append(h('hr'));

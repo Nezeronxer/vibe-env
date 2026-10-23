@@ -1,0 +1,9 @@
+# Общее для F12-F15 (фишки v5, просьба 23.10: «Делай все фишки из таблицы»)
+
+- Источник фишек: `.autopilot/vibe-env/research-v5-features.md` (строки таблицы с номерами, ссылки на первоисточник).
+- Вид - мир «Ночная радиостудия»: `.impeccable/surfaces/ui-index-html.md`, `DESIGN.md` (токены, лампы, янтарь - единственный живой акцент, моно только для кода). Новые контролы - стандартные, через токены, без захардкоженных цветов.
+- Параллельно работают другие исполнители F12/F13/F14 в том же дереве. Общие файлы (`app/src/main.rs` - регистрация команд, `ui/js/core/api.js` - COMMANDS, `ui/index.html` - теги script, `core/src/lib.rs`, `core/src/model.rs`): **перечитывай файл прямо перед правкой и правь точечно (Edit одной вставкой), не переписывай целиком**. Строки интерфейса - в своём новом файле `ui/js/v4/i18n-<фича>.js` (подключить в index.html), не в общих i18n.
+- Политики приложения не ослаблять: пуш/PR только с разрешения человека (`ask_push`, `ask_pr`), песочница, защищённые пути. Всё, что запускает команды или агентов, - только по явному действию человека или по его включённой настройке.
+- Ничего наружу: в тестах никаких настоящих сетевых вызовов GitHub/CLI - заглушки, как в существующих тестах ядра.
+- Проверка: `cargo test --workspace 2>&1 | grep '^test result' | awk '{p+=$4;f+=$6} END{print p,f}'` (было 512 0); `NS_PLAYWRIGHT=~/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright-core NS_CHROME="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" node scripts/ui-selftest.js 2>&1 | grep -E "^FAIL|ALL PASSED"` (было 315 of 315, 0 FAIL). Снимки «после» в `.autopilot/vibe-env/screens-v2/<таск>-after/` (тёмная, 1440; ключевые - и светлая), посмотрены глазами. Dev-mock (`ui/dev-mock.js`) - данные для снимков и selftest новых фич.
+- Не коммитить, не запускать `.app`, не трогать `~/.config/nightshift`.

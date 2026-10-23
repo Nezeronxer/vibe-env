@@ -291,6 +291,7 @@
       const env = () => S().lastEnv;
       NS.append(clear(nav),
         [nb('nb-fact', ic('i-fact'), t('nav.factory'), t('nav.factory_d'), () => NS.shell.nav('factory', { env: env() })),
+          NS.auto ? NS.auto.navButton() : null,
           nb('nb-set', ic('i-gear'), t('nav.settings'), t('nav.settings_d') + ' ' + (mac ? '⌘,' : 'Ctrl+,'), () => NS.shell.nav('settings', { env: env(), section: 'basic' })),
           nb('nb-pal', h('kbd', { text: mac ? '⌘K' : 'Ctrl+K' }), t('nav.palette'), t('nav.palette_d'), () => NS.palette.open())]);
     }

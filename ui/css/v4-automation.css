@@ -1,0 +1,47 @@
+/* F14 automation: schedule, suggested tasks, CI watchman. Tokens only; the world is the night studio, state is told by lamps. */
+.auto4 { padding: 6px 24px 28px; max-width: 1180px; width: 100%; margin: 0 auto; }
+.a4-h { padding: 8px 0 14px; }
+.a4-h h1 { font-size: 22px; font-weight: 650; letter-spacing: -0.015em; }
+.a4-h .hint { margin-top: 4px; }
+.a4-grid { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: 20px; align-items: start; }
+.a4-col { display: grid; gap: 20px; min-width: 0; }
+.a4-panel { background: var(--card-fx); border: 1px solid var(--line); border-radius: var(--radius-pane); padding: 14px 16px 16px; min-width: 0; }
+.a4-panel > h2 { font-size: 14px; font-weight: 650; }
+.a4-panel > .hint { margin: 3px 0 12px; max-width: 64ch; }
+.a4-list { list-style: none; margin: 0 0 14px; padding: 0; display: grid; }
+.a4-row, .a4-card { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 4px 12px; align-items: start; padding: 10px 0; border-top: 1px solid var(--line); }
+.a4-card { grid-template-columns: minmax(0, 1fr) auto; }
+.a4-list > :first-child { border-top: 0; }
+.a4-row .lamp { margin-top: 4px; }
+.ci .a4-row { grid-template-columns: auto minmax(0, 1fr); }
+.a4-main { display: grid; gap: 2px; min-width: 0; }
+.a4-main b { font-weight: 600; overflow-wrap: anywhere; }
+.a4-main small { color: var(--ink2); font-size: 12px; }
+.a4-main small.mute, .a4-form small.mute, .a4-none { color: var(--ink3); }
+.a4-warn { color: var(--bad); font-size: 12.5px; }
+p.a4-warn { margin: 8px 0 0; }
+.a4-none { padding: 6px 0; }
+.a4-acts { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: flex-end; }
+.a4-loc { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
+.a4-loc code { font: 12.5px var(--mono); color: var(--ink2); }
+.a4-bar { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin-bottom: 10px; }
+.a4-tg { display: inline-flex; align-items: center; gap: 8px; color: var(--ink2); }
+.a4-line { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 9px 0; border-top: 1px solid var(--line); }
+.a4-line:first-child { border-top: 0; }
+.a4-line > div { display: grid; gap: 2px; min-width: 0; }
+.a4-line b { font-weight: 600; }
+.a4-line input[type=number] { width: 64px; }
+.a4-ci > .btn { margin-top: 4px; }
+.a4-form { border-top: 1px solid var(--line); padding-top: 14px; display: grid; gap: 10px; }
+.a4-form h3 { font-size: 13px; font-weight: 650; }
+.a4-tplrow { display: grid; gap: 6px; }
+.a4-tpl { display: flex; gap: 6px; flex-wrap: wrap; }
+.fld { display: grid; gap: 4px; min-width: 0; }
+.fld input[type=text], .fld select { width: 100%; }
+.a4-two { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.a4-time { font-variant-numeric: tabular-nums; }
+.a4-foot { display: flex; align-items: center; gap: 14px; }
+.lamp.armed { border-color: transparent; background: radial-gradient(circle at 35% 30%, color-mix(in srgb, var(--amber) 55%, white), var(--amber) 58%); box-shadow: 0 0 0 1px color-mix(in srgb, var(--amber) 45%, transparent), 0 0 8px 1px color-mix(in srgb, var(--amber) 40%, transparent); }
+.nb-auto .bn { font: 600 11px var(--sans); color: var(--ink2); background: var(--raised2); border-radius: 3px; padding: 0 4px; line-height: 15px; }
+@media (max-width: 1100px) { .a4-grid { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 640px) { .a4-two { grid-template-columns: minmax(0, 1fr); } .auto4 { padding: 6px 14px 24px; } }

@@ -65,7 +65,7 @@ if (process.env.NS_PLAYWRIGHT) (async () => {
     return { buttons: buttons.length, names: buttons.map((x) => x.getAttribute('aria-label') || x.textContent.trim()).slice(0, 20), pane: rad('.pane'), card: rad('.tcard'), field: rad('.composer'), bar: rad('.bar') };
   });
   const out = [];
-  out.push((r.buttons <= 18 ? 'PASS ' : 'FAIL ') + 'main view: at most 18 visible buttons outside the feed (14 + the three entrances of F8 + "Новый чат" of the chat list that F9 shows by default) (' + r.buttons + ')' + (r.buttons <= 18 ? '' : ' ' + JSON.stringify(r.names)));
+  out.push((r.buttons <= 20 ? 'PASS ' : 'FAIL ') + 'main view: at most 20 visible buttons outside the feed (14 + the three entrances of F8 + "Новый чат" of the chat list that F9 shows by default + "Спросить" of F12 + "Автоматика" of F14) (' + r.buttons + ')' + (r.buttons <= 20 ? '' : ' ' + JSON.stringify(r.names)));
   out.push((r.pane > 0 && r.card > 0 && r.field > 0 && r.bar > 0 ? 'PASS ' : 'FAIL ') + 'computed border-radius > 0: pane ' + r.pane + ', card ' + r.card + ', field ' + r.field + ', bar ' + r.bar);
   await f5(b, 'http://127.0.0.1:' + srv.address().port, out);
   await f7(b, 'http://127.0.0.1:' + srv.address().port, out);
@@ -77,6 +77,12 @@ if (process.env.NS_PLAYWRIGHT) (async () => {
   await f10(b, 'http://127.0.0.1:' + srv.address().port, out);
   await b.close(); b = await launch();       // F11 in a fresh browser too
   await f11(b, 'http://127.0.0.1:' + srv.address().port, out);
+  await b.close(); b = await launch();       // F13 in a fresh browser too
+  await f13(b, 'http://127.0.0.1:' + srv.address().port, out);
+  await b.close(); b = await launch();       // F12 in a fresh browser too
+  await f12(b, 'http://127.0.0.1:' + srv.address().port, out);
+  await b.close(); b = await launch();       // F14 in a fresh browser too
+  await f14(b, 'http://127.0.0.1:' + srv.address().port, out);
   process.stdout.write(out.join('\n') + '\n');
   if (out.some((l) => l.startsWith('FAIL'))) process.exitCode = 1;
   await b.close(); srv.close();
@@ -398,5 +404,234 @@ async function f11(b, base, out) {
   await p.fill('.composer textarea', 'Как это устроено?'); await p.keyboard.press('Enter'); await p.waitForTimeout(500);
   const went = await p.evaluate(() => !document.querySelector('.newchat-empty') || document.querySelector('.composer textarea').value === '');
   ok('F11 1: with a chosen project the message goes', went, went);
+  await p.close();
+}
+
+// F13 - rollback to a turn, the list "До мержа", "Забрать к себе" / "Отдать агенту"
+async function f13(b, base, out) {
+  const ok = (name, cond, detail) => out.push((cond ? 'PASS ' : 'FAIL ') + name + (cond ? '' : ' ' + JSON.stringify(detail)));
+  const p = await b.newPage({ viewport: { width: 1440, height: 900 } });
+  await p.goto(base + '/index.html?lang=ru&platform=mac&env=claude&chat=inv');
+  await p.waitForTimeout(1600);
+  // 1 - the rollback icon on my reply to a running task (only where a snapshot follows the message)
+  const rb = await p.evaluate(() => {
+    const me = [...document.querySelectorAll('.me')].find((x) => /Курсор пусть будет/.test(x.textContent));
+    const btn = me && me.querySelector('.snap-back');
+    const first = [...document.querySelectorAll('.me')].find((x) => /Как у нас сейчас/.test(x.textContent));
+    return { has: !!btn, shown: !!btn && !btn.hidden, text: btn && btn.textContent.trim(), plain: first ? !first.querySelector('.snap-back') || first.querySelector('.snap-back').hidden : null };
+  });
+  ok('F13 1: my reply to a task has «Вернуть код сюда»; a plain chat question has none', rb.has && rb.shown && rb.text === 'Вернуть код сюда' && rb.plain !== false, rb);
+  await p.hover('.me:has-text("Курсор пусть будет")');
+  await p.click('.me:has-text("Курсор пусть будет") .snap-back');
+  const armed = await p.evaluate(() => [...document.querySelectorAll('.me')].find((x) => /Курсор пусть будет/.test(x.textContent)).querySelector('.snap-back').textContent.trim());
+  ok('F13 1: the rollback asks once more before it moves the code', armed === 'Точно вернуть?', armed);
+  await p.click('.me:has-text("Курсор пусть будет") .snap-back');
+  await p.waitForTimeout(400);
+  const toast = await p.evaluate(() => document.body.textContent.includes('Код возвращён к ходу 3'));
+  ok('F13 1: after the second click the code goes back (to the snapshot after the message) and the state before is kept', toast, toast);
+  // 2 - the card: the list, the turns
+  await p.click('.tcard .tc-more');
+  await p.waitForTimeout(500);
+  const card = await p.evaluate(() => {
+    const db = document.querySelector('.todos-db'), turns = document.querySelector('.turns-db');
+    return { items: db ? [...db.querySelectorAll('.todos li')].map((li) => li.textContent.trim()) : [], open: db && db.querySelector('h3 small') && db.querySelector('h3 small').textContent, checked: db ? [...db.querySelectorAll('input[type=checkbox]')].map((i) => i.checked) : [],
+      turns: turns ? turns.querySelectorAll('li').length : 0, backs: turns ? [...turns.querySelectorAll('.snap-back')].filter((x) => !x.hidden).length : 0 };
+  });
+  ok('F13 2: the card lists «До мержа» (one open, one from the reviewer ticked) and every turn has a rollback', card.items.length === 2 && card.open === '1 открыто' && card.checked.join() === 'false,true' && card.turns >= 3 && card.backs >= 3, card);
+  await p.fill('.todos-db .todo-in', 'Проверить мобильный клиент');
+  await p.keyboard.press('Enter');
+  await p.waitForTimeout(400);
+  await p.click('.todos-db li:has-text("Обновить docs") input');
+  await p.waitForTimeout(400);
+  const after = await p.evaluate(() => { const db = document.querySelector('.todos-db'); return { items: db.querySelectorAll('.todos li').length, open: db.querySelector('h3 small') && db.querySelector('h3 small').textContent }; });
+  ok('F13 2: an item can be added and ticked; the count of open ones follows', after.items === 3 && after.open === '1 открыто', after);
+  // the merge waits: the need block shows why and the list right in it
+  const need = await p.evaluate(() => {
+    const t = { ...NS.store.s.tasks.get('t-inv'), question: { kind: 'agent', text: 'todos_open: 1', options: ['Continue'] } };
+    NS.store.s.tasks.set(t.id, t); NS.store.emit('task', t);
+    const n = document.querySelector('.tcard .tc-need');
+    return { text: n && n.textContent, boxes: n ? n.querySelectorAll('.todos input').length : 0, btn: n && [...n.querySelectorAll('button')].map((x) => x.textContent.trim()) };
+  });
+  ok('F13 2: a task held by the list says so in «Ждёт тебя», with the list and «Проверить ещё раз»', /Мерж ждёт/.test(need.text || '') && /не отмечено пунктов: 1/.test(need.text || '') && need.boxes === 3 && need.btn.includes('Проверить ещё раз'), need);
+  await p.screenshot({ path: process.env.NS_SHOTS ? process.env.NS_SHOTS + '/f13-card.png' : '/dev/null' }).catch(() => {});
+  // 3 - the folder handoff on a failed task
+  await p.goto(base + '/index.html?lang=ru&platform=mac&env=codex&chat=pf');
+  await p.waitForTimeout(1500);
+  await p.click('.tcard .tc-more');
+  await p.waitForTimeout(500);
+  const names = () => p.evaluate(() => [...document.querySelectorAll('.tcard .acts-row .btn')].map((x) => x.textContent.trim()));
+  const n0 = await names();
+  ok('F13 3: a failed task offers «Забрать к себе»', n0.includes('Забрать к себе') && !n0.includes('Отдать агенту'), n0);
+  await p.click('.tcard .acts-row .btn:has-text("Забрать к себе")');
+  await p.waitForTimeout(500);
+  const n1 = await p.evaluate(() => ({ btns: [...document.querySelectorAll('.tcard .btn')].map((x) => x.textContent.trim()), line: (document.querySelector('.tcard .tc-done') || {}).textContent }));
+  ok('F13 3: taken: the card says the folder is on the task branch and offers «Отдать агенту»', n1.btns.includes('Отдать агенту') && !n1.btns.includes('Забрать к себе') && /Папка проекта стоит на ветке задачи/.test(n1.line || ''), n1);
+  await p.click('.tcard .tc-done .btn:has-text("Отдать агенту")');
+  await p.waitForTimeout(500);
+  const n2 = await names();
+  ok('F13 3: given back: «Забрать к себе» is offered again', n2.includes('Забрать к себе') && !n2.includes('Отдать агенту'), n2);
+  await p.close();
+}
+
+// F12 - the chat: the queue and "Сразу", the side question, the next-step hint, "Выполнить" on shell blocks, "Остановлено"
+async function f12(b, base, out) {
+  const ok = (name, cond, detail) => out.push((cond ? 'PASS ' : 'FAIL ') + name + (cond ? '' : ' ' + JSON.stringify(detail)));
+  const open = async (qs) => { const p = await b.newPage({ viewport: { width: 1440, height: 900 } }); await p.goto(base + '/index.html?lang=ru&platform=mac&log=1&' + qs); await p.waitForTimeout(1700); return p; };
+  const calls = (p) => p.evaluate(() => JSON.parse(document.documentElement.getAttribute('data-calls') || '[]'));
+  const names = async (p) => (await calls(p)).map((c) => c[0]);
+  // 1: the queue
+  let p = await open('env=claude&chat=cache&live=slow');
+  await p.fill('.composer textarea', 'Лучше без кэша на запись'); await p.keyboard.press('Enter'); await p.waitForTimeout(400);
+  const q1 = await p.evaluate(() => { const q = document.querySelector('.me.queued'); return { on: !!q, text: q && q.querySelector('.me-b').textContent.trim(), op: q && getComputedStyle(q.querySelector('.me-b')).opacity, note: q && q.querySelector('.me-m').textContent, field: document.querySelector('.composer textarea').value }; });
+  const n1 = await names(p);
+  ok('F12 1: while the agent works a message waits grey «в очереди» and nothing is sent yet', q1.on && /без кэша/.test(q1.text) && parseFloat(q1.op) < 0.8 && /в очереди/.test(q1.note) && !q1.field && !n1.includes('note') && !n1.includes('send_chat'), { q1, n1 });
+  await p.fill('.composer textarea', 'И ещё лог'); await p.waitForTimeout(200);
+  const nowShown = await p.evaluate(() => { const b = document.querySelector('.now4'); return b && !b.hidden && b.getBoundingClientRect().width > 0 && b.textContent.trim(); });
+  ok('F12 1: with a typed message and a working agent the button «Сразу» shows', nowShown === 'Сразу', nowShown);
+  await p.fill('.composer textarea', ''); await p.waitForTimeout(100);
+  await p.click('.me.queued .q-act >> nth=0'); await p.waitForTimeout(200);
+  const edited = await p.evaluate(() => ({ field: document.querySelector('.composer textarea').value, queued: document.querySelectorAll('.me.queued').length }));
+  ok('F12 1: «Править» takes the message back to the field and out of the queue', /без кэша/.test(edited.field) && edited.queued === 0, edited);
+  await p.keyboard.press('Enter'); await p.waitForTimeout(300);
+  await p.click('.me.queued .q-act >> nth=1'); await p.waitForTimeout(200);
+  ok('F12 1: «×» removes a queued message', (await p.evaluate(() => document.querySelectorAll('.me.queued').length)) === 0, null);
+  await p.fill('.composer textarea', 'Остановись и сделай без кэша'); await p.waitForTimeout(150);
+  await p.click('.now4'); await p.waitForTimeout(1800);
+  const n2 = await calls(p);
+  const sentAfter = n2.findIndex((c) => c[0] === 'send_chat' && /без кэша/.test(c[1].text)), cancelAt = n2.findIndex((c) => c[0] === 'cancel');
+  const q2 = await p.evaluate(() => ({ queued: document.querySelectorAll('.me.queued').length, mine: [...document.querySelectorAll('.cfeed .me .me-b')].map((x) => x.textContent.trim()).filter((x) => /без кэша/.test(x)).length }));
+  ok('F12 1: «Сразу» cancels the run, then the message goes and stops being grey', cancelAt >= 0 && sentAfter > cancelAt && q2.queued === 0 && q2.mine >= 1, { n2: n2.map((c) => c[0]), q2 });
+  await p.close();
+  // 2: the side question
+  p = await open('env=claude&chat=how');
+  const feedBefore = await p.evaluate(() => document.querySelector('.cfeed').children.length);
+  await p.evaluate(() => document.activeElement && document.activeElement.blur && document.activeElement.blur());
+  await p.evaluate(() => document.dispatchEvent(new KeyboardEvent('keydown', { code: 'Semicolon', key: ';', metaKey: true, bubbles: true, cancelable: true }))); await p.waitForTimeout(300);
+  const s1 = await p.evaluate(() => { const e = document.querySelector('.sidechat'); const r = e && e.getBoundingClientRect(); return { shown: !!e && !e.hidden, w: r && Math.round(r.width), right: r && Math.round(document.querySelector('.convo').getBoundingClientRect().right - r.right), focus: document.activeElement && document.activeElement.className }; });
+  ok('F12 2: ⌘; opens a narrow panel «Спросить» on the right with the focus in its field', s1.shown && s1.w <= 360 && s1.right === 0 && /sc-in/.test(s1.focus), s1);
+  await p.fill('.sc-in', 'Где считаются налоги?'); await p.keyboard.press('Enter'); await p.waitForTimeout(500);
+  const s2 = await p.evaluate(() => ({ q: document.querySelector('.sc-q') && document.querySelector('.sc-q').textContent, a: document.querySelector('.sc-a') && document.querySelector('.sc-a').textContent, feed: document.querySelector('.cfeed').children.length }));
+  const n3 = await calls(p);
+  ok('F12 2: the question gets an answer in the panel, the feed of the task does not change and nothing is sent to the agent', /налоги/.test(s2.q) && /боковой ответ/.test(s2.a) && s2.feed === feedBefore && n3.some((c) => c[0] === 'side_ask' && c[1].id === 'how') && !n3.some((c) => ['send_chat', 'note', 'answer'].includes(c[0])), { s2, feedBefore, n3: n3.map((c) => c[0]) });
+  await p.keyboard.press('Escape'); await p.waitForTimeout(200);
+  ok('F12 2: Esc closes the panel', await p.evaluate(() => document.querySelector('.sidechat').hidden), null);
+  await p.click('.side-btn'); await p.waitForTimeout(200);
+  ok('F12 2: the button «Спросить» in the chat header opens it too', await p.evaluate(() => !document.querySelector('.sidechat').hidden), null);
+  await p.close();
+  // 4: «Выполнить» pastes the command into a terminal and waits for Enter
+  p = await open('env=claude&chat=how');
+  const rc = await p.evaluate(() => [...document.querySelectorAll('.codewrap .runcmd')].map((x) => x.textContent.trim()));
+  ok('F12 4: the ```bash block of the answer has a «Выполнить» button', rc.length === 1 && rc[0] === 'Выполнить', rc);
+  await p.click('.runcmd'); await p.waitForTimeout(1500);
+  const term = await p.evaluate(() => ({ sessions: [...window.NSMockTerm.sessions.values()].map((s) => ({ line: s.line, buf: s.buf, running: s.running, cwd: s.cwd })) }));
+  const sx = term.sessions[term.sessions.length - 1] || {};
+  ok('F12 4: the command is in the terminal line of the project, not run (no Enter)', term.sessions.length >= 1 && /tree -L 2 src\/billing/.test(sx.line || '') && !/No such|total|\.py/.test(sx.buf || '') && /billing-api|Users/.test(sx.cwd || ''), term);
+  await p.close();
+  // 3: the next-step hint
+  p = await open('env=claude&chat=cur');
+  const h1 = await p.evaluate(() => ({ ph: document.querySelector('.composer textarea').placeholder, tab: !document.querySelector('.cmp-tab').hidden, v: document.querySelector('.composer textarea').value }));
+  ok('F12 3: after a finished task the empty field shows a grey suggestion and «Tab»', /^Напиши тесты на «Поле currency/.test(h1.ph) && h1.tab && !h1.v, h1);
+  await p.focus('.composer textarea'); await p.keyboard.press('Tab'); await p.waitForTimeout(150);
+  const h2 = await p.evaluate(() => ({ v: document.querySelector('.composer textarea').value, tab: document.querySelector('.cmp-tab').hidden }));
+  ok('F12 3: Tab puts the suggestion into the field (Enter would send it)', /^Напиши тесты на «Поле currency/.test(h2.v) && h2.tab, h2);
+  await p.fill('.composer textarea', ''); await p.keyboard.press('KeyA'); await p.waitForTimeout(100); await p.keyboard.press('Backspace'); await p.waitForTimeout(100);
+  const h3 = await p.evaluate(() => ({ ph: document.querySelector('.composer textarea').placeholder, tab: document.querySelector('.cmp-tab').hidden }));
+  ok('F12 3: any key hides the suggestion', !/Напиши тесты/.test(h3.ph) && h3.tab, h3);
+  await p.click('#tune'); await p.waitForTimeout(200);
+  await p.click('#tunePanel .tg:has-text("Подсказывать следующий шаг")'); await p.waitForTimeout(100);
+  const off = await p.evaluate(() => NS.storage.get('ns.hint_next'));
+  await p.reload(); await p.waitForTimeout(1700);
+  const h4 = await p.evaluate(() => document.querySelector('.composer textarea').placeholder);
+  ok('F12 3: the setting «Подсказывать следующий шаг» turns it off (and a reload remembers)', off === '0' && !/Напиши тесты/.test(h4), { off, h4 });
+  await p.close();
+  // 5: a stopped run is «Остановлено», not a red «Не ответил»
+  p = await open('env=gemini&chat=avif');
+  const st = await p.evaluate(() => { const l = [...document.querySelectorAll('.cfeed .sysline')].pop(); return l && { text: l.textContent.trim(), bad: l.classList.contains('bad'), color: getComputedStyle(l).color }; });
+  ok('F12 5: a stopped run reads «Остановлено» in a calm colour, with «Повторить»', st && /^Остановлено/.test(st.text) && !st.bad && !/Не ответил/.test(st.text) && /Повторить/.test(st.text), st);
+  await p.close();
+}
+
+// F14 - automation: the schedule, the suggested tasks, the CI watchman (dev-mock plays the core: mock-auto.js)
+async function f14(b, base, out) {
+  const ok = (name, cond, detail) => out.push((cond ? 'PASS ' : 'FAIL ') + name + (cond ? '' : ' ' + JSON.stringify(detail)));
+  const open = async (qs) => {
+    const p = await b.newPage({ viewport: { width: 1440, height: 900 } });
+    await p.goto(base + '/index.html?lang=ru&platform=mac&env=claude&chat=new' + (qs || '')); await p.waitForTimeout(1300);
+    return p;
+  };
+  let p = await open();
+  const nav = await p.evaluate(() => { const b = document.querySelector('.nb-auto'); return b && { text: b.textContent.trim(), next: b.previousElementSibling && b.previousElementSibling.textContent.trim(), after: b.nextElementSibling && b.nextElementSibling.textContent.trim() }; });
+  ok('F14: the entrance «Автоматика» sits between «Фабрика» and «Настройки» and carries the count of suggestions', nav && /^Автоматика\s*5$/.test(nav.text) && nav.next === 'Фабрика' && nav.after === 'Настройки', nav);
+  await p.click('.nb-auto'); await p.waitForTimeout(500);
+  const rows = () => p.evaluate(() => [...document.querySelectorAll('#a4-sched .a4-row')].map((r) => ({ t: r.querySelector('b').textContent, on: r.classList.contains('on'), sw: r.querySelector('[role=switch]').getAttribute('aria-checked'), txt: r.textContent })));
+  const r0 = await rows();
+  ok('F14 1: the schedule lists the tasks with preset, time and the next firing; the held one says why (limit under 10%)', r0.length === 3 && r0[0].txt.includes('по будням в 03:00') && /дальше:/.test(r0[0].txt) && /меньше 10% лимита/.test(r0[1].txt) && !r0[2].on, r0);
+  await p.click('#a4-sched .a4-row:nth-child(1) [role=switch]'); await p.waitForTimeout(300);
+  const r1 = await rows();
+  ok('F14 1: the switch turns a schedule off (the core agrees after a reload) and its «next» disappears', r1[0].sw === 'false' && !r1[0].on && !/дальше:/.test(r1[0].txt), r1[0]);
+  // a new one from a template
+  await p.click('[data-tpl=todo]'); await p.waitForTimeout(100);
+  const filled = await p.evaluate(() => ({ title: document.querySelector('#a4-form input[type=text]').value, prompt: document.querySelector('#a4-form textarea').value.length > 20 }));
+  ok('F14 1: a template fills the name and the task text', filled.title === 'Добить TODO' && filled.prompt, filled);
+  await p.fill('.a4-time', '25:99'); await p.click('#a4-form .btn.primary'); await p.waitForTimeout(300);
+  ok('F14 1: a bad time is refused, nothing is added', (await rows()).length === 3, null);
+  await p.fill('.a4-time', '02:15');
+  await p.selectOption('#a4-form select:has(option[value=weekly])', 'weekly'); await p.waitForTimeout(100);
+  const dayShown = await p.evaluate(() => !document.querySelector('.a4-day').hidden);
+  await p.click('#a4-form .btn.primary'); await p.waitForTimeout(400);
+  const r2 = await rows();
+  ok('F14 1: «Раз в неделю» shows the day of the week; saving adds a row that is still off (the person switches it on)', dayShown && r2.length === 4 && r2[3].t === 'Добить TODO' && /раз в неделю, среда в 02:15/.test(r2[3].txt) && !r2[3].on, { dayShown, last: r2[3] });
+  await p.click('#a4-sched .a4-row:nth-child(4) .btn.sm'); await p.waitForTimeout(200);
+  const editing = await p.evaluate(() => ({ h: document.querySelector('#a4-form h3').textContent, v: document.querySelector('#a4-form input[type=text]').value, save: document.querySelector('#a4-form .btn.primary').textContent }));
+  ok('F14 1: «Править» loads the row into the form', /Править/.test(editing.h) && editing.v === 'Добить TODO' && editing.save === 'Сохранить', editing);
+  await p.click('#a4-sched .a4-row:nth-child(4) .linkb'); await p.waitForTimeout(200);
+  await p.click('dialog[open] .btn.primary'); await p.waitForTimeout(300);
+  ok('F14 1: «Удалить» asks first, then removes the row', (await rows()).length === 3, null);
+  // suggestions
+  const cards = () => p.evaluate(() => ({ n: document.querySelectorAll('#a4-sug .a4-card').length, nav: String(NS.auto.count()), first: document.querySelector('#a4-sug .a4-card').textContent }));
+  const c0 = await cards();
+  ok('F14 2: «Предлагаю» lists file:line, the text and the project; the button carries the same count', c0.n === 5 && c0.nav === '5' && /src\/invoices\/routes\.py:88/.test(c0.first) && /billing-api/.test(c0.first), c0);
+  await p.click('#a4-sug .a4-card:nth-child(1) .linkb'); await p.waitForTimeout(300);
+  const c1 = await cards();
+  ok('F14 2: «Не предлагать такое» removes the card and the count drops', c1.n === 4 && c1.nav === '4', c1);
+  await p.click('#a4-sug .a4-card:nth-child(1) .btn'); await p.waitForTimeout(500);
+  const c2 = await cards();
+  const tasks = await p.evaluate(() => NS.api.call('list_tasks').then((l) => l.filter((t) => /cache\.py|FIXME/.test(t.prompt)).length));
+  ok('F14 2: «Сделать» queues a task through submit_task and the card is gone', c2.n === 3 && tasks === 1, { c2, tasks });
+  await p.click('#a4-sug .a4-tg [role=switch]'); await p.waitForTimeout(200);
+  ok('F14 2: «Искать по ночам» is a switch, off until the person turns it on', await p.evaluate(() => NS.api.call('auto_get').then((d) => d.suggest.nightly === true)), null);
+  // the watchman
+  const ci = await p.evaluate(() => ({ items: [...document.querySelectorAll('#a4-ci .a4-row')].map((r) => r.textContent), on: document.querySelector('#a4-ci [role=switch]').getAttribute('aria-checked'), merge: document.querySelectorAll('#a4-ci [role=switch]')[1].getAttribute('aria-checked') }));
+  ok('F14 3: the watchman lists the pull requests with their state and attempts; «слить, когда зелёное» is off by default', ci.items.length === 4 && /зелёный/.test(ci.items[0]) && /красный.*попытки 1 из 2.*Починить CI/.test(ci.items[1]) && /конфликт.*попытки 2 из 2.*дальше сам/.test(ci.items[3]) && ci.on === 'true' && ci.merge === 'false', ci);
+  await p.click('#a4-ci .a4-line:nth-child(3) [role=switch]'); await p.waitForTimeout(300);
+  const asked = await p.evaluate(() => ({ dlg: !!document.querySelector('dialog[open]'), title: (document.querySelector('dialog[open] h2') || {}).textContent }));
+  await p.click('dialog[open] .btn:not(.primary)'); await p.waitForTimeout(300);
+  const declined = await p.evaluate(() => NS.api.call('auto_get').then((d) => d.ci.config.merge_when_green));
+  ok('F14 3: turning «слить, когда зелёное» on asks for a confirmation the first time; «Отмена» leaves it off', asked.dlg && /слияние/.test(asked.title) && declined === false, { asked, declined });
+  await p.click('#a4-ci .a4-line:nth-child(3) [role=switch]'); await p.waitForTimeout(300);
+  await p.click('dialog[open] .btn.primary'); await p.waitForTimeout(400);
+  ok('F14 3: after «Включить» the setting and its confirmation are stored', await p.evaluate(() => NS.api.call('auto_get').then((d) => d.ci.config.merge_when_green === true && d.ci.config.merge_confirmed === true)), null);
+  // words and layout
+  const words = await p.evaluate(() => { const d = NSI18n.dicts; const keys = Object.keys(d.ru).filter((k) => /^auto\.|^err\.(empty_title|empty_prompt|bad_time|suggestion_not_found|schedule_not_found)$/.test(k)); return { n: keys.length, missing: keys.filter((k) => !(k in d.en)), built: ['green', 'pending', 'red', 'conflict', 'error'].map((s) => NSI18n.has('auto.s.' + s)).concat(['waiting', 'gave_up', 'ask_merge', 'fix_started', 'merge_set', 'merge_failed', 'fix_failed'].map((s) => NSI18n.has('auto.n.' + s))) }; });
+  ok('F14: every automation word exists in ru and en, and so do the ones built from a state', words.n > 80 && !words.missing.length && words.built.every(Boolean), words);
+  const lay = await p.evaluate(() => ({ overflow: document.documentElement.scrollWidth > innerWidth, cols: getComputedStyle(document.querySelector('.a4-grid')).gridTemplateColumns.split(' ').length }));
+  ok('F14: the screen has no horizontal scroll at 1440 and two columns', !lay.overflow && lay.cols === 2, lay);
+  await p.close();
+  // gh missing: a hint, no items, the feature stays off
+  p = await open('&ci=nogh');
+  await p.evaluate(() => NS.nav('automation', {})); await p.waitForTimeout(500);
+  const nogh = await p.evaluate(() => ({ hint: (document.querySelector('#a4-ci .a4-warn') || {}).textContent, items: document.querySelectorAll('#a4-ci .a4-row').length }));
+  ok('F14 3: without gh the watchman says so and lists nothing', /Не найден gh/.test(nogh.hint || '') && nogh.items === 0, nogh);
+  await p.close();
+  // nothing set up: empty states, nothing running
+  p = await open('&auto=empty');
+  await p.evaluate(() => NS.nav('automation', {})); await p.waitForTimeout(500);
+  const none = await p.evaluate(async () => {
+    const o = { sched: document.querySelector('#a4-sched .a4-none').textContent, sug: document.querySelector('#a4-sug .a4-none').textContent, ci: document.querySelector('#a4-ci .a4-none').textContent, on: document.querySelector('#a4-ci [role=switch]').getAttribute('aria-checked') };
+    NS.shell.back(); await new Promise((r) => setTimeout(r, 400));
+    o.badge = document.querySelector('.nb-auto .bn').hidden;
+    return o;
+  });
+  ok('F14: a clean start - empty lists, no count on the button, the watchman off', /Расписаний ещё нет/.test(none.sched) && /Пока ничего/.test(none.sug) && /выключен/.test(none.ci) && none.badge === true && none.on === 'false', none);
   await p.close();
 }

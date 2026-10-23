@@ -208,6 +208,11 @@ impl Engine {
             if !notes.is_empty() {
                 text = format!("{text}\n\n{}", prompt::notes_block(&notes.iter().map(|n| n.1.clone()).collect::<Vec<_>>()));
             }
+            if role == RoleKind::Worker {
+                if let Some(b) = handoff::todos_block(&t.todos) {
+                    text = format!("{text}\n\n{b}");
+                }
+            }
             let text = self.with_handoff(t, role, text)?;
             let system = prompt::system_for(vendor, role);
 
@@ -238,6 +243,9 @@ impl Engine {
                 run.max_budget_usd = Some(task_left.map_or(day_left, |x| x.min(day_left)));
             }
 
+            if copy.is_none() && !ro {
+                self.snap_before_run(t, &run.cwd, role); // the copy as it is, before the role touches it
+            }
             let idx = t.runs.len();
             t.runs.push(RoleRun {
                 role,

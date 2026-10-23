@@ -41,6 +41,12 @@
     const svgOf = (cls, paths, fill) => { const v = document.createElementNS(SVGNS, 'svg'); v.setAttribute('viewBox', '0 0 16 16'); v.setAttribute('class', cls); v.setAttribute('aria-hidden', 'true');
       for (const d of paths) { const p = document.createElementNS(SVGNS, 'path'); p.setAttribute('d', d); if (fill) p.setAttribute('fill', 'currentColor'); v.append(p); } return v; };
     const sendBtn = h('button', { type: 'submit', class: 'send4', id: 'sendBtn' + sfx, 'aria-label': t('composer.send'), title: t('composer.send') + ' (Enter)' }, svgOf('send-g', ['M8 13V3', 'M3.5 7.5L8 3l4.5 4.5']));
+    // F12 #8: while the executor works, a message waits in the queue; "Сразу" stops the run and passes it first
+    const nowBtn = h('button', { type: 'button', class: 'now4', id: 'nowBtn' + sfx, text: t('chatx.now'), title: t('chatx.now_d'), hidden: true });
+    // F12 #11: the next step as a grey line in the empty field; Tab takes it, any key hides it
+    let sugg = null;
+    const tabTag = h('kbd', { class: 'cmp-tab', 'aria-hidden': 'true', text: 'Tab', hidden: true });
+    const hintOn = () => NS.storage.get('ns.hint_next') !== '0';
     const stopBtn = h('button', { type: 'button', class: 'send4 stop4', id: 'stopBtn' + sfx, 'aria-label': t('composer.stop'), title: t('composer.stop'), hidden: true }, svgOf('stop-g', ['M4.5 4.5h7v7h-7z'], true));
     // the plate over the field: who works and on what, with "Стоп" when there is a task to cancel (pin-85)
     let work = null;
@@ -60,6 +66,7 @@
     const tunePanel = h('div', { class: 'pop', id: 'tunePanel' + sfx, hidden: true, role: 'dialog' });
     let quality, swarm, qSw, sSw;
 
+    const isBusy = () => !!(hooks.busy && !hooks.noteTo && hooks.busy());
     const settings = () => st.envSettings(envId);
     function readSettings() {
       const s = settings();
@@ -82,7 +89,9 @@
     }
     function applyMode() {
       const e = st.env(envId);
-      ta.placeholder = mode.kind === 'answer' ? t('composer.ph_answer', { title: mode.task.title }) : mode.kind === 'hint' ? t('composer.ph_hint', { title: mode.task.title }) : t('composer.ph', { env: e.name });
+      const showSugg = mode.kind === 'message' && !!sugg && hintOn();
+      tabTag.hidden = !showSugg || !!ta.value;
+      ta.placeholder = mode.kind === 'answer' ? t('composer.ph_answer', { title: mode.task.title }) : mode.kind === 'hint' ? t('composer.ph_hint', { title: mode.task.title }) : showSugg ? sugg : t('composer.ph', { env: e.name });
       modebar.hidden = mode.kind === 'message';
       if (mode.kind !== 'message') modebar.textContent = (mode.kind === 'answer' ? t('composer.mode_answer', { title: mode.task.title }) : t('composer.mode_hint', { title: mode.task.title })) + ' · ' + t('composer.esc');
     }
@@ -90,6 +99,8 @@
     function drawHint() {
       const v = L.validateSend(ta.value);
       sendBtn.disabled = !v.ok;
+      nowBtn.hidden = !(v.ok && mode.kind === 'message' && isBusy());
+      tabTag.hidden = !(sugg && hintOn() && mode.kind === 'message') || !!ta.value;
       const showStop = !!(work && work.stop) && !ta.value.trim();           // working and nothing typed: the round button stops the run
       stopBtn.hidden = !showStop; sendBtn.hidden = showStop;
       hint.hidden = v.reason !== 'too_long';
@@ -103,6 +114,8 @@
     ta.value = NS.storage.get(key) || '';
     ta.addEventListener('input', () => { if (ta.value) NS.storage.set(key, ta.value); else NS.storage.del(key); drawHint(); grow(); });
     ta.addEventListener('keydown', (e) => {
+      if (e.key === 'Tab' && !e.shiftKey && sugg && hintOn() && !ta.value && mode.kind === 'message') { e.preventDefault(); const s = sugg; sugg = null; applyMode(); insert(s); return; }
+      if (sugg && !['Shift', 'Meta', 'Control', 'Alt'].includes(e.key)) { sugg = null; applyMode(); }
       if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); send(); }
       else if (e.key === 'Escape' && mode.kind !== 'message') { e.stopPropagation(); setMode('message'); }
     });
@@ -112,6 +125,9 @@
       const text = ta.value, v = L.validateSend(text);
       if (!v.ok) { if (v.reason === 'empty') ta.focus(); else drawHint(); return; }
       if (hooks.needProject && mode.kind === 'message' && hooks.needProject()) return;     // F11: a new chat needs a chosen project
+      if (mode.kind === 'message' && isBusy() && hooks.enqueue) {                              // F12 #8: the agent works: the message waits, grey, until it is done
+        hooks.enqueue(text); ta.value = ''; NS.storage.del(key); grow(); drawHint(); return;
+      }
       const id = gate.begin(key, text);
       if (id == null) return;                      // a double press while the first call is still running
       sendBtn.disabled = true;
@@ -125,6 +141,11 @@
       }
       drawHint();
     }
+    nowBtn.onclick = () => {
+      const text = ta.value;
+      if (!L.validateSend(text).ok || !hooks.now) return;
+      hooks.now(text); ta.value = ''; NS.storage.del(key); grow(); drawHint();
+    };
     async function dispatch(text, id) {
       const call = NS.api.call;
       if (mode.kind === 'answer') return call('answer', { id: mode.task.id, text });
@@ -192,13 +213,14 @@
           h('div', { class: 'count' }, h('span', { class: 'field-l', text: t('tune.agents') }),
             h('div', { class: 'stepper' }, h('button', { type: 'button', 'aria-label': t('tune.less'), text: '−', onclick: () => setN(n - 1) }), h('output', { text: String(n) }),
               h('button', { type: 'button', 'aria-label': t('tune.more'), text: '+', onclick: () => setN(n + 1) }))),
-          h('h3', { class: 'when', text: t('tune.when') }), h('div', { class: 'seg', role: 'radiogroup', 'aria-label': t('tune.when') }, startBtns))));
+          h('h3', { class: 'when', text: t('tune.when') }), h('div', { class: 'seg', role: 'radiogroup', 'aria-label': t('tune.when') }, startBtns),
+          makeSwitch(t('chatx.hint_on'), hintOn(), (v) => { NS.storage.set('ns.hint_next', v ? '1' : '0'); if (!v) { tabTag.hidden = true; } applyMode(); }, t('chatx.hint_on_d')))));
     }
 
     qSw = makeSwitch(t('composer.quality'), true, (v) => { quality.on = v; save(); if (!tunePanel.hidden) drawTune(); }, t('composer.quality_d'));
     sSw = makeSwitch(t('composer.swarm'), false, (v) => { swarm = v ? { mode: 'race', n: 3 } : null; save(); drawHint(); if (!tunePanel.hidden) drawTune(); }, t('composer.swarm_d'));
-    form.append(plate, modebar, h('div', { class: 'cmp-line' }, ta),
-      h('div', { class: 'comp-row' }, pickBtn, qSw, sSw, tuneBtn, h('span', { class: 'comp-gap' }), stopBtn, sendBtn),
+    form.append(plate, modebar, h('div', { class: 'cmp-line' }, ta, tabTag),
+      h('div', { class: 'comp-row' }, pickBtn, qSw, sSw, tuneBtn, h('span', { class: 'comp-gap' }), stopBtn, nowBtn, sendBtn),
       hint, swhint, modelPop, tunePanel);
     // under the field, quiet: the keys, and in a new chat where the terminal is
     const box = h('div', { class: 'cmpbox' }, form, h('p', { class: 'cmp-keys', text: t('composer.keys') }), chat === 'new' || !chat ? h('p', { class: 'cmp-note', text: t('composer.note_new') }) : null);
@@ -206,7 +228,10 @@
     if (ta.value) setTimeout(grow, 0);
     // an example from the empty chat goes into the field, it is not sent (story 239)
     function insert(text) { ta.value = text; ta.dispatchEvent(new Event('input')); ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); }
-    return { el: box, form, ta, refresh, setMode, setWork, drawHint, focus: () => ta.focus(), closePops, insert,
+    // F12: text a queued message sends (the same path as a typed one), and the grey suggestion
+    const deliver = (text, id) => dispatch(text, id || (crypto.randomUUID ? crypto.randomUUID() : 'q-' + Date.now()));
+    function suggest(text) { sugg = text || null; applyMode(); drawHint(); }
+    return { el: box, form, ta, refresh, setMode, setWork, drawHint, deliver, suggest, accept: () => ta.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', cancelable: true })), focus: () => ta.focus(), closePops, insert,
       destroy() { usedN.delete(n); offSettings(); document.removeEventListener('click', onDoc); document.removeEventListener('keydown', onKey); } };
   }
 

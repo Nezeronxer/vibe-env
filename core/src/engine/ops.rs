@@ -253,6 +253,9 @@ impl Engine {
     /// An answer to a question the engine asked itself: more budget / stop, or "I logged in".
     pub(super) fn answer_special(&self, t: &Task, key: &str, text: &str, stage: Status) -> Result<(), String> {
         let id = t.id.as_str();
+        if key == handoff::SPECIAL_TODOS && handoff::open_todos(t) > 0 {
+            return Err(format!("todos_open: {}", handoff::open_todos(t)));
+        }
         let stop = text.trim().to_ascii_lowercase().starts_with("stop") && key != roles::SPECIAL_AUTH;
         self.log(id, LogKind::Human, text);
         if stop {
@@ -287,6 +290,7 @@ impl Engine {
     /// review rounds start again (G15.2).
     pub fn resume_failed(&self, id: &str, hint: Option<String>, model: Option<ModelChoice>) -> Result<(), String> {
         let _h = self.hold(id, false)?;
+        self.guard_taken(id)?;
         let mut t = self.task(id).ok_or("task_not_found")?;
         if t.status != Status::Failed {
             return Err("not_failed".into());

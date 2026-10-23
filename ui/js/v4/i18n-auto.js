@@ -1,0 +1,68 @@
+// Strings of F14, automation: the schedule, suggested tasks, the CI watchman. Loaded after i18n-shell.js.
+(function (root) {
+  const ru = {
+    'auto.title': 'Автоматика', 'auto.bar': 'Автоматика', 'auto.cmd': 'Автоматика: расписание, предложенные задачи, сторож CI',
+    'auto.lead': 'Всё здесь включаешь ты сам. Выключено - ничего не запускается и не уходит наружу.',
+    // schedule
+    'auto.sched': 'Расписание', 'auto.sched_d': 'Задача идёт сама, как обычная: в своей копии, с Качеством и воротами, без пуша. Результат ждёт в «Ждёт тебя».',
+    'auto.sched_none': 'Расписаний ещё нет. Возьми шаблон ниже или напиши своё.', 'auto.new': 'Новая задача по расписанию', 'auto.edit': 'Править',
+    'auto.tpl': 'Шаблоны', 'auto.tpl.deps': 'Обновить зависимости', 'auto.tpl.security': 'Аудит безопасности', 'auto.tpl.todo': 'Добить TODO', 'auto.tpl.dead_code': 'Почистить мёртвый код',
+    'auto.f_title': 'Название', 'auto.f_prompt': 'Что сделать', 'auto.f_project': 'Проект', 'auto.f_env': 'Среда', 'auto.f_env_def': 'как у проекта', 'auto.f_model': 'Модель', 'auto.f_model_def': 'по умолчанию среды',
+    'auto.f_preset': 'Когда', 'auto.f_time': 'Время', 'auto.f_day': 'День недели', 'auto.f_quality': 'Качество', 'auto.f_quality_d': 'План, критика, тесты и ворота. Выключено - быстрая задача.',
+    'auto.p.daily': 'Каждый день', 'auto.p.weekdays': 'По будням', 'auto.p.weekly': 'Раз в неделю',
+    'auto.d0': 'понедельник', 'auto.d1': 'вторник', 'auto.d2': 'среда', 'auto.d3': 'четверг', 'auto.d4': 'пятница', 'auto.d5': 'суббота', 'auto.d6': 'воскресенье',
+    'auto.w.daily': 'каждый день в {time}', 'auto.w.weekdays': 'по будням в {time}', 'auto.w.weekly': 'раз в неделю, {day} в {time}',
+    'auto.next': 'дальше: {when}', 'auto.last': 'последний запуск: {when}', 'auto.save': 'Сохранить', 'auto.add': 'Добавить в расписание', 'auto.cancel': 'Отмена',
+    'auto.on': 'Включено', 'auto.off': 'Выключено', 'auto.toggle': 'Включить расписание «{name}»', 'auto.remove': 'Удалить', 'auto.remove_q': 'Удалить расписание «{name}»?',
+    'auto.skip.limit': 'не запущено: у среды осталось меньше 10% лимита, попробую позже', 'auto.skip.other': 'не запущено: {why}',
+    'auto.saved': 'Расписание сохранено', 'auto.bad_form': 'Заполни название, текст и время ЧЧ:ММ',
+    // suggestions
+    'auto.sug': 'Предлагаю', 'auto.sug_d': 'Быстрый проход по отслеживаемым файлам: TODO, FIXME, XXX, HACK. Без модели, ничего не меняется.',
+    'auto.sug_find': 'Найти, что сделать', 'auto.sug_finding': 'Ищу…', 'auto.sug_nightly': 'Искать по ночам', 'auto.sug_nightly_d': 'Раз в сутки сам проходит по проектам и пополняет список. Задачи не запускает.',
+    'auto.sug_none': 'Пока ничего. Нажми «Найти, что сделать».', 'auto.sug_found': 'Найдено: {n}', 'auto.sug_do': 'Сделать', 'auto.sug_hide': 'Не предлагать такое',
+    'auto.sug_started': 'Задача поставлена', 'auto.sug_in': 'в {project}', 'auto.sug_count': 'Предложено задач: {n}', 'auto.sug_empty_text': 'без пояснения',
+    // CI watchman
+    'auto.ci': 'Сторож CI', 'auto.ci_d': 'Смотрит пул-реквесты ваших задач через gh раз в минуту. Красный CI или конфликт - новая задача «Починить CI» с логом. Пуш починки - по твоему разрешению.',
+    'auto.ci_on': 'Следить за CI', 'auto.ci_attempts': 'Попыток починки на PR', 'auto.ci_merge': 'Слить, когда зелёное', 'auto.ci_merge_d': 'gh pr merge --auto: GitHub сольёт сам, когда проверки пройдут. Выключено по умолчанию.',
+    'auto.ci_merge_q': 'Включить слияние по зелёному?', 'auto.ci_merge_text': 'Первый раз спрашиваю. Для пул-реквестов твоих задач сторож выполнит «gh pr merge --auto»: GitHub сольёт ветку в основную сам, когда CI станет зелёным.', 'auto.ci_merge_yes': 'Включить',
+    'auto.ci_check': 'Проверить сейчас', 'auto.ci_none': 'Открытых пул-реквестов у задач нет.', 'auto.ci_off': 'Сторож выключен.',
+    'auto.ci_gh_not_installed': 'Не найден gh. Поставь GitHub CLI (cli.github.com): без него сторож не работает.', 'auto.ci_gh_not_logged_in': 'gh не вошёл в GitHub. Выполни «gh auth login» в терминале.', 'auto.ci_gh_error': 'gh ответил ошибкой. Проверь вход командой «gh auth status».',
+    'auto.s.green': 'зелёный', 'auto.s.pending': 'идёт проверка', 'auto.s.red': 'красный', 'auto.s.conflict': 'конфликт', 'auto.s.error': 'нет ответа',
+    'auto.n.waiting': 'чинит другая задача, жду', 'auto.n.gave_up': 'попытки кончились, дальше сам', 'auto.n.ask_merge': 'слияние ждёт твоего подтверждения', 'auto.n.fix_started': 'поставил задачу «Починить CI»',
+    'auto.n.merge_set': 'слияние включено', 'auto.n.merge_failed': 'не вышло включить слияние', 'auto.n.fix_failed': 'не вышло поставить задачу',
+    'auto.attempts': 'попытки {a} из {m}',
+    'err.empty_title': 'Назови расписание', 'err.empty_prompt': 'Напиши, что сделать', 'err.bad_time': 'Время нужно в виде ЧЧ:ММ: {detail}', 'err.suggestion_not_found': 'Этого предложения уже нет', 'err.schedule_not_found': 'Такого расписания нет',
+  };
+  const en = {
+    'auto.title': 'Automation', 'auto.bar': 'Automation', 'auto.cmd': 'Automation: schedule, suggested tasks, CI watchman',
+    'auto.lead': 'You switch everything here on yourself. Off means nothing runs and nothing leaves the machine.',
+    'auto.sched': 'Schedule', 'auto.sched_d': 'A task runs by itself like a normal one: in its own copy, with Quality and the gates, no push. The result waits in "Waiting for you".',
+    'auto.sched_none': 'No schedules yet. Take a template below or write your own.', 'auto.new': 'New scheduled task', 'auto.edit': 'Edit',
+    'auto.tpl': 'Templates', 'auto.tpl.deps': 'Update dependencies', 'auto.tpl.security': 'Security audit', 'auto.tpl.todo': 'Finish the TODOs', 'auto.tpl.dead_code': 'Clean dead code',
+    'auto.f_title': 'Name', 'auto.f_prompt': 'What to do', 'auto.f_project': 'Project', 'auto.f_env': 'Environment', 'auto.f_env_def': 'the project\'s own', 'auto.f_model': 'Model', 'auto.f_model_def': 'the environment\'s default',
+    'auto.f_preset': 'When', 'auto.f_time': 'Time', 'auto.f_day': 'Day of week', 'auto.f_quality': 'Quality', 'auto.f_quality_d': 'Plan, critique, tests and gates. Off means a quick task.',
+    'auto.p.daily': 'Every day', 'auto.p.weekdays': 'Weekdays', 'auto.p.weekly': 'Once a week',
+    'auto.d0': 'Monday', 'auto.d1': 'Tuesday', 'auto.d2': 'Wednesday', 'auto.d3': 'Thursday', 'auto.d4': 'Friday', 'auto.d5': 'Saturday', 'auto.d6': 'Sunday',
+    'auto.w.daily': 'every day at {time}', 'auto.w.weekdays': 'weekdays at {time}', 'auto.w.weekly': 'weekly, {day} at {time}',
+    'auto.next': 'next: {when}', 'auto.last': 'last run: {when}', 'auto.save': 'Save', 'auto.add': 'Add to schedule', 'auto.cancel': 'Cancel',
+    'auto.on': 'On', 'auto.off': 'Off', 'auto.toggle': 'Turn on the schedule "{name}"', 'auto.remove': 'Delete', 'auto.remove_q': 'Delete the schedule "{name}"?',
+    'auto.skip.limit': 'not started: the environment has under 10% of its limit left, will try later', 'auto.skip.other': 'not started: {why}',
+    'auto.saved': 'Schedule saved', 'auto.bad_form': 'Fill in the name, the text and a HH:MM time',
+    'auto.sug': 'Suggested', 'auto.sug_d': 'A quick pass over the tracked files: TODO, FIXME, XXX, HACK. No model, nothing is changed.',
+    'auto.sug_find': 'Find something to do', 'auto.sug_finding': 'Looking…', 'auto.sug_nightly': 'Look at night', 'auto.sug_nightly_d': 'Once a day it walks the projects and refills the list. It does not start tasks.',
+    'auto.sug_none': 'Nothing yet. Press "Find something to do".', 'auto.sug_found': 'Found: {n}', 'auto.sug_do': 'Do it', 'auto.sug_hide': 'Do not suggest this',
+    'auto.sug_started': 'Task queued', 'auto.sug_in': 'in {project}', 'auto.sug_count': 'Suggested tasks: {n}', 'auto.sug_empty_text': 'no explanation',
+    'auto.ci': 'CI watchman', 'auto.ci_d': 'Watches the pull requests of your tasks through gh once a minute. Red CI or a conflict makes a new "Fix CI" task with the log. Pushing the fix needs your permission.',
+    'auto.ci_on': 'Watch CI', 'auto.ci_attempts': 'Fix attempts per PR', 'auto.ci_merge': 'Merge when green', 'auto.ci_merge_d': 'gh pr merge --auto: GitHub merges by itself once the checks pass. Off by default.',
+    'auto.ci_merge_q': 'Turn on merge when green?', 'auto.ci_merge_text': 'Asked the first time only. For the pull requests of your tasks the watchman runs "gh pr merge --auto": GitHub merges the branch itself once CI is green.', 'auto.ci_merge_yes': 'Turn on',
+    'auto.ci_check': 'Check now', 'auto.ci_none': 'No open pull requests from your tasks.', 'auto.ci_off': 'The watchman is off.',
+    'auto.ci_gh_not_installed': 'gh not found. Install GitHub CLI (cli.github.com): the watchman does not work without it.', 'auto.ci_gh_not_logged_in': 'gh is not signed in to GitHub. Run "gh auth login" in a terminal.', 'auto.ci_gh_error': 'gh answered with an error. Check the sign-in with "gh auth status".',
+    'auto.s.green': 'green', 'auto.s.pending': 'checks running', 'auto.s.red': 'red', 'auto.s.conflict': 'conflict', 'auto.s.error': 'no answer',
+    'auto.n.waiting': 'another task is fixing it, waiting', 'auto.n.gave_up': 'attempts used up, over to you', 'auto.n.ask_merge': 'the merge waits for your confirmation', 'auto.n.fix_started': 'queued a "Fix CI" task',
+    'auto.n.merge_set': 'merge switched on', 'auto.n.merge_failed': 'could not switch the merge on', 'auto.n.fix_failed': 'could not queue the task',
+    'auto.attempts': 'attempts {a} of {m}',
+    'err.empty_title': 'Name the schedule', 'err.empty_prompt': 'Write what to do', 'err.bad_time': 'The time must look like HH:MM: {detail}', 'err.suggestion_not_found': 'That suggestion is gone', 'err.schedule_not_found': 'No such schedule',
+  };
+  Object.assign(root.NSI18n.dicts.ru, ru);
+  Object.assign(root.NSI18n.dicts.en, en);
+})(typeof window !== 'undefined' ? window : globalThis);

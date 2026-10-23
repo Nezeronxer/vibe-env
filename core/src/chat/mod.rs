@@ -32,6 +32,8 @@ pub mod keys {
     pub const TASK_NOT_CREATED: &str = "task_not_created";
     /// The model did not answer; the details are the reason. `retry` repeats.
     pub const NOT_ANSWERED: &str = "not_answered";
+    /// The run was stopped (by the person); not an error, the feed says "stopped" in a neutral tone. `retry` repeats.
+    pub const STOPPED: &str = "stopped";
     /// The env's limit is used up; the details are the clock time (HH:MM) the answer comes after.
     pub const WILL_ANSWER_AFTER: &str = "will_answer_after";
     /// The CLI could not continue the session; a new one started with a recap of the last 20 messages.
@@ -64,6 +66,8 @@ pub mod reason {
     pub const RUN_FAILED: &str = "run_failed";
     /// The CLI ended without a result.
     pub const AGENT_NO_RESULT: &str = "agent_no_result";
+    /// The run was stopped; shown as the line `keys::STOPPED`.
+    pub const STOPPED: &str = "stopped";
 }
 
 /// Where a message goes: an existing chat or a new one for an env and a project.
