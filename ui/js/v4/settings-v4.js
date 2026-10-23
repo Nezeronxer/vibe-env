@@ -126,7 +126,7 @@
   }
   function advanced(env, fx) {
     const k = K(), SEC = k.SEC;
-    const search = h('input', { type: 'search', class: 'adv-q', placeholder: t('adv.search'), 'aria-label': t('adv.search') });
+    const search = h('input', window.NSPalette.quiet({ type: 'search', class: 'adv-q', placeholder: t('adv.search'), 'aria-label': t('adv.search') }));
     const none = h('p', { class: 'hint adv-none', hidden: true, text: t('adv.none') });
     const parts = [];
     for (const { id } of window.NSLogic.SETTINGS_SECTIONS) {

@@ -3,10 +3,14 @@
 (function () {
   const NS = (window.NS = window.NS || {});
   const SVGNS = 'http://www.w3.org/2000/svg';
+  const TEXT_ATTRS = new Set(['spellcheck', 'autocorrect', 'autocapitalize', 'autocomplete']);
 
   function h(tag, attrs, ...kids) {
     const el = document.createElement(tag);
     for (const [k, v] of Object.entries(attrs || {})) {
+      // enumerated attributes: `spellcheck: false` must reach the DOM as "false", and WebKit's `autocorrect` property is
+      // a boolean that turns the string "off" into true - these go through setAttribute as text
+      if (TEXT_ATTRS.has(k) && v != null) { el.setAttribute(k, String(v)); continue; }
       if (v == null || v === false) continue;
       if (k === 'class') el.className = v;
       else if (k === 'text') el.textContent = v;

@@ -206,7 +206,15 @@
       const b = term.buffer.active, line = b.getLine(b.baseY + b.cursorY);
       return looksIdle(line ? line.translateToString(false, 0, b.cursorX) : '', b.type === 'alternate');
     }
-    async function attach() {
+    // one attach at a time: a show of the page (visibilitychange) while the first attach is on its way must not wipe the
+    // screen and attach again - the buffer of the first one would land on a reset terminal or twice (live run v4, 260)
+    let attaching = null;
+    function attach() {
+      if (attaching) return attaching;
+      attaching = attachNow().finally(() => { attaching = null; });
+      return attaching;
+    }
+    async function attachNow() {
       const T = tauri();
       if (!T || !T.core.Channel) return;
       const ch = new T.core.Channel();
@@ -299,7 +307,7 @@
     try { fit.fit(); } catch (e) { /* not laid out yet */ }
 
     // ---------- search ⌘F ----------
-    const fin = h('input', { type: 'text', class: 't-find-in', placeholder: t('term.find'), 'aria-label': t('term.find'), spellcheck: false });
+    const fin = h('input', root.NSPalette.quiet({ type: 'text', class: 't-find-in', placeholder: t('term.find'), 'aria-label': t('term.find') }));
     const fbtn = (label, glyph, fn) => h('button', { type: 'button', class: 'pt', 'aria-label': label, title: label, text: glyph, onclick: fn });
     find.append(fin, fbtn(t('term.find_prev'), '↑', () => search.findPrevious(fin.value)), fbtn(t('term.find_next'), '↓', () => search.findNext(fin.value)), fbtn(t('term.find_close'), '×', closeFind));
     fin.addEventListener('input', () => search.findNext(fin.value, { incremental: true }));
@@ -367,8 +375,9 @@
         renderer(L2.ligatures); setPad(L2.padding);
         view.fit();
       },
-      async detach() { if (id && attached) { attached = false; await call('term_detach', { id }).catch(() => {}); } },
-      async reattach() { if (!id || exitCode !== null) return; term.reset(); await attach().catch(() => {}); },
+      async detach() { if (attaching) await attaching.catch(() => {}); if (id && attached) { attached = false; await call('term_detach', { id }).catch(() => {}); } },
+      async reattach() { if (!id || exitCode !== null || attached || attaching) return; term.reset(); await attach().catch(() => {}); },
+      text: () => { const b = term.buffer.active, out = []; for (let i = 0; i < b.length; i++) { const l = b.getLine(i); if (l) out.push(l.translateToString(true)); } return out.join('\n'); },
       async close() { const x = id; id = null; running = false; if (x) await call('term_close', { id: x }).catch(() => {}); refreshSessions(); },
       idle, what: () => cmdText || pane.ptitle || (env ? env.name : pane.title) || t('term.kind'),
       dispose() { ro.disconnect(); closeMenu(); clearTimeout(actTimer); if (webgl) webgl.dispose(); term.dispose(); },
@@ -450,6 +459,14 @@
   NS.registry.extend('paneKind', { kind: 'term', labelKey: 'term.kind', order: 2, create,
     sig: (pane) => pane.id,
     title: (pane) => pane.ptitle || (pane.env && NS.store.env(pane.env) ? NS.store.env(pane.env).name : pane.title) || t('term.kind'),
+    // ⌘W / × on a pane with a running process asks first and the layout waits for the answer (253, live run v4)
+    async beforeClose(pane) {
+      const v = live.get(pane.id);
+      if (!v || pane.moved || !v.id() || !v.running() || v.idle()) { closing.add(pane.id); return true; }
+      const ok = await NS.projects.confirm(t('term.close_q', { what: v.what() }), t('term.close_text'), t('term.close_ok'));
+      if (ok) closing.add(pane.id); else v.focus();
+      return ok;
+    },
     mount(el, pane) {
       if (WIN) return null;                // the hidden workspace of an extra window never takes the main window's sessions
       let v = live.get(pane.id);
@@ -465,12 +482,14 @@
           const still = NS.tabs && P().allPanes(NS.tabs.state).some((x) => x.pane.id === pane.id);
           const moved = pane.moved;
           v.dispose();
-          if (still || moved) { v.detach(); return; }
-          closeAsk(v, pane);
+          if (still || moved) { closing.delete(pane.id); v.detach(); return; }
+          if (closing.delete(pane.id)) { v.close(); return; }
+          closeAsk(v, pane);        // removed without the question (not by ⌘W / ×): ask now, "Отмена" brings it back
         },
       };
     },
   });
+  const closing = new Set();        // pane ids whose close was answered (or needed no question)
   // the pane was closed: an idle shell or an ended process goes quietly; anything else asks first (253); "Отмена" brings it back
   async function closeAsk(v, pane) {
     const id = v.id();
@@ -490,6 +509,15 @@
     if (!NS.tabs) return;
     if (NS.shell && NS.shell.current && NS.shell.current.def.id !== 'tabs' && NS.shell.back) NS.shell.back();
     if (where === 'h' || where === 'v') NS.tabs.split(where, 'term'); else NS.tabs.newTab('term');
+    adopt = null;
+  }
+  // a tab back from its own window: to its old place (beside the same neighbour, or its own tab at the old index)
+  function returnTerm(s) {
+    const fields = { termId: s.termId, env: s.env || null, argv: s.argv || [], cwd: s.cwd || null, title: s.title || '' };
+    if (!NS.tabs || !NS.tabs.putBack || !s.place) return openTerm(fields);
+    if (NS.shell && NS.shell.current && NS.shell.current.def.id !== 'tabs' && NS.shell.back) NS.shell.back();
+    adopt = fields;
+    NS.tabs.putBack('term', s.place);
     adopt = null;
   }
   function envTerm(envId, where) {
@@ -519,7 +547,9 @@
     const pane = v.pane;
     if (!v.id()) return;
     await v.detach();
-    const tabSpec = { kind: 'term', termId: v.id(), env: pane.env || null, argv: pane.argv || [], cwd: pane.cwd || null, title: pane.title || '' };
+    // the place in the layout rides along in the tabSpec, so "Вернуть" puts the pane back where it stood (live run v4, 260)
+    const place = NS.tabs && NS.tabs.placeOf ? NS.tabs.placeOf(pane.id) : null;
+    const tabSpec = { kind: 'term', termId: v.id(), env: pane.env || null, argv: pane.argv || [], cwd: pane.cwd || null, title: pane.title || '', place };
     try {
       await call('window_detach', { tabSpec });
       pane.moved = true;
@@ -664,7 +694,7 @@
   NS.api.listen('cli-updated', (pl) => { for (const v of live.values()) if (pl && v.pane.env === pl.env) v.cliUpdated(pl.to); }).catch(() => {});
   NS.api.listen('term-exit', () => refreshSessions()).catch(() => {});
   NS.api.listen('windows-changed', () => refreshSessions()).catch(() => {});
-  NS.api.listen('window-return', (pl) => { const s = pl && pl.tabSpec; if (s && s.kind === 'term' && s.termId && !WIN) openTerm({ termId: s.termId, env: s.env || null, argv: s.argv || [], cwd: s.cwd || null, title: s.title || '' }); }).catch(() => {});
+  NS.api.listen('window-return', (pl) => { const s = pl && pl.tabSpec; if (s && s.kind === 'term' && s.termId && !WIN) returnTerm(s); }).catch(() => {});
   // the global key ⌃` (265) shows the window; app then asks for a terminal in focus (event `focus-term`, see the report of task 23)
   if (tauri() && tauri().event) tauri().event.listen('focus-term', () => { const v = activeView(); if (v) v.focus(); else openTerm(); }).catch(() => {});
   // a new look (theme, font, terminal settings) reaches every open terminal
@@ -676,9 +706,12 @@
     if (app) app.hidden = true;
     document.body.classList.add('t-window');
     const holder = h('div', { class: 't-win pane focus' });
-    const back = h('button', { type: 'button', class: 'btn sm', text: t('term.return') });
     document.body.append(holder);
-    call('window_tab', { id: WIN }).then((spec) => {
+    // the language and the look come with the settings (ns-ready): words made before it were English (live run v4, 260),
+    // and a terminal made before it was rebuilt by the look that came later
+    const ready = new Promise((res) => { root.addEventListener('ns-ready', res, { once: true }); setTimeout(res, 5000); });
+    ready.then(() => call('window_tab', { id: WIN })).then((spec) => {
+      const back = h('button', { type: 'button', class: 'btn sm', text: t('term.return') });
       const pane = { id: 'win', kind: 'term', termId: spec.termId, env: spec.env || null, argv: spec.argv || [], cwd: spec.cwd || null, title: spec.title || '' };
       const v = View(holder, pane);
       live.set('win', v);

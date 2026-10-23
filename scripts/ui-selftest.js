@@ -61,8 +61,59 @@ if (process.env.NS_PLAYWRIGHT) (async () => {
   const out = [];
   out.push((r.buttons <= 14 ? 'PASS ' : 'FAIL ') + 'main view: at most 14 visible buttons outside the feed (' + r.buttons + ')' + (r.buttons <= 14 ? '' : ' ' + JSON.stringify(r.names)));
   out.push((r.pane > 0 && r.card > 0 && r.field > 0 && r.bar > 0 ? 'PASS ' : 'FAIL ') + 'computed border-radius > 0: pane ' + r.pane + ', card ' + r.card + ', field ' + r.field + ', bar ' + r.bar);
+  await f5(b, 'http://127.0.0.1:' + srv.address().port, out);
   process.stdout.write(out.join('\n') + '\n');
   if (out.some((l) => l.startsWith('FAIL'))) process.exitCode = 1;
   await b.close(); srv.close();
 })().catch((e) => { console.error('browser check: ' + e.message); process.exitCode = 1; });
 else process.stdout.write('SKIP drawn-window checks (set NS_PLAYWRIGHT to run them)\n');
+
+// F5 - bugs of the live run v4 on the drawn window (dev-mock): autocorrect in the search fields (249), ⌘W on a busy terminal
+// in a split (253), the extra window: its label and the scrollback of the moved terminal (260)
+async function f5(b, base, out) {
+  const ok = (name, cond, detail) => out.push((cond ? 'PASS ' : 'FAIL ') + name + (cond ? '' : ' ' + JSON.stringify(detail)));
+  const QUIET = { autocorrect: 'off', autocapitalize: 'off', spellcheck: 'false', autocomplete: 'off' };
+  const p = await b.newPage({ viewport: { width: 1440, height: 900 } });
+  await p.goto(base + '/index.html?lang=ru&platform=mac&term=1');
+  await p.waitForTimeout(1500);
+  const attrs = (sel) => p.evaluate((sel) => { const el = document.querySelector(sel); return el ? Object.fromEntries(['autocorrect', 'autocapitalize', 'spellcheck', 'autocomplete'].map((k) => [k, el.getAttribute(k)])) : null; }, sel);
+  const fields = {};
+  await p.evaluate(() => NS.palette.open()); await p.waitForTimeout(200);
+  fields.palette = await attrs('.pal-in');
+  await p.evaluate(() => NS.palette.close());
+  await p.evaluate(() => NS.market.open('skill', NS.store.s.lastEnv)); await p.waitForTimeout(400);
+  fields.catalog = await attrs('.mk-q');
+  await p.evaluate(() => NS.history.open(NS.store.s.projects[0] && NS.store.s.projects[0].id)); await p.waitForTimeout(400);
+  fields.history = await attrs('.mk-q');
+  await p.evaluate(() => NS.nav('settings', { env: NS.store.s.lastEnv, section: 'advanced' })); await p.waitForTimeout(400);
+  fields.keys = await attrs('.adv-q');
+  const badF = Object.entries(fields).filter(([, a]) => JSON.stringify(a) !== JSON.stringify(QUIET));
+  ok('F5 249: palette, catalog, history and key search fields carry autocorrect/autocapitalize off, spellcheck false, autocomplete off', !badF.length, badF);
+
+  // 253: a split of two terminals, the right one runs `sleep 300`; ⌘W asks and the layout waits; "Отмена" keeps the split
+  await p.goto(base + '/index.html?lang=ru&platform=mac&term=1');
+  await p.waitForTimeout(1500);
+  await p.evaluate(() => NS.term.open(null, 'h')); await p.waitForTimeout(800);
+  const layout = () => p.evaluate(() => { const tb = NS.tabs.activeTab; return { root: JSON.stringify(tb.root, (k, v) => (k === 'termId' || k === 'ptitle' ? undefined : v)), focus: tb.focus, tabs: NS.tabs.state.tabs.length, panes: document.querySelectorAll('.panes .pane:not([hidden])').length }; });
+  await p.evaluate(() => { const v = NS.term.views.get(NS.tabs.active.id); v.write('sleep 300\r'); });
+  await p.waitForTimeout(2000);
+  const before = await layout();
+  await p.keyboard.press('Meta+KeyW');
+  await p.waitForTimeout(400);
+  const asking = await p.evaluate(() => !!document.querySelector('dialog[open]'));
+  const during = await layout();
+  await p.evaluate(() => [...document.querySelectorAll('dialog[open] button')].find((x) => x.textContent === NS.t('dlg.cancel')).click());
+  await p.waitForTimeout(400);
+  const after = await layout();
+  ok('F5 253: ⌘W on a busy terminal in a split asks, and until the answer the layout is the same', asking && before.root.includes('"split"') && JSON.stringify(during) === JSON.stringify(before), { asking, before, during });
+  ok('F5 253: "Отмена" leaves the same split with the same pane in focus', JSON.stringify(after) === JSON.stringify(before), { before, after });
+
+  // 260: the extra window (dev-mock: window_tab gives a session with 80 lines of scrollback)
+  const w = await b.newPage({ viewport: { width: 820, height: 560 } });
+  await w.goto(base + '/index.html?lang=ru&platform=mac&window=w77');
+  await w.waitForTimeout(2500);
+  const win = await w.evaluate(() => { const v = NS.term.views.get('win'); const btn = document.querySelector('.t-win .t-head .btn'); return { label: btn && btn.textContent, text: v ? v.text() : '' }; });
+  ok('F5 260: the button of the extra window speaks the language of the window («Вернуть в главное окно»)', win.label === 'Вернуть в главное окно', win.label);
+  ok('F5 260: the terminal of the extra window gets the buffer of the session (its scrollback)', /history line 1\n[\s\S]*history line 80/.test(win.text), win.text.slice(0, 200));
+  await w.close(); await p.close();
+}

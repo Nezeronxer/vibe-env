@@ -64,7 +64,7 @@
 
     const picker = h('select', { class: 'hs-proj', 'aria-label': t('hist.project'), onchange: (e) => { st.pid = e.target.value; S.lastProject = st.pid; reset(); } },
       S.projects.map((p) => h('option', { value: p.id, text: p.name, selected: p.id === st.pid })));
-    const input = h('input', { type: 'text', class: 'mk-q', placeholder: t('hist.search_ph'), 'aria-label': t('hist.search'), spellcheck: false, autocomplete: 'off' });
+    const input = h('input', root.NSPalette.quiet({ type: 'text', class: 'mk-q', placeholder: t('hist.search_ph'), 'aria-label': t('hist.search') }));
     const status = h('div', { class: 'hs-repo' });
     const head = h('div', { class: 'mk-h' }, h('div', { class: 'mk-t' }, h('h1', { text: t('hist.title') })), picker, input, status);
     const spacer = h('div', { class: 'mk-vs' });

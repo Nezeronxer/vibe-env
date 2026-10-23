@@ -36,7 +36,11 @@
   }
   const pushRecent = (recent, id, max) => [id].concat((recent || []).filter((x) => x !== id)).slice(0, max || 8);
 
-  root.NSPalette = { score, rank, pushRecent };
+  // command and search fields: no macOS autocorrect ("настр" -> "настроение"), no capitals, no spelling marks (live run v4, 249)
+  const QUIET = Object.freeze({ autocorrect: 'off', autocapitalize: 'off', spellcheck: 'false', autocomplete: 'off' });
+  const quiet = (attrs) => Object.assign({}, attrs, QUIET);
+
+  root.NSPalette = { score, rank, pushRecent, QUIET, quiet };
   if (typeof document === 'undefined' || !root.NS || !root.NS.h) return;
 
   // ---------- the window ----------
@@ -56,7 +60,7 @@
   function open(query) {
     if (box) { close(); return; }
     const ctx = NS.shell.ctxFor({});
-    const input = h('input', { type: 'text', class: 'pal-in', role: 'combobox', 'aria-expanded': 'true', 'aria-controls': 'palList', 'aria-label': t('pal.label'), placeholder: t('pal.ph'), spellcheck: false, autocomplete: 'off' });
+    const input = h('input', quiet({ type: 'text', class: 'pal-in', role: 'combobox', 'aria-expanded': 'true', 'aria-controls': 'palList', 'aria-label': t('pal.label'), placeholder: t('pal.ph') }));
     const list = h('ul', { class: 'pal-list', id: 'palList', role: 'listbox' });
     const panel = h('div', { class: 'pal', role: 'dialog', 'aria-modal': 'true', 'aria-label': t('pal.label') }, h('div', { class: 'pal-h' }, h('span', { class: 'pal-p', 'aria-hidden': 'true', text: '❯' }), input), list);
     box = h('div', { class: 'pal-back', onmousedown: (e) => { if (e.target === box) close(); } }, panel);

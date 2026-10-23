@@ -72,7 +72,7 @@
 
     // header
     const kindBtns = KINDS.map((k) => h('button', { type: 'button', role: 'tab', dataset: { kind: k }, onclick: () => setKind(k), text: t('mk.kind_' + k) }));
-    const input = h('input', { type: 'text', class: 'mk-q', placeholder: t('mk.search_ph'), 'aria-label': t('mk.search'), spellcheck: false, autocomplete: 'off' });
+    const input = h('input', root.NSPalette.quiet({ type: 'text', class: 'mk-q', placeholder: t('mk.search_ph'), 'aria-label': t('mk.search') }));
     const linkIn = h('input', { type: 'text', class: 'mk-link', placeholder: t('mk.link_ph'), 'aria-label': t('mk.link'), spellcheck: false });
     const linkBox = h('div', { class: 'mk-linkbox', hidden: true }, linkIn,
       h('button', { type: 'button', class: 'btn', text: t('mk.folder'), onclick: async () => { const p = await NS.projects.pickFolder(); if (p) { linkIn.value = p; planFor({ kind: st.kind, link: p }); } } }),

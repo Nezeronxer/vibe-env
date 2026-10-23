@@ -143,6 +143,32 @@
   // every pane of every tab: [{tab, pane}]
   const allPanes = (st) => st.tabs.flatMap((tb) => leaves(tb.root).map((pane) => ({ tab: tb.id, pane })));
 
+  // ---------- a pane that leaves and comes back (a terminal moved to its own window, 260) ----------
+  // where the pane stands: its tab and the tab's index; in a split also a pane of the other side, the direction and its side
+  function wsPlaceOf(st, paneId) {
+    const index = st.tabs.findIndex((x) => findPane(x.root, paneId));
+    if (index < 0) return null;
+    const tb = st.tabs[index];
+    const parent = (n) => (!n || isPane(n) ? null : [n.split.a, n.split.b].some((c) => isPane(c) && c.pane.id === paneId) ? n : parent(n.split.a) || parent(n.split.b));
+    const sp = parent(tb.root);
+    if (!sp) return { tab: tb.id, index, sibling: null, dir: null, first: false };
+    const first = isPane(sp.split.a) && sp.split.a.pane.id === paneId;
+    const other = leaves(first ? sp.split.b : sp.split.a);
+    return { tab: tb.id, index, sibling: (first ? other[0] : other[other.length - 1]).id, dir: sp.split.dir, first };
+  }
+  // the pane goes back to `place`: beside the same neighbour in the same tab, else a tab of its own at the old index
+  function wsPut(st, place, pane, newTabId) {
+    if (!place) return wsOpen(st, newTabId, pane);
+    const tb = tabOf(st, place.tab);
+    if (tb && place.sibling && findPane(tb.root, place.sibling) && count(tb.root) < MAX_PANES) {
+      const root2 = mapPane(tb.root, place.sibling, (leaf) => ({ split: { dir: place.dir === 'v' ? 'v' : 'h', ratio: 0.5, a: place.first ? { pane } : leaf, b: place.first ? leaf : { pane } } }));
+      return Object.assign(putTab(st, Object.assign({}, tb, { root: root2, focus: pane.id, zoom: false })), { active: tb.id });
+    }
+    const tabs = st.tabs.slice();
+    tabs.splice(Math.max(0, Math.min(Number(place.index) || 0, tabs.length)), 0, { id: newTabId, root: { pane }, focus: pane.id, zoom: false });
+    return Object.assign({}, st, { tabs, active: newTabId });
+  }
+
   // ---------- saving: settings.ui.tabs ----------
   const wsSerialize = (st) => JSON.stringify({ v: 2, tabs: st.tabs.map((x) => ({ id: x.id, root: x.root, focus: x.focus, zoom: !!x.zoom })), active: st.active });
   // a tree from disk: unknown shapes go, a pane that `keep(pane)` refuses goes (its sibling takes the place)
@@ -184,5 +210,5 @@
   }
 
   root.NSPanes = { MAX_PANES, leaves, count, findPane, mapPane, splitPane, removePane, setRatio, rects, neighbor, nodeAt,
-    wsEmpty, tabOf, focusedPane, wsOpen, wsClose, wsMove, wsActivate, wsSplit, wsClosePane, wsFocus, wsFocusPane, wsZoom, wsSetPane, wsRatio, allPanes, wsSerialize, wsRestore };
+    wsEmpty, tabOf, focusedPane, wsOpen, wsClose, wsMove, wsActivate, wsSplit, wsClosePane, wsFocus, wsFocusPane, wsZoom, wsSetPane, wsRatio, allPanes, wsSerialize, wsRestore, wsPlaceOf, wsPut };
 })(typeof window !== 'undefined' ? window : globalThis);

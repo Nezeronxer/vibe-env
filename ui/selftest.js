@@ -532,6 +532,35 @@ eq('panes: a v3 save (tabs of chats) becomes one tab per chat', P.wsRestore('{"v
   [['a', 'claude', 'c1'], ['b', 'codex', 'new']]);
 eq('panes: broken data -> nothing', [P.wsRestore('{oops'), P.wsRestore(null), P.wsRestore('{"v":2,"tabs":[{"id":"x","root":{"bogus":1}}]}')], [null, null, null]);
 
+// --- F5 (live run v4, 260): a terminal back from its own window stands where it stood ---
+{
+  const tp = (id) => ({ id, kind: 'term' });
+  let s5 = P.wsOpen(P.wsEmpty(), 'T1', tp('x'));
+  s5 = P.wsOpen(s5, 'T2', tp('l'));
+  s5 = P.wsSplit(s5, 'h', tp('r'));                    // T2: l | r
+  s5 = P.wsOpen(s5, 'T3', tp('y'));                    // tabs T1 T2 T3, T3 active
+  const placeR = P.wsPlaceOf(s5, 'r'), placeX = P.wsPlaceOf(s5, 'x');
+  eq('return: the place of a pane is its tab, the tab index, the neighbour, the direction and the side',
+    [placeR, placeX], [{ tab: 'T2', index: 1, sibling: 'l', dir: 'h', first: false }, { tab: 'T1', index: 0, sibling: null, dir: null, first: false }]);
+  const gone = P.wsClosePane(P.wsActivate(s5, 'T2'), 'r');
+  const back5 = P.wsPut(gone, placeR, tp('r2'), 'NEW');
+  eq('return: into the same split beside the same neighbour, its tab active and the pane in focus',
+    [JSON.stringify(P.tabOf(back5).root), back5.active, P.tabOf(back5).focus, back5.tabs.map((x) => x.id)],
+    ['{"split":{"dir":"h","ratio":0.5,"a":{"pane":{"id":"l","kind":"term"}},"b":{"pane":{"id":"r2","kind":"term"}}}}', 'T2', 'r2', ['T1', 'T2', 'T3']]);
+  const left = P.wsPut(P.wsClosePane(P.wsActivate(s5, 'T2'), 'l'), P.wsPlaceOf(s5, 'l'), tp('l2'), 'NEW');
+  eq('return: a pane that was on the left comes back on the left', JSON.stringify((P.tabOf(left).root.split || {}).a), '{"pane":{"id":"l2","kind":"term"}}');
+  const lone = P.wsPut(P.wsClose(s5, 'T1'), placeX, tp('x2'), 'NEW');
+  eq('return: a pane that had its own tab gets a tab at the old index, not at the end', [lone.tabs.map((x) => x.id), lone.active], [['NEW', 'T2', 'T3'], 'NEW']);
+  const noTab = P.wsPut(P.wsClose(P.wsActivate(s5, 'T2'), 'T2'), placeR, tp('r3'), 'NEW');
+  eq('return: the old tab is gone -> a tab of its own at the old index', noTab.tabs.map((x) => x.id), ['T1', 'NEW', 'T3']);
+  eq('return: no place -> a new tab after the active one', P.wsPut(s5, null, tp('z'), 'NEW').tabs.map((x) => x.id), ['T1', 'T2', 'T3', 'NEW']);
+}
+
+// --- F5 (live run v4, 249): command and search fields are free of macOS autocorrect ---
+eq('palette and search fields: autocorrect, capitals, spelling and autocomplete off', NSPalette.quiet({ class: 'q' }),
+  { class: 'q', autocorrect: 'off', autocapitalize: 'off', spellcheck: 'false', autocomplete: 'off' });
+eq('the label of the extra window is a word in ru and en', [NSI18n.dicts.ru['term.return'], NSI18n.dicts.en['term.return']], ['Вернуть в главное окно', 'Back to the main window']);
+
 // --- registry: extension points for tasks 23-25 ---
 const R = NS.registry;
 eq('registry: the seven extension points', R.POINTS, ['command', 'settings', 'bar', 'paneHeader', 'details', 'paneKind', 'tabsCorner']);

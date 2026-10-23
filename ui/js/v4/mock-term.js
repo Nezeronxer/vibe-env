@@ -1,11 +1,12 @@
 // Echo terminal for the browser without Tauri (task 23): term_* commands of core::term, a raw channel (ArrayBuffer), window_*.
-// A tiny fake shell: echo, ls, seq N, sleep-free `exit N`, an env CLI banner. ?term=claude opens Claude Code in a terminal at start;
+// A tiny fake shell: echo, ls, seq N, `sleep N` (busy until it ends or ^C), `exit N`, an env CLI banner.
+// ?window=<id> without a spec from this page: a session with 80 lines of scrollback stands in for the moved tab. ?term=claude opens Claude Code in a terminal at start;
 // NSMockTerm.emit('cli-updated', {env:'claude', from:'2.1.4', to:'2.1.5'}) imitates an event of app.
 (function () {
   const T = window.__TAURI__;
   if (!T || !window.__MOCK__) return;
   const enc = new TextEncoder();
-  const sessions = new Map();
+  const sessions = new Map(), specs = new Map();
   let n = 0;
   class Channel { constructor() { this.onmessage = null; } }
   T.core.Channel = Channel;
@@ -43,6 +44,7 @@
     if (cmd === 'seq') { const k = Math.min(100000, +args[0] || 10); let x = ''; for (let i = 1; i <= k; i++) x += i + '\r\n'; return out(s, x + prompt(s)); }
     if (cmd === 'cargo') return out(s, C.green + '   Compiling' + C.off + ' invoices v0.3.1\r\n' + 'error[E0308]: mismatched types\r\n  --> src/routes.rs:42:17\r\n' + C.yellow + 'warning' + C.off + ': unused variable `cursor` at src/page.rs:7\r\n' + prompt(s));
     if (cmd === 'exit') return finish(s, +args[0] || 0);
+    if (cmd === 'sleep') { s.busy = setTimeout(() => { s.busy = 0; out(s, prompt(s)); }, (+args[0] || 1) * 1000); return; }
     if (cmd === 'claude' || cmd === 'codex') { s.cli = true; s.argv = [cmd]; return banner(s); }
     return out(s, 'zsh: command not found: ' + cmd + '\r\n' + prompt(s));
   }
@@ -74,7 +76,8 @@
       for (const ch of data) {
         if (ch === '\r') { out(s, '\r\n'); const l = s.line; s.line = ''; run(s, l); }
         else if (ch === '\x7f') { if (s.line) { s.line = s.line.slice(0, -1); out(s, '\b \b'); } }
-        else if (ch === '\x03') { s.line = ''; out(s, '^C\r\n' + prompt(s)); }
+        else if (ch === '\x03') { s.line = ''; if (s.busy) { clearTimeout(s.busy); s.busy = 0; } out(s, '^C\r\n' + prompt(s)); }
+        else if (s.busy) continue;
         else if (ch >= ' ') { s.line += ch; out(s, ch); }
       }
       return null;
@@ -83,8 +86,15 @@
     term_detach: ({ id }) => { const s = sessions.get(id); if (s) s.ch = null; return null; },
     term_close: ({ id }) => { sessions.delete(id); return null; },
     term_list: () => [...sessions.values()].map((s) => ({ id: s.id, title: s.title, cwd: s.cwd, pid: 1000 + +s.id.slice(1), running: s.running, exit: s.exit, env_id: null, cli_version: null })),
-    window_detach: () => { emit('windows-changed', null); return 'w' + (++n); },
-    window_tab: () => { throw 'window_not_found'; },
+    window_detach: ({ tabSpec }) => { const id = 'w' + (++n); specs.set(id, tabSpec); emit('windows-changed', null); return id; },
+    window_tab: ({ id }) => {
+      if (specs.has(id)) return specs.get(id);
+      const tid = cmds.term_open({ spec: { cwd: '/Users/dev/live-repo', argv: [], title: 'live-repo' } });
+      const s = sessions.get(tid);
+      for (let i = 1; i <= 80; i++) out(s, 'history line ' + i + '\r\n');
+      out(s, prompt(s));
+      return { kind: 'term', termId: tid, env: null, argv: [], cwd: s.cwd, title: 'live-repo' };
+    },
     window_return: () => null,
   };
   const invoke0 = T.core.invoke;

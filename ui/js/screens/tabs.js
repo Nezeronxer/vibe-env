@@ -119,18 +119,39 @@
     const p = freshPane(kind);
     if (p) { setState(P.wsSplit(state, dir === 'v' ? 'v' : 'h', p)); focusActive(); }
   }
-  function closePane(paneId) {
+  // a pane kind may ask before its pane goes (a terminal with a running process, 253): until the answer the layout stays
+  // as it is, and "Отмена" leaves the pane where it was
+  async function mayClose(panes) {
+    for (const p of panes) { const d = kindDef(p.kind); if (d && d.beforeClose && !(await d.beforeClose(p))) return false; }
+    return true;
+  }
+  async function closePane(paneId) {
     const tb = activeTab();
     if (!tb) return;
-    let st = P.wsClosePane(state, paneId);
+    const id = paneId || tb.focus, p = P.findPane(tb.root, id);
+    if (p && !(await mayClose([p]))) { focusActive(); return; }
+    if (!P.tabOf(state, tb.id)) return;
+    let st = P.wsClosePane(P.wsActivate(state, tb.id), id);
     if (!st.tabs.length) { const p = freshPane(); if (p) st = P.wsOpen(st, uid('tab-'), p); }   // the window never stays empty
     setState(st);
     focusActive();
   }
-  function closeTab(id) {
+  async function closeTab(id) {
+    const tb = P.tabOf(state, id);
+    if (!tb || !(await mayClose(P.leaves(tb.root)))) return;
     let st = P.wsClose(state, id);
     if (!st.tabs.length) { const p = freshPane(); if (p) st = P.wsOpen(st, uid('tab-'), p); }
     setState(st);
+  }
+  // where a pane stands, and a fresh pane of `kind` put back there (a terminal back from its own window, 260)
+  const placeOf = (paneId) => P.wsPlaceOf(state, paneId);
+  function putBack(kind, place) {
+    const p = freshPane(kind);
+    if (!p) return;
+    const st = P.wsPut(state, place, p, uid('tab-'));
+    if (!ws) { state = st; persist(); NS.shell.mountScreen('tabs', {}); syncRoute(); focusActive(); return; }
+    setState(st);
+    focusActive();
   }
   const zoom = () => setState(P.wsZoom(state));
   const focusDir = (dir) => { setState(P.wsFocus(state, dir)); focusActive(); };
@@ -410,6 +431,6 @@
   }
 
   NS.registry.register({ id: 'tabs', layout: 'chats', mount });
-  NS.tabs = { show, setChat, dropChat, newTab, closeTab, closePane, split, zoom, focusDir, equalize,
+  NS.tabs = { show, setChat, dropChat, newTab, closeTab, closePane, placeOf, putBack, split, zoom, focusDir, equalize,
     get state() { return state; }, get active() { return focused(); }, get activeTab() { return activeTab(); } };
 })();

@@ -187,6 +187,30 @@ fn restored_terms(dir: &std::path::Path, readable: bool) -> Vec<nightshift_core:
     if readable { saved } else { vec![] }
 }
 
+/// The quit question is shown once: ⌘Q or "Выйти" again while it is open adds no second dialog (story 303).
+struct QuitGate(AtomicBool);
+
+impl QuitGate {
+    const fn new() -> Self {
+        QuitGate(AtomicBool::new(false))
+    }
+
+    /// Runs `ask` unless a question is already open (`None`). After "Stay" the gate opens again; after "Quit" it
+    /// stays shut, the app is on its way out.
+    fn ask(&self, ask: impl FnOnce() -> bool) -> Option<bool> {
+        if self.0.swap(true, Ordering::SeqCst) {
+            return None;
+        }
+        let yes = ask();
+        if !yes {
+            self.0.store(false, Ordering::SeqCst);
+        }
+        Some(yes)
+    }
+}
+
+static QUIT_GATE: QuitGate = QuitGate::new();
+
 /// "Выход": with work going on the person is asked first; then the runs are stopped, the state stays on disk (R08.2).
 fn quit(app: &AppHandle) {
     let app = app.clone();
@@ -198,7 +222,8 @@ fn quit(app: &AppHandle) {
         let pty = app.state::<ptycmds::Pty>();
         if let Some(text) = tray::quit_prompt(tray::counts(&tasks).0, pty.live(), ru) {
             let (yes, no) = if ru { ("Выйти", "Остаться") } else { ("Quit", "Stay") };
-            if !app.dialog().message(text).title("Nightshift").buttons(MessageDialogButtons::OkCancelCustom(yes.into(), no.into())).blocking_show() {
+            let shown = QUIT_GATE.ask(|| app.dialog().message(text).title("Nightshift").buttons(MessageDialogButtons::OkCancelCustom(yes.into(), no.into())).blocking_show());
+            if shown != Some(true) {
                 return;
             }
         }
@@ -990,6 +1015,32 @@ fn menu_layout(ru: bool) -> Vec<(&'static str, Vec<MenuEntry>)> {
     ]
 }
 
+/// The words of a menu item (macOS draws the standard ones in English unless told).
+#[cfg(any(target_os = "macos", test))]
+fn menu_label(e: MenuEntry, ru: bool) -> Option<&'static str> {
+    use MenuEntry::*;
+    let (r, en) = match e {
+        About => ("О программе Nightshift", "About Nightshift"),
+        Services => ("Службы", "Services"),
+        Hide => ("Скрыть Nightshift", "Hide Nightshift"),
+        HideOthers => ("Скрыть остальные", "Hide Others"),
+        ShowAll => ("Показать все", "Show All"),
+        Quit => ("Выйти из Nightshift", "Quit Nightshift"),
+        Undo => ("Отменить", "Undo"),
+        Redo => ("Повторить", "Redo"),
+        Cut => ("Вырезать", "Cut"),
+        Copy => ("Копировать", "Copy"),
+        Paste => ("Вставить", "Paste"),
+        SelectAll => ("Выбрать все", "Select All"),
+        Fullscreen => ("Во весь экран", "Enter Full Screen"),
+        Minimize => ("Свернуть", "Minimize"),
+        Maximize => ("Изменить масштаб", "Zoom"),
+        CloseWindow => ("Закрыть окно", "Close Window"),
+        Separator => return None,
+    };
+    Some(if ru { r } else { en })
+}
+
 #[cfg(target_os = "macos")]
 fn app_menu(app: &AppHandle, ru: bool) -> tauri::Result<Menu<Wry>> {
     use tauri::menu::{IsMenuItem, Submenu};
@@ -997,27 +1048,25 @@ fn app_menu(app: &AppHandle, ru: bool) -> tauri::Result<Menu<Wry>> {
     for (title, entries) in menu_layout(ru) {
         let mut items: Vec<Box<dyn IsMenuItem<Wry>>> = vec![];
         for e in entries {
+            let l = menu_label(e, ru);
             items.push(match e {
-                MenuEntry::About => Box::new(PredefinedMenuItem::about(app, None, None)?),
-                MenuEntry::Services => Box::new(PredefinedMenuItem::services(app, None)?),
-                MenuEntry::Hide => Box::new(PredefinedMenuItem::hide(app, None)?),
-                MenuEntry::HideOthers => Box::new(PredefinedMenuItem::hide_others(app, None)?),
-                MenuEntry::ShowAll => Box::new(PredefinedMenuItem::show_all(app, None)?),
-                MenuEntry::Quit => Box::new(MenuItem::with_id(app, QUIT_ID, if ru { "Выйти из Nightshift" } else { "Quit Nightshift" }, true, Some("CmdOrCtrl+Q"))?),
-                MenuEntry::Undo => Box::new(PredefinedMenuItem::undo(app, None)?),
-                MenuEntry::Redo => Box::new(PredefinedMenuItem::redo(app, None)?),
-                MenuEntry::Cut => Box::new(PredefinedMenuItem::cut(app, None)?),
-                MenuEntry::Copy => Box::new(PredefinedMenuItem::copy(app, None)?),
-                MenuEntry::Paste => Box::new(PredefinedMenuItem::paste(app, None)?),
-                MenuEntry::SelectAll => Box::new(PredefinedMenuItem::select_all(app, None)?),
-                MenuEntry::Fullscreen => Box::new(PredefinedMenuItem::fullscreen(app, None)?),
-                MenuEntry::Minimize => Box::new(PredefinedMenuItem::minimize(app, None)?),
-                MenuEntry::Maximize => Box::new(PredefinedMenuItem::maximize(app, None)?),
+                MenuEntry::About => Box::new(PredefinedMenuItem::about(app, l, None)?),
+                MenuEntry::Services => Box::new(PredefinedMenuItem::services(app, l)?),
+                MenuEntry::Hide => Box::new(PredefinedMenuItem::hide(app, l)?),
+                MenuEntry::HideOthers => Box::new(PredefinedMenuItem::hide_others(app, l)?),
+                MenuEntry::ShowAll => Box::new(PredefinedMenuItem::show_all(app, l)?),
+                MenuEntry::Quit => Box::new(MenuItem::with_id(app, QUIT_ID, l.unwrap_or_default(), true, Some("CmdOrCtrl+Q"))?),
+                MenuEntry::Undo => Box::new(PredefinedMenuItem::undo(app, l)?),
+                MenuEntry::Redo => Box::new(PredefinedMenuItem::redo(app, l)?),
+                MenuEntry::Cut => Box::new(PredefinedMenuItem::cut(app, l)?),
+                MenuEntry::Copy => Box::new(PredefinedMenuItem::copy(app, l)?),
+                MenuEntry::Paste => Box::new(PredefinedMenuItem::paste(app, l)?),
+                MenuEntry::SelectAll => Box::new(PredefinedMenuItem::select_all(app, l)?),
+                MenuEntry::Fullscreen => Box::new(PredefinedMenuItem::fullscreen(app, l)?),
+                MenuEntry::Minimize => Box::new(PredefinedMenuItem::minimize(app, l)?),
+                MenuEntry::Maximize => Box::new(PredefinedMenuItem::maximize(app, l)?),
                 MenuEntry::Separator => Box::new(PredefinedMenuItem::separator(app)?),
-                MenuEntry::CloseWindow => {
-                    let text = if ru { "Закрыть окно" } else { "Close Window" };
-                    Box::new(MenuItem::with_id(app, CLOSE_WINDOW_ID, text, true, Some(CLOSE_WINDOW_KEY))?)
-                }
+                MenuEntry::CloseWindow => Box::new(MenuItem::with_id(app, CLOSE_WINDOW_ID, l.unwrap_or_default(), true, Some(CLOSE_WINDOW_KEY))?),
             });
         }
         let refs: Vec<&dyn IsMenuItem<Wry>> = items.iter().map(|b| b.as_ref()).collect();
@@ -1145,7 +1194,53 @@ fn main() {
 
 #[cfg(test)]
 mod tests {
-    use super::{menu_layout, restored_terms, MenuEntry, CLOSE_WINDOW_KEY, TERMS_FILE};
+    use super::{menu_label, menu_layout, restored_terms, MenuEntry, QuitGate, CLOSE_WINDOW_KEY, TERMS_FILE};
+
+    /// Live run v4 (303): ⌘Q pressed again while the question is open stacked a second and a third dialog.
+    #[test]
+    fn a_second_quit_while_the_question_is_open_shows_no_second_question() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        use std::sync::{mpsc, Arc};
+        let gate = Arc::new(QuitGate::new());
+        let asked = Arc::new(AtomicUsize::new(0));
+        let (open_tx, open_rx) = mpsc::channel();
+        let (answer_tx, answer_rx) = mpsc::channel::<bool>();
+        let (g, a) = (gate.clone(), asked.clone());
+        let first = std::thread::spawn(move || {
+            g.ask(|| {
+                a.fetch_add(1, Ordering::SeqCst);
+                open_tx.send(()).unwrap();
+                answer_rx.recv().unwrap()
+            })
+        });
+        open_rx.recv().unwrap(); // the first question is on the screen
+        let second = gate.ask(|| {
+            asked.fetch_add(1, Ordering::SeqCst);
+            true
+        });
+        assert_eq!(second, None, "the second quit waits for the open question");
+        assert_eq!(asked.load(Ordering::SeqCst), 1);
+        answer_tx.send(false).unwrap(); // "Остаться"
+        assert_eq!(first.join().unwrap(), Some(false));
+        // after "Остаться" the next quit asks again
+        assert_eq!(gate.ask(|| true), Some(true));
+        assert_eq!(gate.ask(|| true), None, "after \"Выйти\" the app is leaving: no new question");
+    }
+
+    /// Live run v4: About / Services / Hide / Hide Others / Show All were English beside a Russian "Выйти".
+    #[test]
+    fn the_system_items_of_the_menu_speak_the_language_of_the_window() {
+        let cyr = |s: &str| s.chars().any(|c| ('а'..='я').contains(&c.to_lowercase().next().unwrap()));
+        for (_, entries) in menu_layout(true) {
+            for e in entries.into_iter().filter(|e| *e != MenuEntry::Separator) {
+                let label = menu_label(e, true).unwrap_or_default();
+                assert!(cyr(label), "{e:?}: {label:?}");
+                assert!(!cyr(menu_label(e, false).unwrap_or("x")), "{e:?} in English");
+            }
+        }
+        assert_eq!(menu_label(MenuEntry::Hide, true), Some("Скрыть Nightshift"));
+        assert_eq!(menu_label(MenuEntry::About, false), Some("About Nightshift"));
+    }
 
     /// Repair of F4: the terminal snapshot holds terminal output, so it is removed at start even when the data folder
     /// is unreadable and nothing is restored.
