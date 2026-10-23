@@ -1123,7 +1123,7 @@ fn main() {
             market::market_search, market::market_item, market::market_plan, market::market_apply, market::market_installed,
             market::market_remove, market::market_sources, market::market_set_sources,
             updates::cli_status, updates::cli_update, updates::updates_history, updates::cli_update_mode,
-            gitcmds::gh_publish, gitcmds::git_log_page, gitcmds::git_revert_commit,
+            gitcmds::gh_publish, gitcmds::git_log_page, gitcmds::git_revert_commit, gitcmds::startup_tax, gitcmds::compact, gitcmds::commit_stat, gitcmds::commit_file_diff,
             config::config_open, config::config_errors
         ])
         .build(tauri::generate_context!())

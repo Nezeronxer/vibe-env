@@ -1,1 +1,23 @@
-/* v4 Clawd (task 25). */
+/* v4 Clawd (task 25): the corner right of the tabs, its card. Sizes of the canvas come from clawd.js (--cw/--ch: whole device pixels). */
+.clawd-corner { position: relative; gap: 6px; }
+.clawd { display: block; padding: 0; border: 0; background: none; border-radius: var(--radius-sm); cursor: pointer; line-height: 0;
+  transition: background var(--t) ease-out, transform .08s ease-out; }
+.clawd:hover { background: var(--raised); }
+.clawd:active { transform: scale(.96); }
+.clawd:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.clawd-cv, .clawd-big { width: var(--cw); height: var(--ch); image-rendering: pixelated; image-rendering: crisp-edges; }
+.clawd-fps { font: 11px var(--mono); color: var(--ink3); white-space: nowrap; font-variant-numeric: tabular-nums; }
+
+.clawd-card { position: absolute; z-index: 40; top: calc(100% + 6px); right: 0; width: 360px; max-width: calc(100vw - 32px); padding: 16px 16px 14px;
+  border-radius: var(--radius-pane); background: var(--raised); box-shadow: var(--shadow); color: var(--ink); line-height: 1.5;
+  animation: clawd-in 160ms var(--ease); }
+.clawd-head { display: flex; align-items: center; gap: 14px; }
+.clawd-head h2 { margin: 0; font-size: 18px; font-weight: 650; letter-spacing: -0.01em; }
+.clawd-head small { color: var(--ink3); font-size: 12px; }
+.clawd-big { flex: none; padding: 6px; border-radius: var(--radius-sm); background: var(--panel); box-sizing: content-box; }
+.clawd-now { margin: 14px 0 0; padding: 8px 10px; border-radius: var(--radius-sm); background: var(--panel); font: 12.5px var(--mono); color: var(--ink); }
+.clawd-card h3 { margin: 14px 0 4px; font-size: 13px; font-weight: 600; color: var(--ink2); }
+.clawd-story { margin: 0; font-size: 13px; color: var(--ink); }
+.clawd-x { margin-top: 12px; }
+@keyframes clawd-in { from { opacity: 0; transform: translateY(-4px); } }
+@media (prefers-reduced-motion: reduce) { .clawd-card { animation: none; } .clawd, .clawd:active { transition: none; transform: none; } }

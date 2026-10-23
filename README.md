@@ -100,6 +100,12 @@ Details and the audit map: [`docs/security.md`](docs/security.md).
 - Windows allow only the minimum Tauri capabilities and a CSP without external sources.
 - Environments other than Claude Code run without technical restrictions (see above).
 
+## Meet Clawd
+
+Clawd was born as a pixel on the Claude Code splash screen - nine dots wide, five tall. By day he sat still while people typed. At night, when everyone went to bed, he noticed the terminals stayed on: agents kept working and nobody watched over them. So Clawd took the night shift. He runs between tabs, taps along with whoever is writing code, jumps when a task lands in main, and waves when it cannot go on without you. They say he has never slept on duty - only when you pause everything yourself.
+
+He lives in the corner right of the tabs and does what the agents do: types during an edit, runs during a command, waves when a task needs you, jumps for two seconds when one lands in main. Click him to see what he is doing in words. Settings → Basics → Clawd: animated, still or hidden; `?fps=1` shows his frame counter. How he works: [docs/clawd.md](docs/clawd.md).
+
 ## Add your own environment
 
 - **A custom command** (no code): add a custom environment in Settings. The command template gets the placeholders `{prompt}`, `{cwd}` and `{session}`; they reach the command as safe positional arguments, never pasted into a shell string. Output is text, exit code 0 means success; a limit message is looked for in the last 5 lines.
