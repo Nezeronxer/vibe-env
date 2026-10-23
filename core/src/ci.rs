@@ -9,6 +9,54 @@ use std::process::{Command, Stdio};
 pub trait Gh: Send + Sync {
     /// Runs `gh <args>` in `repo`; Err = the stderr, or `gh_not_installed`.
     fn run(&self, repo: &Path, args: &[&str]) -> Result<String, String>;
+
+    /// G67: the open issues of the repository (at most `ISSUE_LIMIT`). Err = why not (`gh_not_installed`, a login, a network).
+    fn issue_list(&self, repo: &Path) -> Result<Vec<Issue>, String> {
+        let limit = ISSUE_LIMIT.to_string();
+        let out = self.run(repo, &["issue", "list", "--state", "open", "--limit", &limit, "--json", "number,title,body,url,labels"])?;
+        parse_issues(&out).ok_or_else(|| "bad_gh_answer".to_string())
+    }
+
+    /// G67.2: closes issue `number` with a comment. Called only after the person said "Закрыть".
+    fn issue_close(&self, repo: &Path, number: u64, comment: &str) -> Result<(), String> {
+        self.run(repo, &["issue", "close", &number.to_string(), "--comment", comment]).map(|_| ())
+    }
+}
+
+/// Open issues a pass takes.
+pub const ISSUE_LIMIT: usize = 30;
+const ISSUE_TITLE: usize = 200;
+const ISSUE_BODY: usize = 4000;
+
+/// One issue as `gh issue list --json` gives it. The text is somebody else's: it is cut here and wrapped as data later.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct Issue {
+    pub number: u64,
+    pub title: String,
+    pub body: String,
+    pub url: String,
+    pub labels: Vec<String>,
+}
+
+/// `gh issue list --json number,title,body,url,labels` -> issues. Empty output = none; not JSON = None.
+pub fn parse_issues(json: &str) -> Option<Vec<Issue>> {
+    if json.trim().is_empty() {
+        return Some(vec![]);
+    }
+    let v: Value = serde_json::from_str(json).ok()?;
+    let cut = |s: &str, n: usize| -> String { s.chars().take(n).collect() };
+    Some(
+        v.as_array()?
+            .iter()
+            .filter_map(|i| {
+                let number = i["number"].as_u64().filter(|n| *n > 0)?;
+                let url = i["url"].as_str().filter(|u| u.starts_with("https://")).unwrap_or("").to_string();
+                let labels = i["labels"].as_array().map(|l| l.iter().filter_map(|x| x["name"].as_str().or_else(|| x.as_str())).map(|n| cut(n, 50)).take(10).collect()).unwrap_or_default();
+                Some(Issue { number, title: cut(i["title"].as_str().unwrap_or("").trim(), ISSUE_TITLE), body: cut(i["body"].as_str().unwrap_or("").trim(), ISSUE_BODY), url, labels })
+            })
+            .take(ISSUE_LIMIT)
+            .collect(),
+    )
 }
 
 /// The real `gh` (the same `NIGHTSHIFT_GH` override as `core::git`).

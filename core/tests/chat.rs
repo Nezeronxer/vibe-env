@@ -438,7 +438,7 @@ fn a_task_that_lands_before_the_note_arrives_is_not_passed_and_the_message_is_ha
 
 fn seed_chat(st: &mut nightshift_core::store::Store, p: &Project, id: &str, env: &str, age_days: i64) {
     let at = Local::now() - chrono::Duration::days(age_days);
-    st.upsert_chat(&Chat { id: id.into(), env: env.into(), project_id: p.id.clone(), title: format!("chat {id}"), session: None, convoy: false, created_at: at, updated_at: at, archived: false }).unwrap();
+    st.upsert_chat(&Chat { id: id.into(), env: env.into(), project_id: p.id.clone(), title: format!("chat {id}"), session: None, convoy: false, created_at: at, updated_at: at, archived: false, queue: vec![], wait: None, answering: None }).unwrap();
 }
 
 fn seed_task(st: &mut nightshift_core::store::Store, p: &Project, chat: Option<&str>, status: Status, n: i64) -> String {
@@ -759,7 +759,7 @@ fn a_lost_session_gets_a_recap_of_the_last_20_messages_of_the_person_and_the_mod
     let t0 = Local::now() - chrono::Duration::hours(1);
     {
         let mut st = e.store().lock().unwrap();
-        st.upsert_chat(&Chat { id: "talk".into(), env: "fake".into(), project_id: p.id.clone(), title: "talk".into(), session: Some("old".into()), convoy: false, created_at: t0, updated_at: t0, archived: false }).unwrap();
+        st.upsert_chat(&Chat { id: "talk".into(), env: "fake".into(), project_id: p.id.clone(), title: "talk".into(), session: Some("old".into()), convoy: false, created_at: t0, updated_at: t0, archived: false, queue: vec![], wait: None, answering: None }).unwrap();
         for i in 0..30 {
             let who = if i % 2 == 0 { Who::Human } else { Who::Model };
             seed_msg(&st, "talk", &format!("t{i}"), who, &format!("talk-{i:02}"), t0 + chrono::Duration::seconds(2 * i));

@@ -32,8 +32,10 @@ pub struct FileView {
 pub struct VariantView {
     pub id: String,
     pub model: String,
-    /// `queued` | `running` | `passed` | `failed`
+    /// `queued` | `running` | `paused` | `passed` | `failed`
     pub state: String,
+    /// `paused`: when the lane goes on by itself (rfc3339), the reset of the env's limit (G64.1).
+    pub resume_at: Option<String>,
     pub gate: Option<Gate>,
     /// Sum of the four marks divided by four.
     pub score: Option<f32>,
@@ -65,8 +67,10 @@ pub struct PartView {
     pub files: Vec<String>,
     pub worker: String,
     pub model: String,
-    /// `waiting` | `running` | `done` | `failed`
+    /// `waiting` | `running` | `paused` | `done` | `failed`
     pub state: String,
+    /// `paused`: when the part goes on by itself (rfc3339).
+    pub resume_at: Option<String>,
 }
 
 #[derive(Serialize, Clone, Debug, PartialEq)]

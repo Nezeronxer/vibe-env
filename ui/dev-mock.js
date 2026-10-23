@@ -153,14 +153,16 @@
       if (!id) { id = 'n' + Date.now(); chats.unshift(C(id, target.new.env, target.new.project_id, text.slice(0, 40), '', 0)); }
       if (chatMsgs(id).some((m) => m.id === msgId)) return id;               // the core ignores a repeat of the same id
       pushMsg({ id: msgId, chat_id: id, at: iso(Date.now()), who: 'human', text, task_id: null, delivered_at: null });
+      const replyId = 'm' + Date.now() + 'r', delay = Number(q.get('reply')) || 700;            // v6 (task 27): ?reply=<ms> the model thinks this long
+      if (q.get('thoughts')) ['Человек спрашивает про ', 'кэш отчётов. ', 'Смотрю src/reports/cache.py.'].forEach((x, i) => setTimeout(() => emit('chat-thinking', { id, msgId: replyId, text: x }), 150 + 120 * i));
       setTimeout(() => {
         if (TASK_RE.test(text)) {
           const c = chats.find((x) => x.id === id), tk = T('t-n' + Date.now(), c.project_id, c.env, id, text.slice(0, 60), 'working', { steps: steps('plan'), started_at: iso(Date.now()), runs: [], cost_usd: null });
           tk.runs = [{ role: 'worker', model: 'Opus 5.5', state: 'running', started_at: iso(Date.now()) }];
           tasks.push(tk); changed(tk); pushMsg({ id: 'm' + Date.now(), chat_id: id, at: iso(Date.now()), who: 'system', text: '', kind: 'task', task_id: tk.id });
           if (window.__MOCK_LIVE__) window.__MOCK_LIVE__(tk.id, id, true);
-        } else pushMsg({ id: 'm' + Date.now(), chat_id: id, at: iso(Date.now()), who: 'model', text: 'Смотрю код, сейчас отвечу.', model: 'Sonnet 5.5' });
-      }, 700);
+        } else pushMsg({ id: replyId, chat_id: id, at: iso(Date.now()), who: 'model', text: q.get('long') ? Array.from({ length: 40 }, (_, i) => 'Строка ответа ' + i + ': **кэш** живёт `5 минут`.').join('\n') : 'Смотрю код, сейчас отвечу.', model: 'Sonnet 5.5', reply_to: msgId });
+      }, delay);
       return id;
     },
     side_ask: ({ id, text }) => 'Это боковой ответ про «' + text.slice(0, 40) + '»: смотрю только на код, историю задачи не трогаю.', remove_chat: ({ id }) => { chats = chats.filter((c) => c.id !== id); return null; }, retry_chat: () => null,
@@ -228,6 +230,8 @@
     if (sws === 'stopped') swView.race.stopped = true;
     if (sws === 'allfailed') { swView.race.variants.forEach((v) => { v.state = 'failed'; v.why_failed = 'tests still failing after 3 attempts'; }); swView.race.variants[0].gate = { passed: 13, total: 14 }; swView.race.advice = null; }
     if (sws === 'queued') { swView.race.variants[2] = { id: 'C', model: 'Sonnet 5.5', state: 'queued' }; swRuns.race = swRuns.race.filter((r) => r.variant !== 'C'); }
+    // v6 (task 28): C met the env's limit and waits alone until its reset, A and B go on: ?swstate=paused
+    if (sws === 'paused') { const at = iso(now + 47 * 60000); swView.race.variants[2] = { id: 'C', model: 'Sonnet 5.5', state: 'paused', resume_at: at, gate: { passed: 9, total: 14 }, files: [] }; swView.race.advice = null; swView.crew.parts[2] = Object.assign({}, swView.crew.parts[2], { state: 'paused', resume_at: at }); swRuns.race = swRuns.race.map((r) => (r.variant === 'C' && r.role === 'verifier' ? Object.assign({}, r, { state: 'failed' }) : r)); }
     tasks.push(T('t-sw', 'p1', 'claude', 'swarm', 'Лимит запросов для приёма вебхуков', 'working', { branch: 'ns/webhook-limit', started_at: ago(20), swarm: { mode: swMode, n: 3 }, runs: swRuns[swMode], swarm_view: swView[swMode], cost_usd: 2.01, steps: steps('code') }));
     chats.push(C('swarm', 'claude', 'p1', 'Лимит вебхуков · рой', '', 2));
     msgs.swarm = [
@@ -350,6 +354,27 @@
   // v4 config file (story 293-294): ?cfgerr=1 shows one bad line the way core::config reports it
   cmds.config_open = () => 'config';
   cmds.config_errors = () => (q.get('cfgerr') ? [{ line: 12, key: 'font-size', msg: 'нужно число, а не «big»' }] : []);
+  // v6 (task 27): the chat's queue lives in the core (on disk); the mock plays it: a queued message goes when no task of the chat works.
+  // ?verbs=a,b - the words of Claude Code `spinnerVerbs` (replace); ?reply=<ms> - how long the model thinks; ?thoughts=1 - it thinks aloud.
+  const queues = {};
+  const qOf = (id) => (queues[id] = queues[id] || []);
+  const qEmit = (id) => emit('chat-queue', { id, queue: qOf(id).slice(), wait: null });
+  const chatWorks = (id) => tasks.some((x) => x.chat_id === id && !['done', 'done_not_pushed', 'failed', 'cancelled', 'reverted', 'needs_human', 'awaiting_outward', 'merge_blocked', 'handed_off'].includes(x.status));
+  const pumpQueue = (id) => setTimeout(() => {
+    if (!id || chatWorks(id) || !qOf(id).length) return;
+    const m = qOf(id).shift(); qEmit(id);
+    cmds.send_chat({ target: { existing: id }, msgId: m.id, text: m.text });
+  }, 250);
+  (subs['task-changed'] = subs['task-changed'] || []).push(({ payload }) => payload && pumpQueue(payload.chat_id));
+  cmds.chat_queue = ({ id }) => ({ queue: qOf(id).slice(), wait: null });
+  cmds.chat_queue_add = ({ id, msgId, text, first }) => {
+    if (!qOf(id).some((x) => x.id === msgId)) { const m = { id: msgId, text, attachments: [], at: iso(Date.now()) }; if (first) qOf(id).unshift(m); else qOf(id).push(m); }
+    qEmit(id); pumpQueue(id); return null;
+  };
+  cmds.chat_queue_edit = ({ id, msgId, text }) => { const m = qOf(id).find((x) => x.id === msgId); if (!m) fail('queued_not_found'); m.text = text; qEmit(id); return null; };
+  cmds.chat_queue_drop = ({ id, msgId }) => { if (!qOf(id).some((x) => x.id === msgId)) fail('queued_not_found'); queues[id] = qOf(id).filter((x) => x.id !== msgId); qEmit(id); return null; };
+  cmds.chat_stop = () => null;
+  cmds.ui_hints = () => ({ spinner_verbs: q.get('verbs') ? q.get('verbs').split(',') : null, spinner_append: false });
 
   // ================= v3: the live course of work (Границы v3) =================
   // task-action {id, action} (each action twice: start with done=false, then the result), chat-delta {id, msgId, text}, chat-msg at the end.
@@ -472,6 +497,29 @@
       { at: ago(175), kind: 'tool', role: 'worker', text: 'Edit', action: { id: 'x2', name: 'Edit', input: { kind: 'edit', path: 'src/payments/models.py', diff: '@@ -12,3 +12,4 @@ class Payment(Base):\n     amount = Column(Integer, nullable=False)\n+    currency = Column(String(3), nullable=False, default="RUB")\n     created_at = Column(DateTime)\n' }, done: true, ok: true } },
       { at: ago(174), kind: 'tool', role: 'worker', text: 'Bash', action: { id: 'x3', name: 'Bash', input: { kind: 'bash', command: 'alembic revision --autogenerate -m currency' }, output: 'Generating migrations/versions/4f2a_currency.py ... done', done: true, ok: true } }]);
     window.addEventListener('ns-ready', () => setTimeout(() => { playLive('t-cache', 'cache', true); setTimeout(() => playLive('t-lint', 'lint', false, { role: 'reviewer', model: 'Sonnet 5.5', script: LINT_SCRIPT, answer: LINT_ANSWER }), 1200 * liveSpeed); }, 400));
+  }
+
+  // v6 (task 28): spending by day, the error report, the app's own release.
+  // ?spend=empty (no rows yet); ?update=new (version 0.2.0 is out) | error (the last check failed) | nofeed (no release_feed: the check is off)
+  {
+    const sp = q.get('spend'), up = q.get('update');
+    const dayAgo = (n) => { const d = new Date(now - n * 86400000); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); };
+    const R = (n, project, env, usd, tin, tout, extra) => Object.assign({ day: dayAgo(n), month: false, project, env, chat: false, usd, tokens_in: tin, tokens_out: tout }, extra);
+    const SPEND = sp === 'empty' ? [] : [
+      R(0, 'p1', 'claude', 2.41, 812400, 64210), R(0, 'p1', 'claude', 0.18, 40300, 3900, { chat: true }), R(0, 'p2', 'codex', null, null, null),
+      R(1, 'p1', 'claude', 3.07, 1022000, 81300), R(1, 'p2', 'claude', 0.96, 301200, 22800), R(1, 'p2', 'claude', 0.07, 15800, 1400, { chat: true }),
+      R(2, 'p3', 'gemini', null, 210400, 18800), R(4, 'p1', 'claude', 1.52, 498000, 37100),
+      R(420, 'p1', 'claude', 38.4, 12400000, 910000, { day: dayAgo(420).slice(0, 8) + '01', month: true })];
+    let rel = { current: '0.1.0', latest: up === 'new' ? '0.2.0' : up === 'error' ? '0.1.0' : null, url: up === 'new' ? 'https://github.com/example/nightshift/releases/tag/v0.2.0' : null,
+      checked_at: up ? iso(now - 3 * 3600000) : null, error: up === 'error' ? 'no_connection' : up ? null : 'no_feed', feed: !!up && up !== 'nofeed', show: up === 'new' };
+    if (up === 'nofeed') rel = Object.assign(rel, { checked_at: null, error: 'no_feed' });
+    Object.assign(cmds, {
+      spend_history: ({ from, to }) => SPEND.filter((r) => (!from || r.day >= from) && (!to || r.day <= to)),
+      diag_collect: ({ dir }) => (dir || '/Users/dev/Downloads') + '/nightshift-report-20261023-101500.zip',
+      app_update_state: () => Object.assign({}, rel),
+      app_update_check: () => { if (rel.feed) rel.checked_at = iso(Date.now()); return Object.assign({}, rel); },
+      app_update_dismiss: ({ version }) => { if (rel.latest === version) rel.show = false; return null; },
+    });
   }
 
   window.__TAURI__ = {

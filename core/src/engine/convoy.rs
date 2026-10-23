@@ -48,6 +48,9 @@ impl Engine {
                 created_at: now,
                 updated_at: now,
                 archived: false,
+                queue: vec![],
+                wait: None,
+                answering: None,
             })
             .map_err(|e| e.to_string())?;
             st.append_chat_msg(&ChatMsg {

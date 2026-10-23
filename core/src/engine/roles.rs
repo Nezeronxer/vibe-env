@@ -456,7 +456,7 @@ impl Engine {
                 AgentEvent::TextDelta(t) => self.emit(EngineEvent::TextDelta { task: id.clone(), role, text: t.clone() }),
                 AgentEvent::Done { text, is_error, .. } => tag(if *is_error { LogKind::Error } else { kind.clone() }, text),
                 AgentEvent::Limit { .. } => tag(LogKind::Stage, "usage limit reached"),
-                AgentEvent::Usage(_) | AgentEvent::Cost(_) | AgentEvent::Context { .. } => {}
+                AgentEvent::Usage(_) | AgentEvent::Cost(_) | AgentEvent::Context { .. } | AgentEvent::Thinking(_) => {}
                 AgentEvent::ModelRejected(m) | AgentEvent::AuthRequired(m) => tag(LogKind::Error, m),
             }
         };

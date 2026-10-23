@@ -329,6 +329,17 @@ impl Engine {
     /// `submit` with what a convoy adds: the id the task must have (its dependents name it), the convoy,
     /// the tasks that must land first, and the title the Coordinator gave it (else the first line of the prompt).
     pub(super) fn submit_full(&self, t: NewTask, id: Option<TaskId>, convoy_id: Option<String>, depends_on: Vec<TaskId>, steps: Option<Vec<(Step, StepState)>>, title: Option<String>) -> Result<TaskId, String> {
+        self.submit_with(t, id, convoy_id, depends_on, steps, title, None)
+    }
+
+    /// G68.1: a task that goes on with session `session` of a terminal (`Task.resume_session`): in a git copy like any task,
+    /// the session file is copied under the copy's key before the first run, the CLI gets `--resume`.
+    pub fn submit_resumed(&self, t: NewTask, session: &str) -> Result<TaskId, String> {
+        self.submit_with(t, None, None, vec![], None, None, Some(session.to_string()))
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn submit_with(&self, t: NewTask, id: Option<TaskId>, convoy_id: Option<String>, depends_on: Vec<TaskId>, steps: Option<Vec<(Step, StepState)>>, title: Option<String>, resume: Option<String>) -> Result<TaskId, String> {
         let prompt = t.prompt.trim().to_string();
         if prompt.is_empty() {
             return Err("empty_prompt".into());
@@ -359,7 +370,14 @@ impl Engine {
                 models.entry(r).or_insert(ModelChoice { family: fast.clone(), version: None });
             }
         }
-        let quality = t.quality.clone().unwrap_or_else(|| settings.quality.clone());
+        let mut quality = t.quality.clone().unwrap_or_else(|| settings.quality.clone());
+        if let Some(r) = &resume {
+            if !crate::sessions::valid_id(r) {
+                return Err(format!("bad_session_id: {r}"));
+            }
+            // the session already holds the work so far: no rewrite of the words, no plan; checks and review stay
+            quality.on = false;
+        }
         let mut task = Task {
             branch: format!("ns/{}-{}", &id[..8], util::slug(&title)),
             id: id.clone(),
@@ -376,6 +394,8 @@ impl Engine {
             budget_usd: Some(settings.limits.task_usd),
             convoy_id,
             depends_on,
+            session: resume.clone(),
+            resume_session: resume,
             ..Task::default()
         };
         task.steps = steps.unwrap_or_else(|| flow::initial_steps(&quality, &p));

@@ -13,8 +13,8 @@
     const env = st.env(envId);
     const isNew = chatId === 'new';
     const chatObj = isNew ? null : st.findChat(chatId);
-    let msgs = [], more = false, loading = false, pending = [], queue = [];       // queue: F12 #8, messages held while the executor works
-    let sending = 0;
+    let msgs = [], more = false, loading = false, pending = [], queue = [];       // queue: v6 G62, the chat's queue as the core keeps it on disk
+    let think = null;                                   // v6 G80: {since} from the frame a message is sent until the first text, action or error
     const cards = new Map();                            // task id -> card controller (kept across re-renders: open state lives there)
     const openGroups = new Set();
     let selProject = (chatObj && chatObj.project_id) || NS.projects.current();     // F11: no silent first project; the last explicit choice is offered
@@ -87,14 +87,23 @@
     const nearBottom = () => wrap.scrollHeight - wrap.scrollTop - wrap.clientHeight < 80;
     const toBottom = () => { wrap.scrollTop = wrap.scrollHeight; };
     const acts = new Map();          // key -> {key, at, role, taskId, action}
-    const streams = new Map();       // msg id -> {text, at}: the answer printed by chat-delta
-    const typing = new Map();        // msg id -> true: a whole live message printed word by word
+    const streams = new Map();       // msg id -> {text, at, final, msg}: the answer printed smoothly (chat-delta, or a whole live message)
+    const thoughts = new Map();      // v6 G80.1: msg id -> {text, at, el, open}: what the model thinks before that answer
+    const reveals = new Set();       // reveal handles of this feed (NS.reveal), stopped with the screen
     const open = new Set();          // expanded outputs, diffs, glued reads
     const cache = new Map();         // node key -> {sig, nodes}
     const olderLog = new Map();      // task id -> "before" for "показать раньше" (the log keeps the last 500 events)
     let loaded = false;
     const reduced = () => !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
     const live = NS.actions.liveBar();
+    // G81.1: the feed follows the text only while the person is at its bottom; scrolling up stops it
+    let stuck = true;
+    // G84: the words of the spinner: the env's own (Claude Code `spinnerVerbs`) instead of or after the app's
+    let verbs = t('think.verbs').split('|');
+    NS.api.call('ui_hints', { env: envId, projectId: (chatObj && chatObj.project_id) || selProject || null }).then((hint) => {
+      const own = hint && Array.isArray(hint.spinner_verbs) ? hint.spinner_verbs.filter((x) => typeof x === 'string' && x.trim()) : [];
+      if (own.length) verbs = hint.spinner_append ? verbs.concat(own) : own;
+    }).catch(() => {});
     const ts = (v) => (typeof v === 'number' ? v : Date.parse(v) || 0);
     const LOG_LIMIT = ((S.settings && S.settings.keep && S.settings.keep.log_events) || 500);
 
@@ -102,15 +111,24 @@
       const mine = st.chatTasks(chatId).filter((x) => x.status !== 'handed_off' && ['wait', 'run', 'queue'].includes(L.kindOf(x)));
       return mine.find((x) => x.status === 'needs_human' && x.question) || mine[0] || null;
     }
-    // the executor is on its way (not waiting for an answer): a new message waits its turn
+    // the executor is on its way (not waiting for an answer): a new message waits its turn in the core's queue (G62)
     const busy = () => { const a = activeTask(); return !!a && L.kindOf(a) !== 'wait'; };
-    async function pump() {
-      if (!queue.length || busy() || Date.now() < sending) return;
-      const q = queue.shift(); sending = Date.now() + 1500; renderFeed();
-      try { await composer.deliver(q.text, q.id); }
-      catch (e) { queue.unshift(q); sending = 0; renderFeed(); NS.shell.toast(NS.errHuman(NS.api.errText(e)), true); }
-      composer.drawHint();
+    function setQueue(list) {
+      queue = (list || []).map((q) => ({ id: q.id, text: q.text, at: q.at }));
+      const ids = new Set(queue.map((q) => q.id));
+      const was = pending.length;
+      pending = pending.filter((p) => !ids.has(p.id));                 // the core queued what was sent while it answered
+      if (think && was && !pending.length) think = null;
+      schedule(); composer.drawHint();
     }
+    async function enqueueCore(text, first) {
+      const q = { id: qid(), text, at: new Date().toISOString() };
+      if (first) queue.unshift(q); else queue.push(q);
+      renderFeed(); toBottom();
+      try { await NS.api.call('chat_queue_add', { id: chatId, msgId: q.id, text, first: !!first }); }
+      catch (e) { queue = queue.filter((x) => x.id !== q.id); renderFeed(); NS.shell.toast(t('chat6.queue_fail', { why: NS.errHuman(NS.api.errText(e)) }), true); }
+    }
+    const dropQueued = (q) => NS.api.call('chat_queue_drop', { id: chatId, msgId: q.id }).catch((e) => NS.shell.toast(NS.errHuman(NS.api.errText(e)), true));
     const qid = () => (crypto.randomUUID ? crypto.randomUUID() : 'q-' + Date.now() + Math.random().toString(16).slice(2));
     const hooks = {
       answerMode: (task) => composer.setMode('answer', task), hintMode: (task) => composer.setMode('hint', task),
@@ -132,15 +150,21 @@
         h('small', { class: 'me-m' }, NS.hhmm(m.at), isPending ? ' · ' + t('msg.sending') : note ? ' · ' + (m.delivered_at ? t('msg.delivered', { time: NS.hhmm(m.delivered_at) }) : t('msg.will_pass')) + to : '',
         note && NS.rollbackBtn ? [' ', NS.rollbackBtn(m.task_id, NS.snapAfter(m.at))] : null));   // F13: "Вернуть код сюда" (only when the task has a snapshot after this message)
     }
-    // F12 #8: a message that waits for the agent: grey, can be edited or removed until it is sent
+    // F12 #8: a message that waits for the agent: grey, can be edited or removed until it is sent (v6: in the core's queue)
     function queuedNode(q) {
       const edit = h('button', { type: 'button', class: 'q-act', text: t('chatx.edit'), onclick: () => {
-        queue = queue.filter((x) => x.id !== q.id); renderFeed();
+        queue = queue.filter((x) => x.id !== q.id); renderFeed(); dropQueued(q);
         composer.insert(q.text + (composer.ta.value ? '\n' + composer.ta.value : ''));
       } });
-      const drop = h('button', { type: 'button', class: 'q-act', 'aria-label': t('chatx.drop'), title: t('chatx.drop'), text: '×', onclick: () => { queue = queue.filter((x) => x.id !== q.id); renderFeed(); composer.drawHint(); } });
+      const drop = h('button', { type: 'button', class: 'q-act', 'aria-label': t('chatx.drop'), title: t('chatx.drop'), text: '×', onclick: () => { queue = queue.filter((x) => x.id !== q.id); renderFeed(); composer.drawHint(); dropQueued(q); } });
       return h('div', { class: 'me queued' }, h('div', { class: 'me-b' }, h('span', { class: 'sr-only', text: t('feed.you') }), richText(q.text)),
         h('small', { class: 'me-m' }, t('chatx.queued') + ' · ' + t('chatx.queued_d'), edit, drop));
+    }
+    // G62: a line of the app `key: details` in words; the details may be a key themselves (`note_not_passed: task_cancelled`)
+    function sysHuman(text) {
+      const m = /^([a-z_]+):\s*([\s\S]*)$/.exec(String(text || '').trim());
+      if (m && window.NSI18n.has('err.' + m[1])) return t('err.' + m[1], { detail: NS.errHuman(m[2]) });
+      return NS.errHuman(text);
     }
     function systemNodes(m) {
       const out = [];
@@ -158,9 +182,9 @@
         out.push(h('div', { class: 'sysline calm' }, ic('i-warn'), h('span', { text: t('feed.stopped') }),
           h('button', { type: 'button', class: 'linkb', text: t('feed.retry'), onclick: () => NS.api.call('retry_chat', { id: chatId, msgId: m.reply_to || m.id }).catch((e) => NS.shell.toast(NS.errHuman(NS.api.errText(e)), true)) })));
       } else if (m.kind === 'error') {
-        out.push(h('div', { class: 'sysline bad' }, ic('i-fail'), h('span', { text: t('feed.no_answer', { why: NS.errHuman(m.text) }) }),
+        out.push(h('div', { class: 'sysline bad' }, ic('i-fail'), h('span', { text: t('feed.no_answer', { why: sysHuman(String(m.text).replace(/^not_answered:\s*/, '')) }) }),
           h('button', { type: 'button', class: 'linkb', text: t('feed.retry'), onclick: () => NS.api.call('retry_chat', { id: chatId, msgId: m.reply_to || m.id }).catch((e) => NS.shell.toast(NS.errHuman(NS.api.errText(e)), true)) })));
-      } else out.push(h('div', { class: 'sysline' + (m.kind === 'warn' ? ' bad' : '') }, ic(m.kind === 'warn' ? 'i-warn' : 'i-check'), h('span', { text: NS.errHuman(m.text) })));
+      } else out.push(h('div', { class: 'sysline' + (m.kind === 'warn' ? ' bad' : '') }, ic(m.kind === 'warn' ? 'i-warn' : 'i-check'), h('span', { text: sysHuman(m.text) })));
       return out;
     }
     // the body of an agent message: markdown, or a word-by-word print of a live message (story 227)
@@ -198,19 +222,7 @@
     }
     function bodyOf(m) {
       const body = h('div', { class: 'msg-b' });
-      if (!typing.has(m.id)) { body.append(runnable(richText(m.text))); return body; }
-      const plan = V.typePlan(m.text);
-      const caret = h('span', { class: 'caret', 'aria-hidden': 'true' });
-      let i = 0, shown = '';
-      const step = () => {
-        if (!alive.v) return;
-        // the printed part goes through markdown too: no raw ** or backticks on screen even mid-word (story 228)
-        if (i < plan.chunks.length) { shown += plan.chunks[i++]; const stick = nearBottom(); clear(body).append(richText(shown), caret); setTimeout(step, plan.ms); if (stick) toBottom(); return; }
-        typing.delete(m.id);
-        clear(body).append(runnable(richText(m.text)));
-        drawLive();
-      };
-      setTimeout(step, 0);
+      body.append(runnable(richText(m.text)));
       return body;
     }
     function msgNode(m) {
@@ -226,11 +238,41 @@
       return h('div', { class: 'msg' }, h('div', { class: 'msg-h' }, roleIcon(rk), h('span', { class: 'rname r-' + rk, text: t('role.' + rk) + (m.variant ? ' ' + m.variant : '') }), model ? h('small', { text: model }) : null, h('time', { text: NS.hhmm(m.at) })),
         bodyOf(m));
     }
-    // the answer while chat-delta pieces arrive: plain text with a caret, markdown once the whole message is there
-    function streamNode(sx) {
-      const mlabel = NS.models.label(envId) || '';
-      return h('div', { class: 'msg ai streaming' }, h('div', { class: 'msg-h' }, h('span', { class: 'av' }, envIcon(envId)), h('b', { text: env.name }), mlabel ? h('small', { text: mlabel }) : null),
-        h('div', { class: 'msg-b' }, richText(sx.text), h('span', { class: 'caret', 'aria-hidden': 'true' })));
+    // the answer while it prints (G81): one node, plain text that grows frame by frame (NS.reveal), markdown once all of it
+    // is shown. Markers of markdown are left out while it prints, so no raw ** or backticks flash by (story 228).
+    const plainOf = (text) => String(text || '').replace(/[*`]/g, '');
+    function streamNode(id, sx) {
+      const mlabel = (sx.msg && sx.msg.model) || NS.models.label(envId) || '';
+      const host = h('span', { class: 'rv' });
+      const el = h('div', { class: 'msg ai streaming', dataset: { stream: id } }, h('div', { class: 'msg-h' }, h('span', { class: 'av' }, envIcon(envId)), h('b', { text: env.name }), mlabel ? h('small', { text: mlabel }) : null),
+        h('div', { class: 'msg-b' }, host, h('span', { class: 'caret', 'aria-hidden': 'true' })));
+      const r = NS.reveal.attach(host, () => plainOf(sx.text), { isFinal: () => !!sx.final, onGrow: () => { if (stuck) toBottom(); }, onDone: () => finishStream(id) });
+      sx.reveal = r; reveals.add(r);
+      return el;
+    }
+    // all of the answer is shown: the stored message (markdown) takes the place of the printed text
+    function finishStream(id) {
+      const sx = streams.get(id);
+      if (!sx) return;
+      streams.delete(id); reveals.delete(sx.reveal);
+      if (sx.msg) msgs = L.mergeMsgs(msgs, [sx.msg]);
+      if (alive.v) { renderFeed(); if (stuck) toBottom(); }
+    }
+    // G80.1: the thoughts of the model: one grey folded line «Думает …», the whole text on a click; the node is kept and written to
+    function thoughtNode(id, th) {
+      if (th.el) return th.el;
+      const label = h('b', { text: t('think.thoughts') }), prev = h('span', { class: 'th-p' }), body = h('div', { class: 'th-b', hidden: true });
+      const btn = h('button', { type: 'button', class: 'th-h', 'aria-expanded': 'false', title: t('think.open') }, label, prev, ic('i-chev', 'th-chev'));
+      th.el = h('div', { class: 'thought', dataset: { thought: id } }, btn, body);
+      th.draw = () => {
+        label.textContent = streams.has(id) || msgs.some((x) => x.id === id) ? t('think.thought') : t('think.thoughts');
+        prev.textContent = th.text.replace(/\s+/g, ' ').trim().slice(-160);
+        btn.setAttribute('aria-expanded', String(!!th.open)); th.el.classList.toggle('on', !!th.open); body.hidden = !th.open;
+        if (th.open) body.textContent = th.text;
+      };
+      btn.onclick = () => { th.open = !th.open; th.draw(); };
+      th.draw();
+      return th.el;
     }
     const emptyNode = () => h('div', { class: 'newchat-empty' }, h('h2', { text: t('feed.empty_title', { env: env.name }) }), pj ? pj.el : null, st.project(selProject) ? null : h('p', { text: t('feed.empty') }));
     // examples as three quiet cards under the field; a click puts the text into the field, it is not sent (story 239)
@@ -317,7 +359,7 @@
     // actions of one role in a row, in order
     const bySpeaker = (run) => { const out = []; for (const e of run) { const l = out[out.length - 1]; if (l && l[0].role === e.role) l.push(e); else out.push([e]); } return out; }
     const toArr = (x) => [].concat(x);
-    const actOpts = (e) => ({ open, live: e.taskId ? isLiveTask(S.tasks.get(e.taskId)) : !!(streams.size || typing.size || [...acts.values()].some((x) => !x.taskId && !x.action.done)) });
+    const actOpts = (e) => ({ open, live: e.taskId ? isLiveTask(S.tasks.get(e.taskId)) : !!(streams.size || think || [...acts.values()].some((x) => !x.taskId && !x.action.done)) });
 
     function timeline() {
       const items = [];
@@ -331,7 +373,8 @@
       }
       for (const e of acts.values()) if (V.inputOf(e.action).kind !== 'plan') items.push({ at: e.at, type: 'act', e });
       for (const [id, sx] of streams) if (!msgs.some((x) => x.id === id)) items.push({ at: sx.at, type: 'stream', id, s: sx });
-      return items.sort((a, b) => a.at - b.at);
+      for (const [id, th] of thoughts) items.push({ at: th.at, type: 'thought', id, th });
+      return items.sort((a, b) => a.at - b.at || (a.type === 'thought' ? -1 : b.type === 'thought' ? 1 : 0));
     }
     let rendering = 0;
     const schedule = () => { if (!rendering) rendering = (window.requestAnimationFrame || setTimeout)(() => { rendering = 0; if (alive.v) renderFeed(); }); };
@@ -366,12 +409,14 @@
         if (it.type === 'act') { run.push(it.e); continue; }
         flush();
         if (it.type === 'msg') put('m:' + it.m.id, JSON.stringify(it.m) + (it.m.task_id && cards.has(it.m.task_id) ? '+' : ''), () => toArr(msgNode(it.m)));
-        else put('s:' + it.id, it.s.text, () => [streamNode(it.s)]);
+        else if (it.type === 'thought') put('th:' + it.id, 'th', () => [thoughtNode(it.id, it.th)]);
+        else put('s:' + it.id, 's', () => [streamNode(it.id, it.s)]);       // made once: the text grows inside it
       }
       flush(!pending.length);
       for (const p of pending) put('p:' + p.id, p.text, () => [humanNode(p, true)]);
       for (const q of queue) put('q:' + q.id, q.text, () => [queuedNode(q)]);
       for (const k of [...cache.keys()]) if (!used.has(k)) cache.delete(k);
+      for (const th of thoughts.values()) if (th.draw) th.draw();
       nodes.push(live.el);
       const same = nodes.length === feed.childNodes.length && nodes.every((n, i) => feed.childNodes[i] === n);
       if (!same) feed.replaceChildren(...nodes);
@@ -383,7 +428,7 @@
     // F12 #11: the next step as a grey line, from rules by the state (no model call)
     let lastHint;
     function nextHint() {
-      if (isNew || busy() || !loaded || queue.length) return null;
+      if (isNew || busy() || !loaded || queue.length || think) return null;
       const talk = msgs.filter((m) => !m.action && !m.tool && m.kind !== 'error' && m.text);
       const lastTalk = talk[talk.length - 1], lastTask = st.chatTasks(chatId).slice().sort((a, b) => ts(b.created_at) - ts(a.created_at))[0];
       if (lastTalk && L.whoOf(lastTalk).kind === 'human' && !(lastTask && ts(lastTask.finished_at) > ts(lastTalk.at))) return null;      // the agent has not answered yet
@@ -402,24 +447,36 @@
       const tk = mine.filter(isLiveTask).sort((a, b) => ts(b.started_at || b.created_at) - ts(a.started_at || a.created_at))[0];
       const lastOf = (pred) => { let best = null; for (const e of acts.values()) if (pred(e) && V.inputOf(e.action).kind !== 'plan' && (!best || e.at >= best.at)) best = e; return best; };
       const planOf = (pred) => { let best = null; for (const e of acts.values()) if (pred(e) && V.inputOf(e.action).kind === 'plan' && (!best || e.at >= best.at)) best = e; return best ? V.inputOf(best.action).items || [] : null; };
+      const toast = (e) => NS.shell.toast(NS.errHuman(NS.api.errText(e)), true);
       if (tk) {
         const run = runningRun(tk), rk = run && L.roleKey(run.role);
         const last = lastOf((e) => e.taskId === tk.id);
-        const streaming = streams.size > 0 || typing.size > 0;
-        composer.setWork({ who: rk ? t('role.' + rk) : env.name, what: workText(last, streaming), stop: () => NS.api.call('cancel', { id: tk.id }).catch((e) => NS.shell.toast(NS.errHuman(NS.api.errText(e)), true)) });
-        return live.set({ verbKey: V.actionVerb(last && last.action, streaming && (!last || last.action.done), { role: rk, lastRole: last && last.role }), since: ts(run && run.started_at) || ts(tk.started_at),
-          who: [rk ? t('role.' + rk) : null, run && run.model].filter(Boolean).join(' · '), plan: planOf((e) => e.taskId === tk.id) });
+        const streaming = streams.size > 0;
+        const stop = () => NS.api.call('cancel', { id: tk.id }).catch(toast);
+        composer.setWork({ who: rk ? t('role.' + rk) : env.name, what: workText(last, streaming), stop });
+        const since = ts(run && run.started_at) || ts(tk.started_at), who = [rk ? t('role.' + rk) : null, run && run.model].filter(Boolean).join(' · ');
+        // G80: the run of the task has said nothing yet: the same "thinking" line as after a message
+        if (!last && !streaming) return live.set({ think: { verbs, stop }, since, who, plan: planOf((e) => e.taskId === tk.id) });
+        return live.set({ verbKey: V.actionVerb(last && last.action, streaming && (!last || last.action.done), { role: rk, lastRole: last && last.role }), since,
+          who, plan: planOf((e) => e.taskId === tk.id) });
       }
       const queued = mine.find((x) => x.status === 'queued');
       const q = queued && V.queueInfo([...S.tasks.values()], queued.id, (S.settings && S.settings.max_parallel) || 3);
       if (q) { composer.setWork(null); return live.set({ queue: q.after ? t('live.queue', q) : t('live.queue_short', q) }); }
       const chatLast = lastOf((e) => !e.taskId);
-      const chatBusy = streams.size > 0 || typing.size > 0 || (chatLast && !chatLast.action.done);
+      const unfinished = [...streams.values()].some((x) => !x.final);
+      const chatBusy = unfinished || (chatLast && !chatLast.action.done);
+      const stopChat = isNew ? null : () => NS.api.call('chat_stop', { id: chatId }).catch(toast);
       if (chatBusy) {
         const sx = [...streams.values()][0];
-        composer.setWork({ who: env.name, what: workText(chatLast, streams.size > 0 || typing.size > 0), stop: null });
-        return live.set({ verbKey: V.actionVerb(chatLast && !chatLast.action.done ? chatLast.action : null, streams.size > 0 || typing.size > 0), since: (sx && sx.at) || (chatLast && chatLast.at) || Date.now(),
+        composer.setWork({ who: env.name, what: workText(chatLast, unfinished), stop: stopChat });
+        return live.set({ verbKey: V.actionVerb(chatLast && !chatLast.action.done ? chatLast.action : null, unfinished), since: (think && think.since) || (sx && sx.at) || (chatLast && chatLast.at) || Date.now(),
           who: [env.name, NS.models.label(envId)].filter(Boolean).join(' · '), plan: planOf((e) => !e.taskId) });
+      }
+      // G80: sent, nothing back yet: "thinking" right where the answer will be
+      if (think) {
+        composer.setWork({ who: env.name, what: t('work.think'), stop: stopChat });
+        return live.set({ think: { verbs, stop: stopChat }, since: think.since, who: [env.name, NS.models.label(envId)].filter(Boolean).join(' · ') });
       }
       composer.setWork(null);
       live.set(null);
@@ -471,21 +528,22 @@
       } catch (e) { if (alive.v) NS.shell.toast(NS.errHuman(NS.api.errText(e)), true); }
       loading = false;
     }
-    wrap.addEventListener('scroll', () => { if (wrap.scrollTop < 60) loadOlder(); });
+    wrap.addEventListener('scroll', () => { stuck = nearBottom(); if (wrap.scrollTop < 60) loadOlder(); });
 
     const convoEl = h('section', { class: 'convo' });
     const composer = NS.composer.create({ envId, chat: chatId, hooks: {
       projectId: () => selProject, activeTask, busy,
-      enqueue(text) { queue.push({ id: qid(), text, at: new Date().toISOString() }); renderFeed(); toBottom(); },
+      enqueue(text) { return enqueueCore(text, false); },
       async now(text) {                        // "Сразу": stop the current run; the message is first in the queue and goes as soon as the run is over
         const tk = activeTask();
-        queue.unshift({ id: qid(), text, at: new Date().toISOString() }); renderFeed(); toBottom();
-        if (!tk) return pump();
+        await enqueueCore(text, true);
+        if (!tk) return;
         try { await NS.api.call('cancel', { id: tk.id }); } catch (e) { NS.shell.toast(NS.errHuman(NS.api.errText(e)), true); }
       },
       needProject: () => { if (!isNew || st.project(selProject)) return false; NS.shell.toast(t('pj.need')); pj.open(); return true; }, noteTo: ext.noteTo,
-      addPending(p) { pending.push(p); renderFeed(); toBottom(); },
-      dropPending(id) { pending = pending.filter((p) => p.id !== id); schedule(); },
+      // G80: a message to the model (not a note to a task): "thinking" shows in the same frame as the bubble
+      addPending(p) { pending.push(p); if (!activeTask()) think = { since: Date.now() }; stuck = true; renderFeed(); toBottom(); },
+      dropPending(id) { pending = pending.filter((p) => p.id !== id); if (!pending.length) think = null; schedule(); },
       sent: async (newId) => {
         if (isNew && newId) {
           NS.storage.del(L.draftKey(envId, null));
@@ -509,8 +567,12 @@
           const batch = (await NS.api.call('get_chat', { id: chatId, before: null, limit: L.MSG_LIMIT })) || [];
           more = L.hasMore(batch.length, L.MSG_LIMIT);
           msgs = L.mergeMsgs([], batch);
+          // opened while the model has not answered the last message yet (a new chat just made, a chat opened again): "thinking"
+          const talk = msgs.filter((m) => !m.action && !m.tool), lastTalk = talk[talk.length - 1];
+          if (lastTalk && L.whoOf(lastTalk).kind === 'human' && !lastTalk.task_id && !msgs.some((m) => m.reply_to === lastTalk.id) && Date.now() - ts(lastTalk.at) < 30 * 60000 && !think) think = { since: ts(lastTalk.at) };
           if (alive.v) { renderFeed(); toBottom(); }
         } catch (e) { if (alive.v) NS.shell.toast(NS.errHuman(NS.api.errText(e)), true); }
+        try { const qs = await NS.api.call('chat_queue', { id: chatId }); if (alive.v && qs) setQueue(qs.queue); } catch (e) { /* an older core: no queue on disk */ }
         await Promise.all(st.chatTasks(chatId).map((tk) => loadTaskLog(tk.id)));
         if (alive.v) toBottom();
       }
@@ -525,6 +587,17 @@
       if (e.key === 'Escape' && !e.defaultPrevented) for (const c of cards.values()) if (c.open) { c.close(); break; }
     };
     document.addEventListener('keydown', onKey);
+    // v6: the thoughts of the model (G80.1) and the queue of the chat as the core keeps it (G62) come straight from the core
+    const offs = isNew ? [] : [
+      NS.api.listen('chat-thinking', (pl) => {
+        if (!alive.v || !pl || pl.id !== chatId || !pl.msgId) return;
+        const th = thoughts.get(pl.msgId) || { text: '', at: Date.now(), open: false };
+        th.text += String(pl.text || '');
+        if (!thoughts.has(pl.msgId)) { thoughts.set(pl.msgId, th); schedule(); } else if (th.draw) th.draw();
+        if (stuck) toBottom();
+      }),
+      NS.api.listen('chat-queue', (pl) => { if (alive.v && pl && pl.id === chatId) setQueue(pl.queue); }),
+    ];
 
     return {
       update(evt, payload) {
@@ -533,17 +606,28 @@
           const c = cards.get(payload.id);
           if (c) c.update(payload);               // only this card is redrawn
           drawLamp();
-          if (payload.chat_id === chatId) { schedule(); pump(); }   // a card that arrived after its "Это задача" line, the live line, action spinners
+          if (payload.chat_id === chatId) schedule();   // a card that arrived after its "Это задача" line, the live line, action spinners
           pin();
         } else if (evt === 'chatmsg') {
           if (payload.chat_id !== chatId) return;
           pending = pending.filter((p) => !(p.id === payload.id || (L.whoOf(payload).kind === 'human' && p.text === payload.text)));
+          queue = queue.filter((q) => q.id !== payload.id);                           // a queued message went out
           const known = msgs.some((x) => x.id === payload.id);
-          const agent = ['model', 'role'].includes(L.whoOf(payload).kind) && !payload.tool && payload.text;
-          if (streams.has(payload.id)) streams.delete(payload.id);                     // the streamed answer is complete: markdown replaces it
-          else if (loaded && !known && agent && !reduced()) typing.set(payload.id, true);   // no partial messages from this CLI: print by words
+          const kind = L.whoOf(payload).kind;
+          const agent = ['model', 'role'].includes(kind) && !payload.tool && payload.text;
+          if (kind !== 'human' && (agent || kind === 'system' || payload.action)) think = null;       // G80: an answer, an action or a line ends "thinking"
+          const sx = streams.get(payload.id);
+          if (sx) {                                     // G81: the streamed answer is complete: it prints to its end, then markdown replaces it
+            Object.assign(sx, { text: payload.text, final: true, msg: payload });
+            if (reduced() || !sx.reveal) finishStream(payload.id);
+            schedule(); return;
+          }
+          if (loaded && !known && agent && !reduced()) {      // no partial messages from this CLI: the whole message prints the same way
+            streams.set(payload.id, { text: payload.text, at: ts(payload.at), final: true, msg: payload });
+            schedule(); return;
+          }
           msgs = L.mergeMsgs(msgs, [payload]);
-          schedule(); pump();
+          schedule();
         } else if (evt === 'taskaction') {
           const tk = S.tasks.get(payload.id);
           if (!tk || tk.chat_id !== chatId) return;
@@ -553,19 +637,22 @@
         } else if (evt === 'chataction') {
           if (payload.id !== chatId) return;
           upsertAct('chat:' + chatId, payload.action, Date.now(), 'chat');
+          think = null;
           schedule();
         } else if (evt === 'chatdelta') {
           if (payload.id !== chatId || msgs.some((x) => x.id === payload.msgId)) return;
           const sx = streams.get(payload.msgId) || { text: '', at: Date.now() };
+          if (sx.final) return;
           sx.text += String(payload.text || '');
           streams.set(payload.msgId, sx);
+          think = null;
           schedule();
         } else if (evt === 'limits') { if (payload === envId) { limits.refresh(); composer.drawHint(); } }
         else if (evt === 'catalog' || evt === 'settings') { drawHeader(); composer.refresh(); }
         else if (evt === 'project' || evt === 'chats') { drawHeader(); }
         else if (evt === 'focus-input') composer.focus();
       },
-      destroy() { alive.v = false; live.destroy(); if (convoy) convoy.destroy(); closeChatMenu(); NS.taskCard.closeMenu(); clearInterval(tick); document.removeEventListener('keydown', onKey); limits.destroy(); composer.destroy(); },
+      destroy() { alive.v = false; for (const r of reveals) r.stop(); offs.forEach((f) => f.then((u) => u && u()).catch(() => {})); live.destroy(); if (convoy) convoy.destroy(); closeChatMenu(); NS.taskCard.closeMenu(); clearInterval(tick); document.removeEventListener('keydown', onKey); limits.destroy(); composer.destroy(); },
     };
   }
 

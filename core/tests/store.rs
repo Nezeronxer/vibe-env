@@ -192,6 +192,7 @@ fn chats_are_listed_per_env_and_removed_with_their_feed() {
     let chat = |id: &str, env: &str| Chat {
         id: id.into(), env: env.into(), project_id: "p".into(), title: id.into(), session: None,
         convoy: false, created_at: Local::now(), updated_at: Local::now(), archived: false,
+        queue: vec![], wait: None, answering: None,
     };
     s.upsert_chat(&chat("c1", "claude")).unwrap();
     s.upsert_chat(&chat("c2", "codex")).unwrap();

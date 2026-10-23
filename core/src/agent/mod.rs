@@ -106,6 +106,42 @@ pub enum AgentEvent {
     /// v4 (story 305): tokens the session's context holds now (`used`) and the model's window (`window`), each
     /// when the CLI says it; the engine keeps the last of both.
     Context { used: Option<u64>, window: Option<u64> },
+    /// v6 (G80.1): a piece of what the model thinks before it answers (Claude `thinking_delta`, or a whole
+    /// `thinking` block). Never a part of the answer.
+    Thinking(String),
+}
+
+/// v6 (G84): what the window may take from the env's own settings to look like the CLI.
+#[derive(Clone, Debug, Default, PartialEq, serde::Serialize)]
+pub struct UiHints {
+    /// The words of the "thinking" spinner (Claude Code `spinnerVerbs.verbs`); None = the app's own words.
+    pub spinner_verbs: Option<Vec<String>>,
+    /// `spinnerVerbs.mode` = "append": the words go with the app's own ones; else they replace them.
+    pub spinner_append: bool,
+}
+
+/// `spinnerVerbs` of Claude Code settings files, read in order: the last file that has the key wins. Shape
+/// (`claude` 2.1.309 schema): `{"mode": "append" | "replace", "verbs": [string]}`. Only text is taken: at most
+/// 100 words of at most 60 characters; a missing, broken or other-shaped file is skipped. No other key is read.
+pub fn spinner_hints(files: &[PathBuf]) -> UiHints {
+    let mut out = UiHints::default();
+    for f in files {
+        let Some(v) = std::fs::read(f).ok().and_then(|b| serde_json::from_slice::<serde_json::Value>(&b).ok()) else { continue };
+        let sv = &v["spinnerVerbs"];
+        let Some(list) = sv["verbs"].as_array() else { continue };
+        let verbs: Vec<String> = list
+            .iter()
+            .filter_map(|x| x.as_str())
+            .map(|x| x.trim().chars().take(60).collect::<String>())
+            .filter(|x| !x.is_empty())
+            .take(100)
+            .collect();
+        if verbs.is_empty() {
+            continue;
+        }
+        out = UiHints { spinner_verbs: Some(verbs), spinner_append: sv["mode"] == "append" };
+    }
+    out
 }
 
 /// Tools a role may use without asking (story 312), Claude Code names: readers read and search; writers also
@@ -192,6 +228,10 @@ pub trait Adapter: Send + Sync {
     /// rewrite. None = the CLI's own default.
     fn fast_model(&self) -> Option<String> {
         None
+    }
+    /// v6 (G84): what the window takes from the env's own settings for the project in `cwd`; nothing by default.
+    fn ui_hints(&self, _cwd: &Path) -> UiHints {
+        UiHints::default()
     }
 }
 

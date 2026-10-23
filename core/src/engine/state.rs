@@ -98,6 +98,22 @@ pub(super) enum LaneState {
     Interrupted,
     /// Its agent asked the person (`NEEDS_HUMAN`): it waits for the answer, then goes on in the same session.
     Asking,
+    /// The env's limit stopped this lane alone (G64): it waits for `resume_at` without a seat and goes on by
+    /// itself; the other lanes keep working. The task stops only when every live lane is paused.
+    Paused { resume_at: DateTime<Local> },
+}
+
+impl LaneState {
+    /// Working or about to: a lane the others wait for before the task as a whole can pause.
+    pub(super) fn live(self) -> bool {
+        matches!(self, LaneState::Waiting | LaneState::Running)
+    }
+    pub(super) fn resume_at(self) -> Option<DateTime<Local>> {
+        match self {
+            LaneState::Paused { resume_at } => Some(resume_at),
+            _ => None,
+        }
+    }
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]

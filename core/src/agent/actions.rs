@@ -497,6 +497,7 @@ impl Tracker {
             AgentEvent::Done { session, text, is_error } => vec![AgentEvent::Done { session, text: sc(&text), is_error }],
             AgentEvent::ModelRejected(m) => vec![AgentEvent::ModelRejected(sc(&m))],
             AgentEvent::AuthRequired(m) => vec![AgentEvent::AuthRequired(sc(&m))],
+            AgentEvent::Thinking(t) => vec![AgentEvent::Thinking(sc(&t))],
             other => vec![other],
         }
     }

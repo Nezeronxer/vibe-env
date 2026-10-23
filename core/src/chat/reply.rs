@@ -117,8 +117,23 @@ impl Chats {
         self.wait_until(&c.id, job.clone(), until);
     }
 
-    /// Answers one message. Everything that goes wrong ends as a line "not answered" in the feed.
+    /// Answers one message. Everything that goes wrong ends as a line "not answered" in the feed. While the answer
+    /// is written its message is `Chat.answering` on disk (G62.4); the app ending (`shutdown`) leaves it there.
     pub(super) fn answer(self: &Arc<Self>, chat: &str, job: &Job) {
+        let flag = Arc::new(AtomicBool::new(false));
+        lk(&self.stops).insert(chat.to_string(), flag.clone());
+        self.answer_with(chat, job, &flag);
+        lk(&self.stops).remove(chat);
+        if !self.stop.load(Ordering::SeqCst) {
+            self.update_chat(chat, |c| {
+                if c.answering.as_deref() == Some(job.msg.id.as_str()) {
+                    c.answering = None;
+                }
+            });
+        }
+    }
+
+    fn answer_with(self: &Arc<Self>, chat: &str, job: &Job, flag: &AtomicBool) {
         let msg = &job.msg;
         let Some(c) = self.chat(chat) else { return };
         let Some(p) = lk(self.engine.store()).project(&c.project_id) else { return self.fail(chat, &msg.id, reason::PROJECT_NOT_FOUND) };
@@ -128,6 +143,14 @@ impl Chats {
         }
         if let Some(until) = self.engine.limit_wait(&c.env, self.now()) {
             return self.hold_for_limit(&c, job, until);
+        }
+        let had_wait = c.wait.is_some();
+        self.update_chat(chat, |x| {
+            x.answering = Some(msg.id.clone());
+            x.wait = None;
+        });
+        if had_wait {
+            self.queue_changed(chat);
         }
         let copy = match self.ensure_copy(&c, &p) {
             Ok(d) => d,
@@ -141,6 +164,8 @@ impl Chats {
         // the answer's text streams into the message it is stored in at the end (story 227)
         let reply_id = uuid::Uuid::new_v4().to_string();
         let mut act_ids: HashMap<String, String> = HashMap::new();
+        // the thoughts since the last whole block: a CLI that sends the pieces and then the block is not shown twice
+        let mut thought = String::new();
         loop {
             let mut run = Run::new(
                 copy.clone(),
@@ -155,6 +180,14 @@ impl Chats {
             run.extra_env = self.engine.env_vars_of(&c.env, None);
             let mut on = |e: &agent::AgentEvent| match e {
                 agent::AgentEvent::TextDelta(t) => self.emit(ChatEvent::Delta { chat: chat.to_string(), msg_id: reply_id.clone(), text: t.clone() }),
+                agent::AgentEvent::Thinking(t) => {
+                    if !thought.is_empty() && thought.trim() == t.trim() {
+                        thought.clear();
+                        return;
+                    }
+                    thought.push_str(t);
+                    self.emit(ChatEvent::Thinking { chat: chat.to_string(), msg_id: reply_id.clone(), text: t.clone() });
+                }
                 agent::AgentEvent::Action(act) if !act.done => {
                     let msg_id = act_ids.entry(act.id.clone()).or_insert_with(|| uuid::Uuid::new_v4().to_string()).clone();
                     self.emit(ChatEvent::Action { chat: chat.to_string(), msg_id, action: act.clone() });
@@ -165,8 +198,9 @@ impl Chats {
                 }
                 _ => {}
             };
-            let events = match agent::run_blocking(&*a, &run, &mut on, &self.stop) {
+            let events = match agent::run_blocking(&*a, &run, &mut on, flag) {
                 Ok(_) if self.stop.load(Ordering::SeqCst) => return,
+                Ok(_) if flag.load(Ordering::SeqCst) => return self.fail(chat, &msg.id, reason::STOPPED),
                 Ok(e) => e,
                 Err(e) => return self.fail(chat, &msg.id, &format!("{}: {e}", reason::RUN_FAILED)),
             };

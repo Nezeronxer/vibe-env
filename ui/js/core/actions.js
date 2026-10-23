@@ -154,13 +154,31 @@
   }
 
   // the live line at the bottom of a feed: spinner, verb, timer of the step, role and model; the plan of the agent under it
+  // v6 (G80): the "thinking" mode right after a message is sent, like Claude Code: a shimmering word that changes every
+  // ~2 s (the env's own words when its settings give them), a timer; after 60 s «Долго думает · 1:05» and «Стоп»
+  const THINK_EVERY = 2000, LONG = 60000;
+  const reducedMotion = () => !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
   function liveBar() {
     const verb = h('b', { class: 'lv-v' }), meta = h('span', { class: 'lv-m' }), plan = h('div', { class: 'lv-plan', hidden: true });
-    const line = h('div', { class: 'lv-line' }, h('span', { class: 'lv-spin', 'aria-hidden': 'true', text: '✻' }), verb, meta);
+    const stopBtn = h('button', { type: 'button', class: 'linkb lv-stop', text: t('think.stop'), hidden: true });
+    const line = h('div', { class: 'lv-line' }, h('span', { class: 'lv-spin', 'aria-hidden': 'true', text: '✻' }), verb, meta, stopBtn);
     const el = h('div', { class: 'livebar', role: 'status', 'aria-label': t('live.label'), hidden: true }, line, plan);
-    let since = 0, who = '', planSig = '';
-    function tickText() { meta.textContent = '(' + [since ? L.formatElapsed(Date.now() - since) : null, who].filter(Boolean).join(' · ') + ')'; }
-    const timer = setInterval(() => { if (!el.hidden && since) tickText(); }, 1000);
+    let since = 0, who = '', planSig = '', think = null;
+    stopBtn.onclick = () => { if (think && think.stop) think.stop(); };
+    // the word of the thinking mode: one per ~2 s, the first one only when motion is reduced
+    function drawThink() {
+      const ms = Date.now() - (since || Date.now()), long = ms >= LONG, words = think.verbs && think.verbs.length ? think.verbs : [t('live.thinking')];
+      const word = long ? t('think.long') : words[reducedMotion() ? 0 : Math.floor(ms / THINK_EVERY) % words.length];
+      if (verb.textContent !== word) verb.textContent = word;
+      el.classList.toggle('long', long);
+      stopBtn.hidden = !(long && think.stop);
+      meta.textContent = long ? '· ' + L.formatElapsed(ms) : '(' + [L.formatElapsed(ms), who].filter(Boolean).join(' · ') + ')';
+    }
+    function tickText() {
+      if (think) return drawThink();
+      meta.textContent = '(' + [since ? L.formatElapsed(Date.now() - since) : null, who].filter(Boolean).join(' · ') + ')';
+    }
+    const timer = setInterval(() => { if (!el.hidden && since) tickText(); }, 250);
     function drawPlan(items) {
       const sig = JSON.stringify(items || null);
       if (sig === planSig) return;
@@ -176,17 +194,21 @@
     }
     return {
       el,
-      // state: null (hidden) | {verbKey, since, who, plan, queue}
+      // state: null (hidden) | {verbKey, since, who, plan, queue} | {think: {verbs, stop}, since, who}
       set(state) {
-        if (!state) { el.hidden = true; return; }
+        if (!state) { el.hidden = true; think = null; el.classList.remove('thinking', 'long'); stopBtn.hidden = true; return; }
         el.hidden = false;
         el.classList.toggle('queued', !!state.queue);
+        think = state.think || null;
+        el.classList.toggle('thinking', !!think);
+        if (!think) { el.classList.remove('long'); stopBtn.hidden = true; }
         if (state.queue) { verb.textContent = state.queue; meta.textContent = ''; since = 0; who = ''; drawPlan(null); return; }
-        verb.textContent = t(state.verbKey);
         since = state.since || 0; who = state.who || '';
+        if (!think) verb.textContent = t(state.verbKey);
         tickText();
         drawPlan(state.plan);
       },
+      thinking: () => !!think && !el.hidden,
       destroy() { clearInterval(timer); },
     };
   }

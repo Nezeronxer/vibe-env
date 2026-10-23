@@ -68,6 +68,8 @@ pub mod reason {
     pub const AGENT_NO_RESULT: &str = "agent_no_result";
     /// The run was stopped; shown as the line `keys::STOPPED`.
     pub const STOPPED: &str = "stopped";
+    /// v6 (G62.4): the app ended while the answer was being written; `retry` repeats, nothing repeats by itself.
+    pub const INTERRUPTED: &str = "interrupted";
 }
 
 /// Where a message goes: an existing chat or a new one for an env and a project.
@@ -122,6 +124,10 @@ pub enum ChatEvent {
     Action { chat: ChatId, msg_id: String, action: ToolAction },
     /// v3: a piece of the text being written; `msg_id` is the id of the message the whole text comes in.
     Delta { chat: ChatId, msg_id: String, text: String },
+    /// v6 (G80.1): a piece of what the model thinks before the answer `msg_id` (not stored).
+    Thinking { chat: ChatId, msg_id: String, text: String },
+    /// v6 (G62): the queue or the limit wait of the chat changed; the whole new state.
+    Queue { chat: ChatId, queue: Vec<QueuedMsg>, wait: Option<ChatWait> },
     /// The chat's list item may have changed (a task of it moved, the chat was created or archived).
     Changed(ChatId),
     Removed(ChatId),
@@ -147,7 +153,8 @@ pub(crate) struct Job {
     pub no_task: bool,
 }
 
-struct Wait {
+/// An answer held back by a used-up limit (its copy on disk is `Chat.wait`).
+struct Held {
     chat: ChatId,
     job: Job,
     until: DateTime<Local>,
@@ -185,7 +192,9 @@ pub struct Chats {
     /// msg id -> chat made for it (a New target sent twice).
     first_msgs: Mutex<HashMap<String, ChatId>>,
     queues: Mutex<HashMap<ChatId, VecDeque<Job>>>,
-    waiting: Mutex<Vec<Wait>>,
+    waiting: Mutex<Vec<Held>>,
+    /// chat -> the stop switch of its answer being written (`stop_answer`).
+    stops: Mutex<HashMap<ChatId, Arc<AtomicBool>>>,
     notes: Mutex<NoteBook>,
     push_lock: Mutex<()>,
     /// task -> its chat (None = not a chat's task), for the log lines mirrored into feeds.
@@ -241,6 +250,7 @@ impl Chats {
             first_msgs: Mutex::new(HashMap::new()),
             queues: Mutex::new(HashMap::new()),
             waiting: Mutex::new(vec![]),
+            stops: Mutex::new(HashMap::new()),
             notes: Mutex::new(NoteBook::default()),
             push_lock: Mutex::new(()),
             task_chat: Mutex::new(HashMap::new()),
@@ -249,13 +259,41 @@ impl Chats {
             delta_msgs: Mutex::new(HashMap::new()),
             stop: AtomicBool::new(false),
         });
+        me.restore();
         Chats::spawn_watchers(&me);
         me
+    }
+
+    /// G62: what the chats had on disk when the app ended: the limit waits go back to the clock, an answer that
+    /// was being written gets "not answered: interrupted" with «Повторить» (it is not run again by itself, it may
+    /// have cost money already), the queues go on as soon as their chat is free.
+    fn restore(self: &Arc<Self>) {
+        let chats = lk(self.engine.store()).all_chats();
+        for c in chats {
+            if let Some(id) = c.answering.clone() {
+                self.update_chat(&c.id, |x| x.answering = None);
+                if self.find_msg(&c.id, |m| m.id == id && m.who == Who::Human).is_some() {
+                    self.line(&c.id, keys::NOT_ANSWERED, reason::INTERRUPTED, Some(ChatKind::Error), Some(&id), None);
+                }
+            }
+            if let Some(w) = c.wait.clone() {
+                match self.find_msg(&c.id, |m| m.id == w.msg_id && m.who == Who::Human) {
+                    Some(msg) => lk(&self.waiting).push(Held { chat: c.id.clone(), job: Job { msg, no_task: false }, until: w.resets_at }),
+                    None => self.update_chat(&c.id, |x| x.wait = None),
+                }
+            }
+            if !c.queue.is_empty() {
+                self.kick(&c.id);
+            }
+        }
     }
 
     /// Stops the runs and the watchers; messages stay in the store. `send`, `retry` and `not_a_task` refuse afterwards.
     pub fn shutdown(&self) {
         self.stop.store(true, Ordering::SeqCst);
+        for f in lk(&self.stops).values() {
+            f.store(true, Ordering::SeqCst);
+        }
     }
 
     fn running(&self) -> Result<(), String> {
@@ -384,10 +422,21 @@ impl Chats {
         }
         let _g = lk(&self.send_lock);
         let chat = match target {
-            ChatTarget::Existing(id) => self.chat(&id).ok_or("chat_not_found")?,
+            ChatTarget::Existing(id) => {
+                let chat = self.chat(&id).ok_or("chat_not_found")?;
+                if chat.queue.iter().any(|q| q.id == msg_id) {
+                    return Ok(chat.id); // the same message again, still in the queue
+                }
+                chat
+            }
             ChatTarget::New { env, project_id } => {
                 if let Some(id) = lk(&self.first_msgs).get(msg_id) {
                     return Ok(id.clone());
+                }
+                // G62.3: the same first message again after a restart: the chat made for it is on disk
+                if let Some(id) = self.chat_with_msg(&env, &project_id, msg_id) {
+                    lk(&self.first_msgs).insert(msg_id.to_string(), id.clone());
+                    return Ok(id);
                 }
                 lk(self.engine.store()).project(&project_id).ok_or("project_not_found")?;
                 self.engine.adapter(&env).ok_or_else(|| format!("{}: {env}", reason::AGENT_NOT_FOUND))?;
@@ -402,6 +451,9 @@ impl Chats {
                     created_at: now,
                     updated_at: now,
                     archived: false,
+                    queue: vec![],
+                    wait: None,
+                    answering: None,
                 };
                 lk(self.engine.store()).upsert_chat(&chat).map_err(|e| e.to_string())?;
                 lk(&self.first_msgs).insert(msg_id.to_string(), chat.id.clone());
@@ -409,6 +461,18 @@ impl Chats {
                 chat
             }
         };
+        // G62: the model is answering or waits for a limit: the message waits its turn in the queue on disk
+        if self.answer_busy(&chat) && self.find_msg(&chat.id, |m| m.id == msg_id).is_none() {
+            self.push_queued(&chat.id, QueuedMsg { id: msg_id.to_string(), text: text.to_string(), attachments: vec![], at: self.now() }, false);
+            return Ok(chat.id);
+        }
+        self.take_in(&chat, msg_id, text);
+        Ok(chat.id)
+    }
+
+    /// The message goes into the feed and is handled: a note or answer to a task of the chat, a task, or a question.
+    /// False = the same message is in the feed already.
+    fn take_in(self: &Arc<Self>, chat: &Chat, msg_id: &str, text: &str) -> bool {
         let msg = ChatMsg {
             id: msg_id.to_string(),
             chat_id: chat.id.clone(),
@@ -423,15 +487,158 @@ impl Chats {
             reply_to: None,
             action: None,
         };
-        let Some(msg) = self.push(msg) else { return Ok(chat.id) }; // the same message again
+        let Some(msg) = self.push(msg) else { return false }; // the same message again
         if chat.archived {
             self.update_chat(&chat.id, |c| c.archived = false);
             self.emit(ChatEvent::Changed(chat.id.clone()));
         }
-        if !self.pass_to_task(&chat, &msg) {
-            self.route_ordinary(&chat, &msg);
+        if !self.pass_to_task(chat, &msg) {
+            self.route_ordinary(chat, &msg);
         }
-        Ok(chat.id)
+        true
+    }
+
+    /// A chat of the env and the project whose last page has the message `msg_id` (a New target sent again).
+    fn chat_with_msg(&self, env: &str, project: &str, msg_id: &str) -> Option<ChatId> {
+        let chats: Vec<Chat> = lk(self.engine.store()).chats(env).into_iter().filter(|c| c.project_id == project).collect();
+        chats.into_iter().find(|c| c.queue.iter().any(|q| q.id == msg_id) || self.messages(&c.id, None, PAGE).iter().any(|m| m.id == msg_id)).map(|c| c.id)
+    }
+
+    // ---- the queue of a chat (G62) ----
+
+    /// An answer of the model is being written or waits in memory, or the chat waits for a limit.
+    fn answer_busy(&self, chat: &Chat) -> bool {
+        chat.wait.is_some() || lk(&self.queues).contains_key(&chat.id)
+    }
+
+    /// A task of the chat is on its way (not waiting for the person): a queued message waits for it to end.
+    fn task_busy(&self, chat: &str) -> bool {
+        self.chat_tasks(chat).iter().any(|t| matches!(state_of(&t.status), Some(ChatState::Working | ChatState::Queued)) && t.status != Status::HandedOff)
+    }
+
+    fn queue_changed(&self, chat: &str) {
+        if let Some(c) = self.chat(chat) {
+            self.emit(ChatEvent::Queue { chat: c.id, queue: c.queue, wait: c.wait });
+        }
+    }
+
+    fn push_queued(&self, chat: &str, q: QueuedMsg, first: bool) {
+        self.update_chat(chat, |c| {
+            if !c.queue.iter().any(|x| x.id == q.id) {
+                if first {
+                    c.queue.insert(0, q);
+                } else {
+                    c.queue.push(q);
+                }
+            }
+        });
+        self.queue_changed(chat);
+    }
+
+    /// The queue and the limit wait of a chat, as the window shows them.
+    pub fn queue(&self, chat: &str) -> (Vec<QueuedMsg>, Option<ChatWait>) {
+        self.chat(chat).map(|c| (c.queue, c.wait)).unwrap_or_default()
+    }
+
+    /// Puts a message of the person into the queue of the chat (first = before the others, "Сразу"). It goes by
+    /// itself when the chat is free: no answer is written, no limit is waited for and no task of the chat is on its
+    /// way. The same id again does nothing.
+    pub fn queue_add(self: &Arc<Self>, chat: &str, msg_id: &str, text: &str, first: bool) -> Result<(), String> {
+        self.running()?;
+        let text = text.trim();
+        if text.is_empty() {
+            return Err("empty_message".into());
+        }
+        if msg_id.trim().is_empty() {
+            return Err("empty_message_id".into());
+        }
+        {
+            let _g = lk(&self.send_lock);
+            let c = self.chat(chat).ok_or("chat_not_found")?;
+            if c.queue.iter().any(|q| q.id == msg_id) || self.find_msg(chat, |m| m.id == msg_id).is_some() {
+                return Ok(());
+            }
+            self.push_queued(chat, QueuedMsg { id: msg_id.to_string(), text: text.to_string(), attachments: vec![], at: self.now() }, first);
+        }
+        self.kick(chat);
+        Ok(())
+    }
+
+    /// Changes the text of a queued message. Err `queued_not_found` = it has gone already (or never was).
+    pub fn queue_edit(&self, chat: &str, msg_id: &str, text: &str) -> Result<(), String> {
+        let text = text.trim();
+        if text.is_empty() {
+            return Err("empty_message".into());
+        }
+        let _g = lk(&self.send_lock);
+        let c = self.chat(chat).ok_or("chat_not_found")?;
+        if !c.queue.iter().any(|q| q.id == msg_id) {
+            return Err("queued_not_found".into());
+        }
+        self.update_chat(chat, |c| {
+            if let Some(q) = c.queue.iter_mut().find(|q| q.id == msg_id) {
+                q.text = text.to_string();
+            }
+        });
+        self.queue_changed(chat);
+        Ok(())
+    }
+
+    /// Takes a message out of the queue. Err `queued_not_found` = it has gone already (or never was).
+    pub fn queue_drop(&self, chat: &str, msg_id: &str) -> Result<(), String> {
+        let _g = lk(&self.send_lock);
+        let c = self.chat(chat).ok_or("chat_not_found")?;
+        if !c.queue.iter().any(|q| q.id == msg_id) {
+            return Err("queued_not_found".into());
+        }
+        self.update_chat(chat, |c| c.queue.retain(|q| q.id != msg_id));
+        self.queue_changed(chat);
+        Ok(())
+    }
+
+    /// The first queued message, when the chat is free to take it: out of the queue and into the feed.
+    fn next_queued(self: &Arc<Self>, chat: &str) -> bool {
+        let Some(c) = self.chat(chat) else { return false };
+        if c.wait.is_some() || self.task_busy(chat) {
+            return false;
+        }
+        let Some(q) = c.queue.first().cloned() else { return false };
+        self.update_chat(chat, |x| x.queue.retain(|y| y.id != q.id));
+        self.queue_changed(chat);
+        let Some(c) = self.chat(chat) else { return false };
+        self.take_in(&c, &q.id, &q.text);
+        true
+    }
+
+    /// Starts the chat's runner when it has queued messages and nothing else runs (it takes them one by one).
+    fn kick(self: &Arc<Self>, chat: &str) {
+        let has = self.chat(chat).is_some_and(|c| !c.queue.is_empty());
+        if !has || self.running().is_err() {
+            return;
+        }
+        let start = {
+            let mut q = lk(&self.queues);
+            if q.contains_key(chat) {
+                false
+            } else {
+                q.insert(chat.to_string(), VecDeque::new());
+                true
+            }
+        };
+        if start {
+            let me = self.clone();
+            let chat = chat.to_string();
+            std::thread::spawn(move || me.drain(&chat));
+        }
+    }
+
+    /// Stops the answer being written in the chat; the feed says "stopped" with «Повторить».
+    pub fn stop_answer(&self, chat: &str) -> Result<(), String> {
+        self.chat(chat).ok_or("chat_not_found")?;
+        if let Some(f) = lk(&self.stops).get(chat) {
+            f.store(true, Ordering::SeqCst);
+        }
+        Ok(())
     }
 
     /// An ordinary message of the chat: a task when it starts with a verb of command, else a question for the model.
@@ -695,26 +902,33 @@ impl Chats {
 
     fn drain(self: &Arc<Self>, chat: &str) {
         loop {
-            let job = {
-                let mut q = lk(&self.queues);
-                match q.get_mut(chat).and_then(|v| v.pop_front()) {
-                    Some(j) => j,
-                    None => {
-                        q.remove(chat);
-                        return;
-                    }
-                }
-            };
             if self.stop.load(Ordering::SeqCst) {
                 lk(&self.queues).remove(chat);
                 return;
             }
-            self.answer(chat, &job);
+            let job = lk(&self.queues).get_mut(chat).and_then(|v| v.pop_front());
+            if let Some(job) = job {
+                self.answer(chat, &job);
+                continue;
+            }
+            // nothing in memory: the queue on disk; `send` holds the same lock while it decides to queue
+            let _g = lk(&self.send_lock);
+            if self.next_queued(chat) {
+                continue;
+            }
+            let mut q = lk(&self.queues);
+            if q.get(chat).is_none_or(|v| v.is_empty()) {
+                q.remove(chat);
+                return;
+            }
         }
     }
 
     pub(crate) fn wait_until(&self, chat: &str, job: Job, until: DateTime<Local>) {
-        lk(&self.waiting).push(Wait { chat: chat.to_string(), job, until });
+        let msg_id = job.msg.id.clone();
+        lk(&self.waiting).push(Held { chat: chat.to_string(), job, until });
+        self.update_chat(chat, |c| c.wait = Some(ChatWait { msg_id, resets_at: until }));
+        self.queue_changed(chat);
     }
 
     // ---- watchers: the clock (answers held back by a limit) and the engine's events ----
@@ -751,9 +965,9 @@ impl Chats {
     /// The chat's own timer calls it every few milliseconds; returns how many went.
     pub fn release_due(self: &Arc<Self>) -> usize {
         let now = self.now();
-        let due: Vec<Wait> = {
+        let due: Vec<Held> = {
             let mut ws = lk(&self.waiting);
-            let (due, rest): (Vec<Wait>, Vec<Wait>) = ws.drain(..).partition(|w| w.until <= now);
+            let (due, rest): (Vec<Held>, Vec<Held>) = ws.drain(..).partition(|w| w.until <= now);
             *ws = rest;
             due
         };
@@ -789,7 +1003,8 @@ impl Chats {
         match ev {
             EngineEvent::TaskChanged(t) => {
                 if let Some(c) = t.chat_id.clone() {
-                    self.emit(ChatEvent::Changed(c));
+                    self.emit(ChatEvent::Changed(c.clone()));
+                    self.kick(&c); // a queued message goes once the task is no longer on its way
                 }
                 self.landed_with_notes(&t);
             }

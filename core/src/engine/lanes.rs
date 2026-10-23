@@ -27,6 +27,15 @@ impl Drop for Seat<'_> {
     }
 }
 
+/// How the wait of a lane paused by a limit ended (see `Engine::lane_pause`).
+pub(super) enum PauseEnd<'a> {
+    /// The reset came: the lane holds a seat again and goes on where it was.
+    Resume(Seat<'a>),
+    /// No other lane of the task works any more (or the engine stops): the lane stays paused and the task waits.
+    Stay,
+    Cancelled,
+}
+
 /// While alive, the task's own seat is the lanes' (see `Running.swarming`).
 pub(super) struct LanesMode<'a> {
     e: &'a Engine,
@@ -186,6 +195,42 @@ impl Engine {
             let (g, _) = self.seat_cv.wait_timeout(r, Duration::from_millis(500)).unwrap_or_else(|e| e.into_inner());
             drop(g);
         }
+    }
+
+    /// A lane hit the limit of the env (G64): it alone waits until `resume_at`, without its seat, and goes on
+    /// by itself after the reset while the other lanes keep working. When no other lane of the task is working
+    /// or about to (or the parts go one by one), it returns `Stay`: then the task as a whole waits (`PausedLimit`)
+    /// and starts the paused lanes again after the reset.
+    pub(super) fn lane_pause(&self, id: &str, label: &str, env: &str, resume_at: DateTime<Local>, cancel: &AtomicBool) -> PauseEnd<'_> {
+        loop {
+            if cancel.load(Ordering::SeqCst) {
+                return PauseEnd::Cancelled;
+            }
+            if self.now() >= resume_at {
+                return match self.take_seat(env, cancel) {
+                    Some(seat) => PauseEnd::Resume(seat),
+                    None => PauseEnd::Cancelled,
+                };
+            }
+            let sw = self.state(id).swarm;
+            let lanes = sw.variants.iter().map(|v| (v.id.as_str(), v.state)).chain(sw.parts.iter().map(|x| (x.id.as_str(), x.state)));
+            let others_live = !sw.sequential && lanes.filter(|(l, _)| *l != label).any(|(_, s)| s.live());
+            if !others_live {
+                return PauseEnd::Stay;
+            }
+            let r = lk(&self.running);
+            if r.stopping {
+                return PauseEnd::Stay;
+            }
+            // a lane that ends gives its seat back and wakes us; the timeout covers the clock
+            let (g, _) = self.seat_cv.wait_timeout(r, Duration::from_millis(200)).unwrap_or_else(|e| e.into_inner());
+            drop(g);
+        }
+    }
+
+    /// When a limit without a known reset is over: as for the task (`on_limit`).
+    pub(super) fn limit_until(&self, resets: Option<DateTime<Local>>) -> DateTime<Local> {
+        resets.unwrap_or_else(|| self.now() + chrono::Duration::minutes(super::roles::LIMIT_WAIT_MINS))
     }
 
     /// Puts the lane's run records of (role, label) in the task, replacing the ones it had.

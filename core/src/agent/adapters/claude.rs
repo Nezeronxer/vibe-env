@@ -114,6 +114,17 @@ impl Adapter for Claude {
     fn guarded(&self) -> bool {
         true // deny rules for push/remote/sudo + sandbox are passed on every run
     }
+    /// G84: `spinnerVerbs` of the person's settings, then of the project's (`.claude/settings.json`, then
+    /// `.claude/settings.local.json`), the way Claude Code orders them: the later wins.
+    fn ui_hints(&self, cwd: &std::path::Path) -> crate::agent::UiHints {
+        let mut files = vec![];
+        if let Some(home) = std::env::var_os("HOME") {
+            files.push(std::path::PathBuf::from(home).join(".claude").join("settings.json"));
+        }
+        files.push(cwd.join(".claude").join("settings.json"));
+        files.push(cwd.join(".claude").join("settings.local.json"));
+        crate::agent::spinner_hints(&files)
+    }
     fn command(&self, run: &Run) -> Command {
         let mut c = Command::new(find_bin(&self.bin).unwrap_or_else(|| self.bin.clone().into()));
         // --include-partial-messages: the text comes word by word as `stream_event`s (seen live, 2.1.308)
@@ -270,6 +281,8 @@ pub fn parse_line(line: &str) -> Vec<AgentEvent> {
             .flatten()
             .filter_map(|b| match b["type"].as_str() {
                 Some("text") => b["text"].as_str().filter(|t| !t.trim().is_empty()).map(|t| AgentEvent::Text(t.to_string())),
+                // G80.1: the whole thought (also sent as `thinking_delta` pieces before it; the chat drops the repeat)
+                Some("thinking") => b["thinking"].as_str().filter(|t| !t.trim().is_empty()).map(|t| AgentEvent::Thinking(t.to_string())),
                 Some("tool_use") => Some(AgentEvent::Action(actions::tool_action(
                     b["id"].as_str().unwrap_or(""),
                     b["name"].as_str().unwrap_or("tool"),
@@ -298,6 +311,9 @@ pub fn parse_line(line: &str) -> Vec<AgentEvent> {
             let e = &j["event"];
             match (e["type"].as_str(), e["delta"]["type"].as_str(), e["delta"]["text"].as_str()) {
                 (Some("content_block_delta"), Some("text_delta"), Some(t)) if !t.is_empty() => vec![AgentEvent::TextDelta(t.to_string())],
+                (Some("content_block_delta"), Some("thinking_delta"), _) => {
+                    e["delta"]["thinking"].as_str().filter(|t| !t.is_empty()).map(|t| AgentEvent::Thinking(t.to_string())).into_iter().collect()
+                }
                 _ => vec![],
             }
         }

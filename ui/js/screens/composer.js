@@ -128,12 +128,17 @@
       if (mode.kind === 'message' && isBusy() && hooks.enqueue) {                              // F12 #8: the agent works: the message waits, grey, until it is done
         hooks.enqueue(text); ta.value = ''; NS.storage.del(key); grow(); drawHint(); return;
       }
-      const id = gate.begin(key, text);
+      let id = gate.begin(key, text);
       if (id == null) return;                      // a double press while the first call is still running
+      // G62.3: the id is born before the call and kept with the draft: the same text sent again after a restart (or a
+      // crash before the answer) carries the same id, and the core takes it once
+      const idKey = key + '.id', saved = String(NS.storage.get(idKey) || ''), cut = saved.indexOf('\n');
+      if (cut > 0 && saved.slice(cut + 1) === text) id = saved.slice(0, cut);
+      NS.storage.set(idKey, id + '\n' + text);
       sendBtn.disabled = true;
       try {
         await dispatch(text, id);
-        ta.value = ''; NS.storage.del(key); gate.done(); setMode('message'); grow();
+        ta.value = ''; NS.storage.del(key); NS.storage.del(idKey); gate.done(); setMode('message'); grow();
       } catch (e) {
         gate.fail();                               // the same text will reuse this id, the core ignores a repeat
         if (hooks.dropPending) hooks.dropPending(id);

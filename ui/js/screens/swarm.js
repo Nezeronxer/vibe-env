@@ -75,6 +75,9 @@
       return h('div', { class: 'verdict' }, roleIcon('rev'), body, btn);
     }
 
+    // a lane on the env's limit waits alone until its reset (G64.1): "ждёт лимит до HH:MM"
+    const pausedText = (x) => { const d = new Date(x.resume_at); return t('swarm.paused', { time: isNaN(d) ? '?' : String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0') }); };
+    const pausedOf = (id) => [].concat(viewOf().variants || [], viewOf().parts || []).find((x) => x.id === id && x.state === 'paused');
     // lanes: shared preparation, one lane per variant, "Выбор", the mark "сейчас"
     function lanesBox() {
       const now = Date.now(), { lanes, t0, t1 } = L.swarmLanes(task, now);
@@ -92,8 +95,10 @@
             : s.role === 'coord' ? t(mode() === 'council' ? 'swarm.bar_council' : 'swarm.bar_split') : t('role.' + s.role).toLowerCase().slice(0, 14);
           return setVars(h('div', { class: 'seg-b r-' + s.role + (s.state === 'proj' ? ' proj' : s.state === 'fail' ? ' fail' : ''), title: t('role.' + s.role) + (s.model ? ' · ' + s.model : ''), text }), { '--l': b.left + '%', '--w': b.width + '%' });
         }));
-        if (l.queued) track.append(h('span', { class: 'hint', text: t('swarm.queued') }));
-        return h('div', { class: 'lane' + (rk ? ' r-' + rk : '') }, h('div', { class: 'lane-n' }, rk ? roleIcon(rk) : null, h('div', {}, h('b', { text: lab[0] }), h('small', { text: lab[1] }))), track);
+        const paused = l.kind === 'variant' ? pausedOf(l.variant) : null;
+        if (paused) lab[1] = pausedText(paused);
+        else if (l.queued) track.append(h('span', { class: 'hint', text: t('swarm.queued') }));
+        return h('div', { class: 'lane' + (rk ? ' r-' + rk : '') + (paused ? ' paused' : ''), title: paused ? t('swarm.paused_d') : null }, h('div', { class: 'lane-n' }, rk ? roleIcon(rk) : null, h('div', {}, h('b', { text: lab[0] }), h('small', { text: lab[1] }))), track);
       });
       const nowPct = L.placeBar(now, now + 1, t0, t1);
       const box = h('div', { class: 'lanes' }, h('div', { class: 'lane-axis' }, h('div'), axis), rows,
@@ -110,6 +115,7 @@
       if (v.state === 'passed') return h('span', { class: 'st st-ok' }, ic('i-check'), t('swarm.passed'));
       if (v.state === 'failed') return h('span', { class: 'st st-bad' }, ic('i-fail'), t('swarm.failed'));
       if (v.state === 'queued') return h('span', { class: 'st st-run' }, ic('i-dash'), t('swarm.queued'));
+      if (v.state === 'paused') return h('span', { class: 'st st-wait', title: t('swarm.paused_d') }, ic('i-dash'), pausedText(v));
       return h('span', { class: 'st st-run' }, ic('i-run'), t('swarm.running'));
     }
     async function loadDiff(v, path) {
@@ -160,8 +166,8 @@
     // Бригада: parts with disjoint files, each done by a worker in its own copy
     function partsGrid() {
       const parts = viewOf().parts || [];
-      return h('div', { class: 'variants' }, parts.map((p) => h('article', { class: 'part' }, h('h4', {}, p.title, h('span', { class: 'st ' + (p.state === 'done' ? 'st-ok' : p.state === 'failed' ? 'st-bad' : 'st-run') },
-        ic(p.state === 'done' ? 'i-check' : p.state === 'failed' ? 'i-fail' : 'i-run'), t('swarm.part_' + (p.state || 'running')))),
+      return h('div', { class: 'variants' }, parts.map((p) => h('article', { class: 'part' }, h('h4', {}, p.title, h('span', { class: 'st ' + (p.state === 'done' ? 'st-ok' : p.state === 'failed' ? 'st-bad' : p.state === 'paused' ? 'st-wait' : 'st-run') },
+        ic(p.state === 'done' ? 'i-check' : p.state === 'failed' ? 'i-fail' : p.state === 'paused' ? 'i-dash' : 'i-run'), p.state === 'paused' ? pausedText(p) : t('swarm.part_' + (p.state || 'running')))),
       h('small', { text: [p.worker, p.model].filter(Boolean).join(' · ') }), h('ul', {}, (p.files || []).map((f) => h('li', { text: f }))))));
     }
     // Совет: proposals and the vote; the majority decides, a tie goes to the reviewer (story 155)

@@ -3,6 +3,7 @@
 mod auto;
 mod config;
 mod custom;
+mod diag;
 mod envs;
 mod gitcmds;
 mod hub;
@@ -16,6 +17,7 @@ mod presence;
 mod preview;
 mod proj;
 mod ptycmds;
+mod sessions;
 mod settings_check;
 mod startup;
 mod term;
@@ -344,6 +346,11 @@ fn forward_events(app: &AppHandle, hub: &Arc<Hub>, notifier: &Arc<AppNotifier>) 
                 }
                 ChatEvent::Action { chat, msg_id, action } => win.push(hub::WinItem::ChatAction { chat, msg_id, action }),
                 ChatEvent::Delta { chat, msg_id, text } => win.push(hub::WinItem::ChatDelta { chat, msg_id, text }),
+                // v6 (task 27): thoughts go merged like text; the queue of a chat goes whole at once
+                ChatEvent::Thinking { chat, msg_id, text } => win.push(hub::WinItem::ChatThinking { chat, msg_id, text }),
+                ChatEvent::Queue { chat, queue, wait } => {
+                    let _ = h.emit("chat-queue", json!({ "id": chat, "queue": queue, "wait": wait }));
+                }
                 ChatEvent::Changed(_) | ChatEvent::Removed(_) => {}
             }
         }
@@ -706,6 +713,39 @@ async fn open_chat_terminal(s: State<'_, App>, id: String) -> Res<()> {
     s.hub.open_chat_terminal(&id, &|l| term::open(l, &dir))
 }
 
+// ---- v6 (task 27): the queue of a chat on disk, stopping an answer, the words of the spinner ----
+
+#[tauri::command]
+async fn chat_queue(s: State<'_, App>, id: String) -> Res<Value> {
+    let (queue, wait) = s.hub.chats.queue(&id);
+    Ok(json!({ "queue": queue, "wait": wait }))
+}
+
+#[tauri::command]
+async fn chat_queue_add(s: State<'_, App>, id: String, msg_id: String, text: String, first: Option<bool>) -> Res<()> {
+    s.hub.chats.queue_add(&id, &msg_id, &text, first.unwrap_or(false))
+}
+
+#[tauri::command]
+async fn chat_queue_edit(s: State<'_, App>, id: String, msg_id: String, text: String) -> Res<()> {
+    s.hub.chats.queue_edit(&id, &msg_id, &text)
+}
+
+#[tauri::command]
+async fn chat_queue_drop(s: State<'_, App>, id: String, msg_id: String) -> Res<()> {
+    s.hub.chats.queue_drop(&id, &msg_id)
+}
+
+#[tauri::command]
+async fn chat_stop(s: State<'_, App>, id: String) -> Res<()> {
+    s.hub.chats.stop_answer(&id)
+}
+
+#[tauri::command]
+async fn ui_hints(s: State<'_, App>, env: String, project_id: Option<String>) -> Res<Value> {
+    Ok(s.hub.ui_hints(&env, project_id.as_deref()))
+}
+
 // ---- v2: tasks ----
 
 #[tauri::command]
@@ -1005,6 +1045,7 @@ fn build_app(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     start_timers(&h, &hb);
     config::start(&h, hb.clone(), register_keys);
     updates::start(&h, hb.clone());
+    diag::start(&h, hb.clone());
     auto::start(&h, hb.clone());
     refresh_tray(&h);
     Ok(())
@@ -1222,6 +1263,7 @@ fn main() {
             task_snapshots, restore_snapshot, todo_add, todo_set, todo_remove, take_to_main, give_to_agent,
             list_envs, get_catalog, refresh_catalog, get_limits, check_custom, install_env, login_env,
             list_chats, get_chat, send_chat, retry_chat, side_ask, remove_chat, open_chat_terminal,
+            chat_queue, chat_queue_add, chat_queue_edit, chat_queue_drop, chat_stop, ui_hints,
             note, answer_outward, resume_failed, pick_variant, stop_swarm, nudge, switch_model, freeze,
             hand_off, take_back, start_now, not_a_task, submit_convoy, summary_since, diff_file,
             kits_inventory, kits_export, kits_preview, kits_install, kits_enable, kits_snapshots, kits_rollback, kits_check_update, set_secret,
@@ -1236,7 +1278,8 @@ fn main() {
             gitcmds::gh_publish, gitcmds::git_log_page, gitcmds::git_revert_commit, gitcmds::startup_tax, gitcmds::compact, gitcmds::commit_stat, gitcmds::commit_file_diff,
             config::config_open, config::config_errors,
             auto::auto_get, auto::auto_schedule_save, auto::auto_schedule_remove, auto::auto_schedule_toggle, auto::auto_suggest_scan,
-            auto::auto_suggest_do, auto::auto_suggest_dismiss, auto::auto_suggest_nightly, auto::auto_ci_set, auto::auto_ci_poll,
+            auto::auto_issue_answer, sessions::sessions_list, sessions::session_continue, auto::auto_suggest_do, auto::auto_suggest_dismiss, auto::auto_suggest_nightly, auto::auto_ci_set, auto::auto_ci_poll,
+            diag::spend_history, diag::diag_collect, diag::app_update_state, diag::app_update_check, diag::app_update_dismiss,
             preview::preview_open, preview::preview_reload, preview::preview_width, preview::preview_close, preview::preview_pick, preview::proof_shot
         ])
         .build(tauri::generate_context!())

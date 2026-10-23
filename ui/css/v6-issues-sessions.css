@@ -1,0 +1,13 @@
+/* v6: issues in «Предлагаю», the question «Закрыть issue #N?», sessions from the terminal. Tokens only. */
+.a4-asks { display: grid; gap: 4px; margin: 0 0 12px; padding: 10px 12px; border: 1px solid var(--human-line); border-left: 3px solid var(--human); border-radius: var(--radius-sm); background: var(--human-bg); }
+.a4-asks > h3 { font-size: 13px; font-weight: 650; }
+.a4-ask { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 12px; align-items: start; padding: 8px 0; border-top: 1px solid var(--human-line); }
+.a4-asks > h3 + .a4-ask { border-top: 0; }
+.a4-card.issue .a4-loc code { color: var(--accent); }
+.a4-issue-note { margin: 0 0 8px; color: var(--ink3); }
+.a4-h .a4-ses { margin-top: 10px; }
+.ses6 .ses-pick { max-width: 320px; margin-bottom: 8px; }
+.ses-list { margin-bottom: 10px; }
+.ses-row .a4-main b { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.ses-row.bad .a4-main b { color: var(--ink3); }
+.ses-foot { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }

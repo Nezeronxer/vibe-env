@@ -1,0 +1,39 @@
+/* v6 (task 28): «Расходы», «О программе», the bar «Вышла версия X», a lane waiting for its limit. Tokens only. */
+.ops6 .a4-panel { margin-bottom: 20px; }
+.ops6 .a4-panel > h2 { margin-bottom: 8px; }
+
+/* «Расходы»: one table, numbers right-aligned in tabular figures, a hairline between days */
+.sp-range { margin-bottom: 12px; }
+.sp-wrap { overflow-x: auto; }
+.sp-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.sp-table th, .sp-table td { padding: 7px 10px; text-align: left; white-space: nowrap; }
+.sp-table th { font-size: 12px; font-weight: 600; color: var(--ink3); border-bottom: 1px solid var(--line2); }
+.sp-table td { border-top: 1px solid transparent; }
+.sp-table .sp-n { text-align: right; font-variant-numeric: tabular-nums; }
+.sp-table tr.sp-first td { border-top-color: var(--line); }
+.sp-table tbody tr:first-child td { border-top-color: transparent; }
+.sp-table .sp-day { color: var(--ink2); }
+.sp-table tr.sp-month .sp-day { font-style: italic; }
+.sp-table .sp-none { color: var(--ink3); }
+.sp-table tfoot th, .sp-table tfoot td { border-top: 1px solid var(--line2); border-bottom: 0; font-weight: 650; color: var(--ink); }
+.sp-tag { margin-left: 8px; padding: 0 6px; border: 1px solid var(--line2); border-radius: var(--radius-sm); font-size: 11.5px; color: var(--ink2); }
+.sp-empty { padding: 28px 4px 18px; display: grid; gap: 4px; }
+.sp-empty b { font-size: 14px; font-weight: 650; }
+
+/* «О программе» */
+.about-ver { margin-top: 4px; font-variant-numeric: tabular-nums; color: var(--ink2); }
+.about-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 20px; align-items: start; }
+.about-grid .a4-panel { margin-bottom: 0; display: grid; gap: 6px; }
+.about-grid .a4-panel p { max-width: 64ch; }
+.about-off { color: var(--ink2); }
+.about-acts { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 6px; }
+@media (max-width: 860px) { .about-grid { grid-template-columns: minmax(0, 1fr); } }
+
+/* the bar «Вышла версия X»: quiet, bottom left above the status bar (the popups of CLI updates are bottom right) */
+.appupd6 { position: fixed; left: 16px; bottom: 52px; z-index: 60; display: flex; align-items: center; gap: 10px; max-width: calc(100vw - 32px);
+  padding: 8px 10px 8px 12px; border: 1px solid var(--line2); border-radius: var(--radius-pane); background: var(--card-fx); color: var(--ink); box-shadow: var(--shadow); }
+.appupd6 b { font-weight: 600; }
+
+/* a lane of the swarm on its limit: it waits, the others go on */
+.st.st-wait { color: var(--ink2); }
+.lane.paused .lane-n small { color: var(--accent); }

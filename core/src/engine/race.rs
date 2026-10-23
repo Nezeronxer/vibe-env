@@ -3,7 +3,7 @@
 //! pick of the person or of the timer, then the usual merge queue. Also `pick_variant`, `stop_swarm`
 //! and the view of the window.
 use super::flow::{gerr, Flow, Res};
-use super::lanes::{Lane, LaneEnd};
+use super::lanes::{Lane, LaneEnd, PauseEnd};
 use super::roles::pick;
 use super::state::{Advice, Asked, LaneState, Variant};
 use super::steps::Structured;
@@ -132,7 +132,7 @@ impl Engine {
             });
         }
         let todo: Vec<String> =
-            self.state(&id).swarm.variants.iter().filter(|v| matches!(v.state, LaneState::Waiting | LaneState::Running | LaneState::Interrupted)).map(|v| v.id.clone()).collect();
+            self.state(&id).swarm.variants.iter().filter(|v| matches!(v.state, LaneState::Waiting | LaneState::Running | LaneState::Interrupted | LaneState::Paused { .. })).map(|v| v.id.clone()).collect();
         {
             let _mode = self.lanes_mode(&id);
             std::thread::scope(|sc| {
@@ -155,6 +155,10 @@ impl Engine {
         if sw.variants.iter().any(|v| v.state == LaneState::Asking) {
             self.ask_next_lane(t, p, Status::Working)?;
             return Ok(Flow::Stop);
+        }
+        // every live lane is paused by the limit: now the task waits, until the earliest reset
+        if let Some(at) = sw.variants.iter().filter_map(|v| v.state.resume_at()).min() {
+            return self.pause_for(t, p, &format!("limit:{}", at.to_rfc3339()));
         }
         if sw.variants.iter().any(|v| v.state == LaneState::Passed) {
             // the gates of the variants are the gates of the task; the reviewer compares, a person or the timer picks
@@ -190,13 +194,28 @@ impl Engine {
                 v.why_failed = Some(why);
             })
         };
-        self.lane_waiting(id, RoleKind::Worker, letter, &v0.model);
-        let Some(_seat) = self.take_seat(&t.agent, cancel) else { return interrupted("cancelled".into()) };
-        self.set_variant(id, letter, |v| {
-            v.state = LaneState::Running;
-            v.started_at.get_or_insert_with(|| self.now());
-            v.why_failed = None;
-        });
+        let running = || {
+            self.set_variant(id, letter, |v| {
+                v.state = LaneState::Running;
+                v.started_at.get_or_insert_with(|| self.now());
+                v.why_failed = None;
+            })
+        };
+        // a lane paused by a limit (G64) waits for its own reset first, without a seat
+        #[allow(unused_assignments)] // held for its drop: the seat is given back while the lane is paused
+        let mut seat = match v0.state.resume_at() {
+            Some(at) => match self.lane_pause(id, letter, &t.agent, at, cancel) {
+                PauseEnd::Resume(s) => s,
+                PauseEnd::Stay => return,
+                PauseEnd::Cancelled => return interrupted("cancelled".into()),
+            },
+            None => {
+                self.lane_waiting(id, RoleKind::Worker, letter, &v0.model);
+                let Some(s) = self.take_seat(&t.agent, cancel) else { return interrupted("cancelled".into()) };
+                s
+            }
+        };
+        running();
         let fail = |why: String, gates: Option<Vec<GateResult>>| {
             self.log_variant(id, letter, LogKind::Stage, &format!("variant_failed: {letter}: {why}"));
             self.finish_variant(id, p, letter, LaneState::Failed, Some(why), gates);
@@ -233,11 +252,25 @@ impl Engine {
                 at_task: false,
             };
             let end = self.run_lane(lane, cancel);
+            if let LaneEnd::Limit(resets) = end {
+                // only this lane waits for the reset (G64); the others keep working
+                let at = self.limit_until(resets);
+                self.set_variant(id, letter, |v| v.state = LaneState::Paused { resume_at: at });
+                self.log_variant(id, letter, LogKind::Stage, &format!("lane_paused: {letter} until {}", at.format("%H:%M")));
+                drop(seat);
+                match self.lane_pause(id, letter, &t.agent, at, cancel) {
+                    PauseEnd::Resume(s) => seat = s,
+                    PauseEnd::Stay => return,
+                    PauseEnd::Cancelled => return interrupted("cancelled".into()),
+                }
+                running();
+                continue;
+            }
             if let Some(why) = end.interrupt() {
                 return interrupted(why);
             }
             match end {
-                LaneEnd::Limit(_) | LaneEnd::Auth(_) | LaneEnd::Unavailable(_) | LaneEnd::Budget | LaneEnd::Cancelled => return, // taken by `interrupt` above
+                LaneEnd::Limit(_) | LaneEnd::Auth(_) | LaneEnd::Unavailable(_) | LaneEnd::Budget | LaneEnd::Cancelled => return, // taken above
                 LaneEnd::Failed(e) => return fail(e, None),
                 LaneEnd::Restart => {
                     // silent again after the nudge: a new session in the same copy, and it counts as an attempt
@@ -569,10 +602,12 @@ impl Engine {
                     state: match v.state {
                         LaneState::Waiting => "queued",
                         LaneState::Running | LaneState::Interrupted | LaneState::Asking => "running",
+                        LaneState::Paused { .. } => "paused",
                         LaneState::Passed => "passed",
                         LaneState::Failed => "failed",
                     }
                     .into(),
+                    resume_at: v.state.resume_at().map(|d| d.to_rfc3339()),
                     gate: (v.total > 0 || !v.gates.is_empty()).then_some(Gate { passed: v.green, total: v.total }),
                     score: v.scores.map(|s| s.iter().map(|x| *x as f32).sum::<f32>() / 4.0),
                     summary: v.summary.clone(),
@@ -607,10 +642,12 @@ impl Engine {
                 state: match x.state {
                     LaneState::Waiting => "waiting",
                     LaneState::Running | LaneState::Interrupted | LaneState::Asking => "running",
+                    LaneState::Paused { .. } => "paused",
                     LaneState::Passed => "done",
                     LaneState::Failed => "failed",
                 }
                 .into(),
+                resume_at: x.state.resume_at().map(|d| d.to_rfc3339()),
             })
             .collect();
         if spec.mode == SwarmMode::Council {

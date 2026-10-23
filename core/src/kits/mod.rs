@@ -7,7 +7,7 @@
 
 mod diff;
 mod layout;
-mod scrub;
+use crate::scrub;
 mod secrets;
 mod snap;
 mod source;

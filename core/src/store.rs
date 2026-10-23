@@ -1,5 +1,5 @@
 use crate::model::{Catalog, Chat, ChatMsg, EnvId, EnvLimits, LogEvent, Project, ProjectId, Settings, Task};
-use chrono::{DateTime, Local, NaiveDate};
+use chrono::{DateTime, Datelike, Local, NaiveDate};
 use std::collections::BTreeMap;
 use serde::{Deserialize, Serialize};
 use std::fs;
@@ -27,6 +27,44 @@ pub struct DaySpend {
     pub day: Option<NaiveDate>,
     pub spent_usd: f64,
     pub extra_usd: f64,
+}
+
+const SPEND_FILE: &str = "spend_history.json";
+/// Days kept one by one; older days fold into their month (G70.1).
+pub const SPEND_KEEP_DAYS: i64 = 400;
+
+/// What runs spent on one day (or one month, `month`) in one project and env. `usd` None = the env does not
+/// report money ("нет данных", never 0); tokens None = not reported. A chat's spending is a row of its own.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct SpendRow {
+    pub day: NaiveDate,
+    #[serde(default)]
+    pub month: bool,
+    /// The project's id; None = not known (a chat whose project the run did not say).
+    pub project: Option<ProjectId>,
+    pub env: EnvId,
+    #[serde(default)]
+    pub chat: bool,
+    pub usd: Option<f64>,
+    pub tokens_in: Option<u64>,
+    pub tokens_out: Option<u64>,
+}
+
+impl SpendRow {
+    fn same_row(&self, o: &SpendRow) -> bool {
+        self.day == o.day && self.month == o.month && self.project == o.project && self.env == o.env && self.chat == o.chat
+    }
+    fn add(&mut self, o: &SpendRow) {
+        fn sum<T: Copy + std::ops::Add<Output = T>>(a: Option<T>, b: Option<T>) -> Option<T> {
+            match (a, b) {
+                (Some(x), Some(y)) => Some(x + y),
+                (x, y) => x.or(y),
+            }
+        }
+        self.usd = sum(self.usd, o.usd);
+        self.tokens_in = sum(self.tokens_in, o.tokens_in);
+        self.tokens_out = sum(self.tokens_out, o.tokens_out);
+    }
 }
 
 #[derive(Serialize, Deserialize, Default, Clone)]
@@ -195,6 +233,11 @@ impl Store {
         self.state.chats.iter().filter(|c| c.env == env).cloned().collect()
     }
 
+    /// v6 (G62): every chat of every env, for what `Chats::new` brings back after a restart.
+    pub fn all_chats(&self) -> Vec<Chat> {
+        self.state.chats.clone()
+    }
+
     pub fn chat(&self, id: &str) -> Option<Chat> {
         self.state.chats.iter().find(|c| c.id == id).cloned()
     }
@@ -296,5 +339,35 @@ impl Store {
         d.spent_usd += spent_usd;
         d.extra_usd += extra_usd;
         self.put_map("day_spend.json", env, d)
+    }
+
+    // ---- spend history (G70): money and tokens by day, project and env ----
+
+    /// The history, oldest first; `from`/`to` bound the day (both inclusive). A month row counts in the range
+    /// when its first day does.
+    pub fn spend_history(&self, from: Option<NaiveDate>, to: Option<NaiveDate>) -> Vec<SpendRow> {
+        let all: Vec<SpendRow> = fs::read(self.dir.join(SPEND_FILE)).ok().and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default();
+        all.into_iter().filter(|r| from.is_none_or(|f| r.day >= f) && to.is_none_or(|t| r.day <= t)).collect()
+    }
+
+    /// Adds a run's spending to its row (same day, project, env, chat or not); rows older than
+    /// `SPEND_KEEP_DAYS` before `today` fold into their month.
+    pub fn add_spend(&self, row: SpendRow, today: NaiveDate) -> Result<()> {
+        let mut all = self.spend_history(None, None);
+        all.push(row);
+        let keep_from = today - chrono::Duration::days(SPEND_KEEP_DAYS);
+        let mut out: Vec<SpendRow> = Vec::with_capacity(all.len());
+        for mut r in all {
+            if !r.month && r.day < keep_from {
+                r.day = r.day.with_day(1).unwrap_or(r.day);
+                r.month = true;
+            }
+            match out.iter_mut().find(|x| x.same_row(&r)) {
+                Some(x) => x.add(&r),
+                None => out.push(r),
+            }
+        }
+        out.sort_by_key(|r| r.day);
+        write_atomic(&self.dir.join(SPEND_FILE), &serde_json::to_vec(&out)?)
     }
 }

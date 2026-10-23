@@ -1,5 +1,7 @@
 //! HTTP GET for the catalogs and the updates through the system `curl` (v4 bounds): no TLS stack of our own, a size
 //! limit and a time limit on every call, HTTPS only. `FakeFetch` answers from a table for tests.
+pub mod release;
+
 use std::collections::BTreeMap;
 use std::io::Read;
 use std::process::{Command, Stdio};

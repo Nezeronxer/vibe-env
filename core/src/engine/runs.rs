@@ -97,6 +97,26 @@ impl Engine {
     /// Adds a cost to the day of the env (what a chat's run costs too).
     pub(crate) fn add_day_cost(&self, env: &str, cost: f64) {
         let _ = lk(&self.store).add_day_spend(env, self.now().date_naive(), cost, 0.0);
+        // only a chat's run comes here alone (a task's goes through `add_cost`): its project is not known here
+        self.record_spend(None, env, true, Some(cost));
+    }
+
+    /// A chat's run cost `cost` in `project`: the day of the env, and the chat's own row of the history (G70).
+    pub fn add_chat_cost(&self, env: &str, project: &str, cost: f64) {
+        let _ = lk(&self.store).add_day_spend(env, self.now().date_naive(), cost, 0.0);
+        self.record_spend(Some(project), env, true, Some(cost));
+    }
+
+    /// One run's spending in the history (G70): `usd` None = the env reports no money.
+    pub(crate) fn record_spend(&self, project: Option<&str>, env: &str, chat: bool, usd: Option<f64>) {
+        let today = self.now().date_naive();
+        let row = crate::store::SpendRow { day: today, month: false, project: project.map(String::from), env: env.to_string(), chat, usd, tokens_in: None, tokens_out: None };
+        let _ = lk(&self.store).add_spend(row, today);
+    }
+
+    /// The spending history, by day, project and env (oldest first).
+    pub fn spend_history(&self, from: Option<chrono::NaiveDate>, to: Option<chrono::NaiveDate>) -> Vec<crate::store::SpendRow> {
+        lk(&self.store).spend_history(from, to)
     }
 
     /// When a limit the run hit resets: the time of the message, else a used-up window of the run, else one
@@ -116,7 +136,8 @@ impl Engine {
             let _ = st.upsert_task(&t);
             t
         };
-        self.add_day_cost(env, cost);
+        let _ = lk(&self.store).add_day_spend(env, self.now().date_naive(), cost, 0.0);
+        self.record_spend(Some(&t.project_id), env, false, Some(cost));
         self.emit(EngineEvent::TaskChanged(t));
         self.log(task_id, LogKind::Stage, &format!("{COST_LOG}{cost:.4} ({role:?})"));
     }
@@ -127,8 +148,14 @@ impl Engine {
         if let Some(w) = &f.windows {
             self.record_usage(cx.env, w.clone());
         }
-        if let Some(c) = f.cost {
-            self.add_cost(cx.task_id, cx.env, cx.role, c);
+        match f.cost {
+            Some(c) => self.add_cost(cx.task_id, cx.env, cx.role, c),
+            // the run is in the history even when the env says nothing of money: "нет данных", not 0
+            None => {
+                if let Some(t) = self.task(cx.task_id) {
+                    self.record_spend(Some(&t.project_id), cx.env, false, None);
+                }
+            }
         }
         if let Some(msg) = &f.auth {
             return Next::Auth(msg.clone());

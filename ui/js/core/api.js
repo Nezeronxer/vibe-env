@@ -24,6 +24,10 @@
     'market_search', 'market_item', 'market_plan', 'market_apply', 'market_installed', 'market_remove', 'market_sources', 'market_set_sources',
     'task_snapshots', 'restore_snapshot', 'todo_add', 'todo_set', 'todo_remove', 'take_to_main', 'give_to_agent',
     'cli_status', 'cli_update', 'updates_history', 'gh_publish', 'git_log_page', 'git_revert_commit', 'config_open', 'config_errors',
+    // v6 (task 27): the queue of a chat on disk, stopping an answer, the words of the spinner
+    'chat_queue', 'chat_queue_add', 'chat_queue_edit', 'chat_queue_drop', 'chat_stop', 'ui_hints',
+    // v6 (task 28): spending by day, the error report, the app's own release
+    'spend_history', 'diag_collect', 'app_update_state', 'app_update_check', 'app_update_dismiss',
   ]);
   const EVENTS = new Set(['task-changed', 'task-log', 'task-removed', 'project-changed', 'chat-msg', 'limits-changed', 'catalog-changed', 'frozen',
     'focus-input', 'open-task', 'tauri://drag-enter', 'tauri://drag-leave', 'tauri://drag-drop',
@@ -33,7 +37,11 @@
     // v3: actions of agents with output and diff, the answer while it is written
     'task-action', 'chat-action', 'chat-delta',
     // v4
-    'term-exit', 'cli-updated', 'new-model', 'config-changed', 'windows-changed', 'window-return', 'terms-restored']);
+    'term-exit', 'cli-updated', 'new-model', 'config-changed', 'windows-changed', 'window-return', 'terms-restored',
+    // v6 (task 27): the thoughts of the model, the queue of a chat
+    'chat-thinking', 'chat-queue',
+    // v6 (task 28): a newer release of the app
+    'app-update']);
 
   const tauri = () => window.__TAURI__;
   function call(cmd, args) {

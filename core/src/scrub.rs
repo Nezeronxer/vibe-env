@@ -1,5 +1,6 @@
-//! Keeps secrets and the home folder out of an exported kit: values under secret-looking
-//! names and token-looking strings become `${NAME}`, home paths become `~`.
+//! Keeps secrets and the home folder out of what leaves the app's hands (an exported kit, the error
+//! report, the app log): values under secret-looking names and token-looking strings become `${NAME}`,
+//! home paths become `~`. Moved out of `kits` (G71.1); kits uses it as before.
 
 use regex::Regex;
 use serde_json::Value;
@@ -279,6 +280,14 @@ impl Scrubber {
         !token_rules().iter().any(|(_, r)| r.is_match(&t))
             && !self.values.keys().any(|v| v.len() >= 6 && t.contains(v.as_str()))
     }
+}
+
+/// One pass of the text rules over `s` (tokens, `NAME=value`, userinfo, bearer, home paths), for text
+/// that leaves the app: the error report, the app log.
+pub fn clean(s: &str, home: &str) -> String {
+    let mut sc = Scrubber::new(home);
+    let t = sc.text(s, "report");
+    sc.final_pass(&t)
 }
 
 /// Names a kit file must never carry, whatever its group.

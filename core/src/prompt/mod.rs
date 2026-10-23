@@ -402,6 +402,8 @@ pub fn parse_signals(text: &str) -> Signals {
 
 /// "Continue where you stopped."
 pub const CONTINUE: &str = "Continue where you stopped.";
+/// The first words to a session taken over from a terminal (G68.1): it holds its own context, so nothing is repeated.
+pub const RESUME: &str = "This session was started in a terminal and is now continued by an automated tool in a separate copy of the project. Carry on from where it stopped, finish the work, run the project's tests, and say briefly what you changed.";
 
 pub fn tests_failed_prompt(output: &str) -> String {
     format!(

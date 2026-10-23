@@ -3,7 +3,7 @@
 //! finished parts land in the task's branch one by one through the same merge queue as main (rebase,
 //! gates, fast-forward). Then the whole task goes through the gates, the review and the merge as usual.
 use super::flow::{gerr, Flow, Res};
-use super::lanes::{Lane, LaneEnd};
+use super::lanes::{Lane, LaneEnd, PauseEnd};
 use super::state::{Asked, LaneState, PartRt};
 use super::steps::Structured;
 use super::*;
@@ -103,6 +103,10 @@ impl Engine {
         if sw.parts.iter().any(|x| x.state == LaneState::Asking) {
             self.ask_next_lane(t, p, Status::Working)?;
             return Ok(Flow::Stop);
+        }
+        // every live part is paused by the limit: now the task waits, until the earliest reset
+        if let Some(at) = sw.parts.iter().filter_map(|x| x.state.resume_at()).min() {
+            return self.pause_for(t, p, &format!("limit:{}", at.to_rfc3339()));
         }
         if let Some(x) = sw.parts.iter().find(|x| x.state == LaneState::Failed) {
             // what landed stays in the task's copy; the person lifts it as a single executor
@@ -219,12 +223,27 @@ impl Engine {
                 x.why_failed = Some(why);
             })
         };
-        self.lane_waiting(id, RoleKind::Worker, letter, &x0.model);
-        let Some(_seat) = self.take_seat(&t.agent, cancel) else { return interrupted("cancelled".into()) };
-        self.set_part(id, letter, |x| {
-            x.state = LaneState::Running;
-            x.why_failed = None;
-        });
+        let running = || {
+            self.set_part(id, letter, |x| {
+                x.state = LaneState::Running;
+                x.why_failed = None;
+            })
+        };
+        // a part paused by a limit (G64) waits for its own reset first, without a seat
+        #[allow(unused_assignments)] // held for its drop: the seat is given back while the part is paused
+        let mut seat = match x0.state.resume_at() {
+            Some(at) => match self.lane_pause(id, letter, &t.agent, at, cancel) {
+                PauseEnd::Resume(s) => s,
+                PauseEnd::Stay => return,
+                PauseEnd::Cancelled => return interrupted("cancelled".into()),
+            },
+            None => {
+                self.lane_waiting(id, RoleKind::Worker, letter, &x0.model);
+                let Some(s) = self.take_seat(&t.agent, cancel) else { return interrupted("cancelled".into()) };
+                s
+            }
+        };
+        running();
         if !x0.worktree.exists() {
             let dir = self.worktrees_dir.join(format!("{id}-swarm"));
             // from the task's branch as it is now: parts that landed before are in it
@@ -263,11 +282,25 @@ impl Engine {
                 at_task: false,
             };
             let end = self.run_lane(lane, cancel);
+            if let LaneEnd::Limit(resets) = end {
+                // only this part waits for the reset (G64); the others keep working
+                let at = self.limit_until(resets);
+                self.set_part(id, letter, |x| x.state = LaneState::Paused { resume_at: at });
+                self.log_part(id, letter, &format!("lane_paused: {letter} until {}", at.format("%H:%M")));
+                drop(seat);
+                match self.lane_pause(id, letter, &t.agent, at, cancel) {
+                    PauseEnd::Resume(s) => seat = s,
+                    PauseEnd::Stay => return,
+                    PauseEnd::Cancelled => return interrupted("cancelled".into()),
+                }
+                running();
+                continue;
+            }
             if let Some(why) = end.interrupt() {
                 return interrupted(why);
             }
             match end {
-                LaneEnd::Limit(_) | LaneEnd::Auth(_) | LaneEnd::Unavailable(_) | LaneEnd::Budget | LaneEnd::Cancelled => return, // taken by `interrupt` above
+                LaneEnd::Limit(_) | LaneEnd::Auth(_) | LaneEnd::Unavailable(_) | LaneEnd::Budget | LaneEnd::Cancelled => return, // taken above
                 LaneEnd::Failed(e) => return fail(e),
                 LaneEnd::Restart => {
                     // silent again after the nudge: a new session in the same copy, and it counts as an attempt

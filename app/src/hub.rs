@@ -140,6 +140,13 @@ impl Hub {
         self.chats.send(target, msg_id, text)
     }
 
+    /// G84: what the window takes from the env's settings for a project (Claude Code: `spinnerVerbs`); the person's
+    /// own settings only when there is no project.
+    pub fn ui_hints(&self, env: &str, project_id: Option<&str>) -> Value {
+        let cwd = project_id.and_then(|id| self.project(id).ok()).map(|p| p.path).unwrap_or_default();
+        json!(self.adapter(env).map(|a| a.ui_hints(&cwd)).unwrap_or_default())
+    }
+
     /// A page of a task's log (`Engine::task_log`); `before` is a time as the window got it (RFC 3339).
     pub fn task_log(&self, id: &str, before: Option<&str>, limit: usize) -> Res<Vec<nightshift_core::model::LogEvent>> {
         let before = match before {
@@ -179,12 +186,14 @@ struct Slot {
     items: Vec<WinItem>,
 }
 
-/// One event for the window: `task-action {id, action}`, `chat-action {id, msgId, action}`, `chat-delta {id, msgId, text}`.
+/// One event for the window: `task-action {id, action}`, `chat-action {id, msgId, action}`, `chat-delta {id, msgId, text}`,
+/// v6 `chat-thinking {id, msgId, text}`.
 #[derive(Clone, Debug)]
 pub enum WinItem {
     TaskAction { task: String, action: ToolAction },
     ChatAction { chat: String, msg_id: String, action: ToolAction },
     ChatDelta { chat: String, msg_id: String, text: String },
+    ChatThinking { chat: String, msg_id: String, text: String },
 }
 
 impl WinItem {
@@ -192,7 +201,7 @@ impl WinItem {
     pub fn key(&self) -> String {
         match self {
             WinItem::TaskAction { task, .. } => format!("task:{task}"),
-            WinItem::ChatAction { chat, .. } | WinItem::ChatDelta { chat, .. } => format!("chat:{chat}"),
+            WinItem::ChatAction { chat, .. } | WinItem::ChatDelta { chat, .. } | WinItem::ChatThinking { chat, .. } => format!("chat:{chat}"),
         }
     }
     fn send(self, emit: &dyn Fn(&str, Value)) {
@@ -200,11 +209,13 @@ impl WinItem {
             WinItem::TaskAction { task, action } => emit("task-action", json!({ "id": task, "action": action })),
             WinItem::ChatAction { chat, msg_id, action } => emit("chat-action", json!({ "id": chat, "msgId": msg_id, "action": action })),
             WinItem::ChatDelta { chat, msg_id, text } => emit("chat-delta", json!({ "id": chat, "msgId": msg_id, "text": text })),
+            WinItem::ChatThinking { chat, msg_id, text } => emit("chat-thinking", json!({ "id": chat, "msgId": msg_id, "text": text })),
         }
     }
 }
 
-/// Puts `it` into the waiting items: the newer state of the same action replaces the older, text joins the text before it.
+/// Puts `it` into the waiting items: the newer state of the same action replaces the older; a piece of text joins the
+/// waiting text of the same message and the same kind (answer or thought, v6), wherever it is in the list.
 fn merge(items: &mut Vec<WinItem>, it: WinItem) {
     use WinItem::*;
     for old in items.iter_mut() {
@@ -217,13 +228,13 @@ fn merge(items: &mut Vec<WinItem>, it: WinItem) {
                 *a = b.clone();
                 return;
             }
+            (ChatDelta { msg_id: m, text, .. }, ChatDelta { msg_id: n, text: more, .. }) | (ChatThinking { msg_id: m, text, .. }, ChatThinking { msg_id: n, text: more, .. })
+                if m == n =>
+            {
+                text.push_str(more);
+                return;
+            }
             _ => {}
-        }
-    }
-    if let (Some(ChatDelta { msg_id: m, text, .. }), ChatDelta { msg_id: n, text: more, .. }) = (items.last_mut(), &it) {
-        if m == n {
-            text.push_str(more);
-            return;
         }
     }
     items.push(it);
@@ -342,5 +353,26 @@ mod tests {
         let texts: String = lk(&sent).iter().map(|(_, v)| v["text"].as_str().unwrap_or("").to_string()).collect();
         assert_eq!(texts, "abc");
         assert!(lk(&sent).iter().all(|(n, v)| n == "chat-delta" && v["msgId"] == "m1"));
+    }
+
+    /// G80.1/G81: pieces of the answer and of the thoughts of one message come in turns; each kind is joined with
+    /// its own kind of the same message, so the window gets one text event and one thought event, nothing mixed.
+    #[test]
+    fn thoughts_and_text_of_one_message_are_joined_each_by_its_kind() {
+        let sent: Arc<Mutex<Vec<(String, Value)>>> = Arc::default();
+        let s2 = sent.clone();
+        let c = Coalescer::new(Arc::new(move |n: &str, v: Value| lk(&s2).push((n.to_string(), v))));
+        c.push(WinItem::ChatThinking { chat: "c1".into(), msg_id: "m0".into(), text: "warm ".into() }); // goes at once: the slot was idle
+        for (k, t) in [("t", "I "), ("d", "Hel"), ("t", "think"), ("d", "lo"), ("t", ".")] {
+            let (chat, msg_id, text) = ("c1".to_string(), "m1".to_string(), t.to_string());
+            c.push(if k == "t" { WinItem::ChatThinking { chat, msg_id, text } } else { WinItem::ChatDelta { chat, msg_id, text } });
+        }
+        std::thread::sleep(GAP * 3);
+        let got: Vec<(String, String, String)> = lk(&sent).iter().map(|(n, v)| (n.clone(), v["msgId"].as_str().unwrap_or("").into(), v["text"].as_str().unwrap_or("").into())).collect();
+        assert_eq!(got, [
+            ("chat-thinking".to_string(), "m0".to_string(), "warm ".to_string()),
+            ("chat-thinking".into(), "m1".into(), "I think.".into()),
+            ("chat-delta".into(), "m1".into(), "Hello".into()),
+        ]);
     }
 }

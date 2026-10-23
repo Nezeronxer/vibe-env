@@ -226,6 +226,14 @@ impl Engine {
         t.worktree = Some(wt.clone());
         self.save(t)?;
         self.log(&t.id, LogKind::Git, &format!("worktree {} on {}", wt.display(), t.branch));
+        // a session of a terminal goes on in the copy: the CLI looks for it by the folder it runs in
+        if let Some(sid) = t.resume_session.clone() {
+            crate::sessions::copy_into(&p.path, &sid, &wt)?;
+            self.stage(t, "session_copied");
+            let mut pend = self.pending(&t.id);
+            pend.prompt = Some(prompt::RESUME.to_string());
+            self.set_pending(&t.id, &pend)?;
+        }
         let mut copied = util::copy_files(&p.path, &wt, &p.copy_files);
         if !copied.is_empty() {
             self.stage(t, &format!("copied {}", copied.join(", ")));

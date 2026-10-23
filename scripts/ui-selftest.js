@@ -85,6 +85,12 @@ if (process.env.NS_PLAYWRIGHT) (async () => {
   await f14(b, 'http://127.0.0.1:' + srv.address().port, out);
   await b.close(); b = await launch();       // F15 in a fresh browser too
   await f15(b, 'http://127.0.0.1:' + srv.address().port, out);
+  await b.close(); b = await launch();       // v6 task 27 in a fresh browser too
+  await f27(b, 'http://127.0.0.1:' + srv.address().port, out);
+  await b.close(); b = await launch();       // v6 issues and sessions in a fresh browser too
+  await v6is(b, 'http://127.0.0.1:' + srv.address().port, out);
+  await b.close(); b = await launch();       // v6 task 28 (lane on its limit, spending, about, the release bar) in a fresh browser too
+  await ops6(b, 'http://127.0.0.1:' + srv.address().port, out);
   process.stdout.write(out.join('\n') + '\n');
   if (out.some((l) => l.startsWith('FAIL'))) process.exitCode = 1;
   await b.close(); srv.close();
@@ -500,9 +506,10 @@ async function f12(b, base, out) {
   await p.fill('.composer textarea', 'Остановись и сделай без кэша'); await p.waitForTimeout(150);
   await p.click('.now4'); await p.waitForTimeout(1800);
   const n2 = await calls(p);
-  const sentAfter = n2.findIndex((c) => c[0] === 'send_chat' && /без кэша/.test(c[1].text)), cancelAt = n2.findIndex((c) => c[0] === 'cancel');
+  // v6 (task 27): the message goes into the core's queue first (chat_queue_add, first) and the core sends it after the cancel
+  const sentAfter = n2.findIndex((c) => c[0] === 'chat_queue_add' && c[1].first === true && /без кэша/.test(c[1].text)), cancelAt = n2.findIndex((c) => c[0] === 'cancel');
   const q2 = await p.evaluate(() => ({ queued: document.querySelectorAll('.me.queued').length, mine: [...document.querySelectorAll('.cfeed .me .me-b')].map((x) => x.textContent.trim()).filter((x) => /без кэша/.test(x)).length }));
-  ok('F12 1: «Сразу» cancels the run, then the message goes and stops being grey', cancelAt >= 0 && sentAfter > cancelAt && q2.queued === 0 && q2.mine >= 1, { n2: n2.map((c) => c[0]), q2 });
+  ok('F12 1: «Сразу» puts the message first in the core queue, cancels the run, then the message goes and stops being grey', cancelAt >= 0 && sentAfter >= 0 && sentAfter < cancelAt && q2.queued === 0 && q2.mine >= 1, { n2: n2.map((c) => c[0]), q2 });
   await p.close();
   // 2: the side question
   p = await open('env=claude&chat=how');
@@ -675,5 +682,201 @@ async function f15(b, base, out) {
   ok('F15: every preview word exists in ru and en', words.n > 30 && !words.missing.length, words);
   const lay = await p.evaluate(() => document.documentElement.scrollWidth > innerWidth);
   ok('F15: no horizontal scroll at 1440 with the preview pane', !lay, lay);
+  await p.close();
+}
+
+// v6 (G67, G68) - issues of GitHub in «Предлагаю», the question «Закрыть issue #N?», sessions from the terminal (mock-sessions.js plays the core)
+async function v6is(b, base, out) {
+  const ok = (name, cond, detail) => out.push((cond ? 'PASS ' : 'FAIL ') + name + (cond ? '' : ' ' + JSON.stringify(detail)));
+  const open = async (qs) => {
+    const p = await b.newPage({ viewport: { width: 1440, height: 900 } });
+    await p.goto(base + '/index.html?lang=ru&platform=mac&env=claude&chat=new' + (qs || '')); await p.waitForTimeout(1300);
+    return p;
+  };
+  // issues next to the TODOs
+  let p = await open('&issues=on&ask=1');
+  await p.click('.nb-auto'); await p.waitForTimeout(500);
+  const cards = () => p.evaluate(() => ({ n: document.querySelectorAll('#a4-sug .a4-card').length, issues: [...document.querySelectorAll('#a4-sug .a4-card.issue')].map((c) => c.textContent), todos: document.querySelectorAll('#a4-sug .a4-card:not(.issue)').length, nav: String(NS.auto.count()), links: document.querySelectorAll('#a4-sug .a4-card.issue .a4-loc .linkb').length }));
+  const c0 = await cards();
+  ok('G67: the issues of the project stand in «Предлагаю» next to the TODO cards, marked «issue #N» with a link; the TODOs are all still there', c0.issues.length === 2 && c0.todos === 5 && /issue #58/.test(c0.issues[0]) && /Падает экспорт счетов/.test(c0.issues[0]) && c0.links === 2, c0);
+  ok('G67: the bar button counts suggestions and the open question (5 + 2 + 1)', c0.nav === '8', c0);
+  const ask = await p.evaluate(() => { const a = document.querySelector('#a4-sug .a4-ask'); return a && { text: a.textContent, btns: [...a.querySelectorAll('button')].map((x) => x.textContent) }; });
+  ok('G67.2: a merged issue task asks «Закрыть issue #44?» with «Закрыть» and «Оставить» and says nothing is closed before the answer', ask && /Закрыть issue #44\?/.test(ask.text) && ask.btns.join('|') === 'Закрыть|Оставить' && /Пока не нажмёшь «Закрыть», issue остаётся открытым/.test(ask.text), ask);
+  await p.click('#a4-sug .a4-ask .btn.primary'); await p.waitForTimeout(400);
+  const after = await p.evaluate(async () => ({ asks: document.querySelectorAll('#a4-sug .a4-ask').length, data: await NS.api.call('auto_get').then((d) => d.issues.asks.length) }));
+  ok('G67.2: after «Закрыть» the question is gone for good', after.asks === 0 && after.data === 0, after);
+  await p.click('#a4-sug .a4-card.issue:nth-child(1) .btn'); await p.waitForTimeout(500);
+  const made = await p.evaluate(async () => (await NS.api.call('list_tasks')).filter((t) => /^Issue #58/.test(t.prompt)).length);
+  const c1 = await cards();
+  ok('G67.1: «Сделать» on an issue queues a task from it and the card is gone', made === 1 && c1.issues.length === 1, { made, c1 });
+  await p.close();
+  p = await open('&issues=on');
+  await p.click('.nb-auto'); await p.waitForTimeout(500);
+  await p.click('#a4-sug .a4-card.issue:nth-child(1) .a4-acts .linkb'); await p.waitForTimeout(400);
+  const c2 = await p.evaluate(() => ({ issues: document.querySelectorAll('#a4-sug .a4-card.issue').length }));
+  ok('G67.1: «Не предлагать такое» removes an issue card', c2.issues === 1, c2);
+  await p.close();
+  // no gh
+  p = await open('&issues=nogh');
+  await p.click('.nb-auto'); await p.waitForTimeout(500);
+  const quiet = await p.evaluate(() => ({ note: (document.querySelector('.a4-issue-note') || {}).textContent, todos: document.querySelectorAll('#a4-sug .a4-card').length, issues: document.querySelectorAll('#a4-sug .a4-card.issue').length }));
+  ok('G67: without gh the issues give a quiet line with the reason and the TODO cards work as before', /issues недоступны: не найден gh/.test(quiet.note || '') && quiet.todos === 5 && quiet.issues === 0, quiet);
+  await p.close();
+  // sessions
+  p = await open('&screen=sessions');
+  const rows = () => p.evaluate(() => [...document.querySelectorAll('.ses-row')].map((r) => ({ txt: r.textContent, bad: r.classList.contains('bad'), off: r.querySelector('button').disabled })));
+  await p.waitForTimeout(400);
+  const r0 = await rows();
+  ok('G68: the project shows its sessions from the terminal: date, first words, the number of messages, the branch', r0.length === 5 && /Разбери, почему тесты по налогам/.test(r0[0].txt) && /38 сообщ\./.test(r0[0].txt) && /ветка fix\/tax-rounding/.test(r0[0].txt), r0[0]);
+  ok('G68.2: a file that cannot be read is marked «не читается», cannot be continued, and the others are shown', r0[3].bad && /не читается/.test(r0[3].txt) && r0[3].off && !r0[4].off && /больше 4000 сообщ\./.test(r0[4].txt), r0[3]);
+  await p.click('.ses-row:nth-child(1) .btn'); await p.waitForTimeout(400);
+  const cont = await p.evaluate(async () => ({ off: document.querySelector('.ses-row .btn').disabled, task: (await NS.api.call('list_tasks')).filter((t) => t.resume_session === '9f1c2e7a-4b1d-4e0a-9c55-0d6a7b21c001').length }));
+  ok('G68.1: «Продолжить» queues a task that resumes that session and the button goes off', cont.off && cont.task === 1, cont);
+  const lay = await p.evaluate(() => document.documentElement.scrollWidth > innerWidth);
+  ok('G68: the sessions screen has no horizontal scroll at 1440', !lay, lay);
+  await p.close();
+  p = await open('&screen=sessions&sessions=empty'); await p.waitForTimeout(400);
+  ok('G68.2: no sessions - a plain sentence, not an empty screen', /Сессий из терминала для этого проекта нет/.test(await p.evaluate(() => (document.querySelector('.ses-none') || {}).textContent || '')), null);
+  await p.close();
+  p = await open('&screen=sessions&sessions=many'); await p.waitForTimeout(400);
+  const n1 = (await rows()).length;
+  await p.click('.ses-foot .btn'); await p.waitForTimeout(300);
+  const n2 = (await rows()).length;
+  await p.click('.ses-foot .btn'); await p.waitForTimeout(300);
+  const n3 = (await rows()).length, more = await p.evaluate(() => !!document.querySelector('.ses-foot .btn'));
+  ok('G68.3: hundreds of sessions come by fifty, the newest on top, and «Показать ещё» ends with the last page', n1 === 50 && n2 === 100 && n3 === 130 && !more && /Задача номер 130/.test((await rows())[0].txt), { n1, n2, n3, more });
+  const words = await p.evaluate(() => { const d = NSI18n.dicts; const keys = Object.keys(d.ru).filter((k) => /^iss\.|^ses\.|^err\.(session_|no_question|bad_session_id|no_home)/.test(k)); return { n: keys.length, missing: keys.filter((k) => !(k in d.en)), built: ['gh_not_installed', 'gh_not_logged_in', 'gh_error'].map((s) => NSI18n.has('iss.why.' + s)) }; });
+  ok('G67/G68: every new word exists in ru and en', words.n > 30 && !words.missing.length && words.built.every(Boolean), words);
+  await p.close();
+}
+
+// v6 task 27 - "думает" right after sending (G80, G84), the thoughts, the smooth print (G81) and the lines of the app in words (G62)
+async function f27(b, base, out) {
+  const ok = (name, cond, detail) => out.push((cond ? 'PASS ' : 'FAIL ') + name + (cond ? '' : ' ' + JSON.stringify(detail)));
+  const open = async (qs, opts) => { const p = await b.newPage(Object.assign({ viewport: { width: 1440, height: 900 } }, opts || {})); await p.goto(base + '/index.html?lang=ru&platform=mac&' + qs); await p.waitForTimeout(1700); return p; };
+  const send = (p, text) => p.evaluate((text) => {
+    const ta = document.querySelector('.composer textarea'); ta.value = text; ta.dispatchEvent(new Event('input'));
+    document.querySelector('#sendBtn').click();
+    const lb = document.querySelector('.cfeed .livebar'), mine = [...document.querySelectorAll('.cfeed .me .me-b')].some((x) => x.textContent.includes(text));
+    return { shown: !lb.hidden && lb.classList.contains('thinking'), verb: lb.querySelector('.lv-v').textContent, mine, last: document.querySelector('.cfeed').lastElementChild === lb };
+  }, text);
+  // 1: the same frame as the bubble, the env's own words, the thoughts folded
+  let p = await open('env=claude&chat=how&reply=5000&thoughts=1&verbs=Колдую,Варю');
+  const s1 = await send(p, 'Почему кэш живёт 5 минут?');
+  ok('G80: «думает» shows in the same frame as the sent bubble, where the answer will be', s1.shown && s1.mine && s1.last, s1);
+  ok('G84: the indicator speaks the words of `spinnerVerbs` when the settings give them', s1.verb === 'Колдую', s1.verb);
+  await p.waitForTimeout(2300);
+  const s2 = await p.evaluate(() => { const lb = document.querySelector('.cfeed .livebar'); return { verb: lb.querySelector('.lv-v').textContent, meta: lb.querySelector('.lv-m').textContent, anim: getComputedStyle(lb.querySelector('.lv-v')).animationName }; });
+  ok('G80: the word changes after ~2 s, the timer counts seconds, the word shimmers', s2.verb === 'Варю' && /\(0:0[2-3]/.test(s2.meta) && s2.anim === 'think-shimmer', s2);
+  const th = await p.evaluate(() => { const t = document.querySelector('.cfeed .thought'); return t && { label: t.querySelector('b').textContent, folded: t.querySelector('.th-b').hidden, color: getComputedStyle(t).color, ink: getComputedStyle(document.documentElement).getPropertyValue('--ink3').trim() }; });
+  ok('G80.1: the thoughts are one grey folded line «Думает»', th && th.label === 'Думает' && th.folded, th);
+  await p.click('.cfeed .th-h'); await p.waitForTimeout(100);
+  const th2 = await p.evaluate(() => { const b = document.querySelector('.cfeed .th-b'); return { open: !b.hidden, text: b.textContent }; });
+  ok('G80.1: a click opens the text of the thoughts', th2.open && /кэш отчётов/.test(th2.text), th2);
+  await p.evaluate(() => { window.__realNow = Date.now; const real = Date.now.bind(Date); Date.now = () => real() + 65000; });
+  await p.waitForTimeout(400);
+  const s3 = await p.evaluate(() => { const lb = document.querySelector('.cfeed .livebar'); const st = lb.querySelector('.lv-stop'); return { verb: lb.querySelector('.lv-v').textContent, meta: lb.querySelector('.lv-m').textContent, stop: st && !st.hidden && st.textContent }; });
+  ok('G80.2: after 60 s «Долго думает · 1:05» and «Стоп»', s3.verb === 'Долго думает' && /^· 1:0[5-7]$/.test(s3.meta) && s3.stop === 'Стоп', s3);
+  await p.evaluate(() => { Date.now = window.__realNow; });
+  await p.waitForTimeout(3500);
+  const s4 = await p.evaluate(() => { const lb = document.querySelector('.cfeed .livebar'); return { hidden: lb.hidden || !lb.classList.contains('thinking'), answer: [...document.querySelectorAll('.cfeed .msg.ai .msg-b')].some((x) => /Смотрю код/.test(x.textContent)) }; });
+  ok('G80: «думает» goes away with the first text of the answer', s4.hidden && s4.answer, s4);
+  await p.close();
+  // 2: reduced motion: no shimmer, the word stays
+  p = await open('env=claude&chat=how&reply=5000', { reducedMotion: 'reduce' });
+  await send(p, 'Где тесты?');
+  await p.waitForTimeout(2400);
+  const r1 = await p.evaluate(() => { const v = document.querySelector('.cfeed .livebar .lv-v'); return { verb: v.textContent, anim: getComputedStyle(v).animationName, dot: getComputedStyle(document.querySelector('.cfeed .livebar .lv-spin')).animationName }; });
+  ok('G80.2: with reduced motion nothing shimmers or pulses and the word does not turn', r1.verb === 'Думаю' && r1.anim === 'none' && r1.dot === 'none', r1);
+  await p.close();
+  // 3: the smooth print: a streamed answer (chat-delta) and a whole message (a CLI without deltas) grow by ≤ 40 characters a frame in one node
+  const measure = (p) => p.evaluate(() => new Promise((done) => {
+    let node = null, text = null, prev = 0; const steps = [], start = performance.now(); let same = true;
+    const tick = () => {
+      const rv = document.querySelector('.cfeed .msg.streaming .rv');
+      if (rv && !node) { node = rv; text = rv.firstChild; }
+      if (node) {
+        if (rv && rv !== node) same = false;
+        if (node.firstChild !== text) same = false;
+        const n = text ? text.length : 0; if (n > prev) steps.push(n - prev); prev = n;
+        if (!node.isConnected) return done({ steps: steps.length, max: Math.max(0, ...steps), same, total: prev, md: !!document.querySelector('.cfeed .msg.ai:not(.streaming) .msg-b .md, .cfeed .msg:not(.streaming) .msg-b') });
+      }
+      if (performance.now() - start > 25000) return done({ timeout: true, steps: steps.length, same });
+      requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  }));
+  p = await open('env=claude&chat=cache&live=fast');
+  const m1 = await measure(p);
+  ok('G81: a streamed answer grows in one node, ≤ 40 characters a frame, then markdown takes its place', !m1.timeout && m1.same && m1.steps > 10 && m1.max <= 40 && m1.md, m1);
+  await p.close();
+  p = await open('env=claude&chat=how&reply=300&long=1');
+  const pm = measure(p);
+  await send(p, 'Расскажи подробно');
+  const m2 = await pm;
+  ok('G81: a whole message of a CLI without deltas prints the same way (one node, ≤ 40 a frame)', !m2.timeout && m2.same && m2.steps > 10 && m2.max <= 40, m2);
+  await p.close();
+  // 4: G81.1 - scrolled up, the feed is not dragged down by the print
+  p = await open('env=claude&chat=how&reply=300&long=1');
+  await send(p, 'Ещё подробнее');
+  await p.waitForTimeout(500);
+  const sc = await p.evaluate(() => new Promise((done) => { const w = document.querySelector('.feed-wrap'); w.scrollTop = 0; w.dispatchEvent(new Event('scroll')); setTimeout(() => done({ top: w.scrollTop, h: w.scrollHeight - w.clientHeight }), 700); }));
+  ok('G81.1: a person who scrolled up stays where they are while the answer prints', sc.top < 80 && sc.h > 200, sc);
+  await p.close();
+  // 5: the lines of the app in words (G62): «Отвечу после HH:MM», «Не ответил: …» with «Повторить», no raw keys
+  p = await open('env=claude&chat=how');
+  await p.evaluate(() => {
+    const at = new Date().toISOString();
+    NS.store.emit('chatmsg', { id: 'sl1', chat_id: 'how', at, who: 'system', text: 'will_answer_after: 12:30', kind: 'warn', reply_to: 'x' });
+    NS.store.emit('chatmsg', { id: 'sl2', chat_id: 'how', at, who: 'system', text: 'not_answered: interrupted', kind: 'error', reply_to: 'x' });
+    NS.store.emit('chatmsg', { id: 'sl3', chat_id: 'how', at, who: 'system', text: 'note_not_passed: task_already_merged', kind: 'warn', reply_to: 'x' });
+  });
+  await p.waitForTimeout(300);
+  const ln = await p.evaluate(() => [...document.querySelectorAll('.cfeed .sysline')].slice(-3).map((x) => x.textContent.trim()));
+  ok('G62: system lines are in words, not raw keys; an interrupted answer has «Повторить»', /Лимит исчерпан\. Отвечу после 12:30/.test(ln[0] || '') && /^Не ответил: приложение закрылось посреди ответа.*Повторить$/.test(ln[1] || '') && /задача уже влита/.test(ln[2] || '') && !ln.some((x) => /[a-z]+_[a-z]+/.test(x)), ln);
+  await p.close();
+}
+
+// v6 (task 28): a lane of the swarm waiting for its limit (G64.1), «Расходы» (G70), «О программе» with the check of the release and
+// the error report (G69, G71), the bar «Вышла версия X»
+async function ops6(b, base, out) {
+  const ok = (name, cond, detail) => out.push((cond ? 'PASS ' : 'FAIL ') + name + (cond ? '' : ' ' + JSON.stringify(detail)));
+  const open = async (qs) => {
+    const p = await b.newPage({ viewport: { width: 1440, height: 900 } });
+    await p.goto(base + '/index.html?lang=ru&platform=mac' + qs); await p.waitForTimeout(1500);
+    return p;
+  };
+  let p = await open('&screen=swarm&swstate=paused');
+  const lane = await p.evaluate(() => ({ lanes: [...document.querySelectorAll('.lane.paused')].map((l) => l.textContent), chip: [...document.querySelectorAll('.st.st-wait')].map((x) => x.textContent), running: document.querySelectorAll('.lane:not(.paused)').length }));
+  ok('G64.1: a lane on the limit says «ждёт лимит до HH:MM» on its track and its card, the other lanes stay', lane.lanes.length === 1 && /C · .*ждёт лимит до \d\d:\d\d/.test(lane.lanes[0]) && lane.chip.some((x) => /ждёт лимит до \d\d:\d\d/.test(x)) && lane.running >= 2, lane);
+  await p.close();
+  p = await open('&screen=spend');
+  const sp = await p.evaluate(() => { const rows = [...document.querySelectorAll('.sp-table tbody tr')].map((r) => [...r.cells].map((c) => c.textContent)); return { rows, foot: (document.querySelector('.sp-table tfoot') || {}).textContent, scroll: document.documentElement.scrollWidth > innerWidth }; });
+  ok('G70: «Расходы» is a table day × project with money and tokens; the chat is a row «чат»; an env without money says «нет данных»', sp.rows.length === 8 && sp.rows.some((r) => /чат/.test(r[1]) && r[3] === '$0.18') && sp.rows.some((r) => r[2] === 'Codex' && r[3] === 'нет данных') && sp.rows.some((r) => /812/.test(r[4])) && !sp.scroll, sp);
+  await p.click('.sp-range button:nth-child(3)'); await p.waitForTimeout(400);
+  const all = await p.evaluate(() => [...document.querySelectorAll('.sp-table tbody tr.sp-month')].map((r) => r.cells[0].textContent));
+  ok('G70.1: «Всё время» shows days older than 400 folded into a month row', all.length === 1 && /за месяц/.test(all[0]), all);
+  await p.close();
+  p = await open('&screen=spend&spend=empty');
+  ok('G70.1: no spending yet - «Расходов пока нет», not an empty table', /Расходов пока нет/.test(await p.evaluate(() => (document.querySelector('.sp-empty') || {}).textContent || '')) && !(await p.evaluate(() => document.querySelector('.sp-table'))), null);
+  await p.close();
+  p = await open('&screen=about');
+  const off = await p.evaluate(() => ({ text: (document.querySelector('#about-updates') || {}).textContent, check: (document.querySelector('#about-check') || {}).disabled, bar: !!document.querySelector('.appupd6') }));
+  ok('G69: without release_feed the check is off and «О программе» says «адрес обновлений не задан»; no bar', /адрес обновлений не задан/.test(off.text || '') && off.check === true && !off.bar, off);
+  await p.click('#about-diag-go'); await p.waitForTimeout(400);
+  const toast = await p.evaluate(() => document.body.textContent.includes('Отчёт готов: /Users/dev/Downloads/nightshift-report-'));
+  ok('G71: «Собрать отчёт об ошибке» makes the zip in Downloads and says where', toast, null);
+  await p.close();
+  p = await open('&update=error&screen=about');
+  const err = await p.evaluate(() => (document.querySelector('#about-updates') || {}).textContent || '');
+  ok('G69.1: a failed check is quiet (no bar) and «О программе» shows its time and error', /Последняя проверка: /.test(err) && /Не вышло проверить: нет сети/.test(err) && !(await p.evaluate(() => document.querySelector('.appupd6'))), err);
+  await p.close();
+  p = await open('&update=new');
+  const bar = await p.evaluate(() => (document.querySelector('.appupd6') || {}).textContent || '');
+  await p.click('.appupd6 .linkb'); await p.waitForTimeout(300);
+  const gone = await p.evaluate(async () => ({ bar: !!document.querySelector('.appupd6'), show: (await NS.api.call('app_update_state')).show }));
+  ok('G69: «Вышла версия X» with a link to the release; closed, it is gone and not shown again for that version', /Вышла версия 0\.2\.0/.test(bar) && /Открыть релиз/.test(bar) && !gone.bar && gone.show === false, { bar, gone });
+  const words = await p.evaluate(() => { const d = NSI18n.dicts; const keys = Object.keys(d.ru).filter((k) => /^(spend|about|appupd|diag)\.|^swarm\.(paused|part_paused)/.test(k)); return { n: keys.length, missing: keys.filter((k) => !(k in d.en)) }; });
+  ok('G64/G69/G70/G71: every new word exists in ru and en', words.n > 40 && !words.missing.length, words);
   await p.close();
 }

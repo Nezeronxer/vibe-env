@@ -7,7 +7,7 @@
   const t = (k, p) => NS.t(k, p);
   const S = NS.store.s;
   const call = (c, a) => NS.api.call(c, a);
-  for (const c of ['auto_get', 'auto_schedule_save', 'auto_schedule_remove', 'auto_schedule_toggle', 'auto_suggest_scan', 'auto_suggest_do', 'auto_suggest_dismiss', 'auto_suggest_nightly', 'auto_ci_set', 'auto_ci_poll']) NS.api.COMMANDS.add(c);
+  for (const c of ['auto_get', 'auto_schedule_save', 'auto_schedule_remove', 'auto_schedule_toggle', 'auto_suggest_scan', 'auto_suggest_do', 'auto_suggest_dismiss', 'auto_suggest_nightly', 'auto_ci_set', 'auto_ci_poll', 'auto_issue_answer']) NS.api.COMMANDS.add(c);
   NS.api.EVENTS.add('auto-changed');
   const fail = (e) => NS.shell.toast(NS.errHuman(NS.api.errText(e)), true);
   const PRESETS = ['daily', 'weekdays', 'weekly'];
@@ -26,7 +26,9 @@
     NS.api.listen('auto-changed', load);
     load();
   }
-  const count = () => (data && data.suggest ? data.suggest.count : 0);
+  const asks = () => (data && data.issues && data.issues.asks) || [];
+  // the button carries what waits for the person: suggestions and the questions «Закрыть issue #N?»
+  const count = () => (data && data.suggest ? data.suggest.count : 0) + asks().length;
   // "каждый день в 03:00", "раз в неделю, среда в 03:00"
   const whenText = (s) => t('auto.w.' + s.preset, { time: s.at, day: t('auto.d' + s.weekday) });
   const stamp = (iso) => {
@@ -83,6 +85,11 @@
 
     // --- suggestions ---
     let finding = false;
+    async function answer(ev, a, close) {
+      ev.currentTarget.disabled = true;
+      try { await call('auto_issue_answer', { taskId: a.task_id, close }); NS.shell.toast(t(close ? 'iss.closed' : 'iss.kept', { n: a.number })); } catch (e) { fail(e); }
+      await load();
+    }
     function drawSug() {
       const sg = (data && data.suggest) || { cards: {}, count: 0, nightly: false };
       const find = h('button', { type: 'button', class: 'btn primary', disabled: finding, text: finding ? t('auto.sug_finding') : t('auto.sug_find'), onclick: async () => {
@@ -93,12 +100,26 @@
       clear(sugBox).append(h('div', { class: 'a4-bar' }, find,
         h('span', { class: 'a4-tg' }, toggle(sg.nightly, t('auto.sug_nightly'), async (v) => { await call('auto_suggest_nightly', { on: v }); await load(); }), h('span', { text: t('auto.sug_nightly') })),
         h('span', { class: 'hint grow', text: sg.count ? t('auto.sug_found', { n: sg.count }) : '' })));
+      // G67.2: «Закрыть issue #N?» - nothing is closed until «Закрыть»
+      const asked = asks();
+      if (asked.length) {
+        sugBox.append(h('section', { class: 'a4-asks', 'aria-label': t('iss.ask_h') }, h('h3', { text: t('iss.ask_h') }), asked.map((a) => h('div', { class: 'a4-ask', dataset: { task: a.task_id } },
+          h('div', { class: 'a4-main' }, h('b', { text: t('iss.ask_q', { n: a.number }) }), h('small', { text: a.title }), h('small', { class: 'mute', text: t('iss.ask_d') })),
+          h('div', { class: 'a4-acts' },
+            h('button', { type: 'button', class: 'btn sm primary', text: t('iss.close'), onclick: (ev) => answer(ev, a, true) }),
+            h('button', { type: 'button', class: 'btn sm', text: t('iss.keep'), onclick: (ev) => answer(ev, a, false) }))))));
+      }
+      const why = Object.values((data && data.issues && data.issues.notes) || {})[0];
+      if (why) sugBox.append(h('p', { class: 'hint a4-issue-note', role: 'status', text: t('iss.note', { why: root.NSI18n.has('iss.why.' + why) ? t('iss.why.' + why) : why }) }));
       const ul = h('ul', { class: 'a4-list sug' });
       for (const [pid, cards] of Object.entries(sg.cards || {})) {
         for (const c of cards) {
-          ul.append(h('li', { class: 'a4-card', dataset: { fp: c.fp } },
+          const iss = c.source && c.source.kind === 'issue' ? c.source : null;
+          const link = iss && /^https:\/\//.test(iss.url || '') ? iss.url : '';
+          ul.append(h('li', { class: 'a4-card' + (iss ? ' issue' : ''), dataset: { fp: c.fp } },
             h('div', { class: 'a4-main' },
-              h('span', { class: 'a4-loc' }, h('code', { text: c.file + ':' + c.line }), h('small', { class: 'mute', text: t('auto.sug_in', { project: projName(pid) }) })),
+              h('span', { class: 'a4-loc' }, iss ? h('code', { text: t('iss.tag', { n: iss.number }) }) : h('code', { text: c.file + ':' + c.line }), h('small', { class: 'mute', text: t('auto.sug_in', { project: projName(pid) }) }),
+                link ? h('button', { type: 'button', class: 'linkb', text: t('iss.open'), onclick: () => call('open_path', { path: link }).catch(fail) }) : null),
               h('b', { text: c.text || t('auto.sug_empty_text') }),
               h('small', { class: 'mute', text: c.marker })),
             h('div', { class: 'a4-acts' },
@@ -148,7 +169,8 @@
     load();
     const panel = (id, title, desc, ...kids) => h('section', { class: 'a4-panel', id }, h('h2', { text: title }), desc ? h('p', { class: 'hint', text: desc }) : null, kids);
     root0.append(h('div', { class: 'auto4' },
-      h('header', { class: 'a4-h' }, h('h1', { text: t('auto.title') }), h('p', { class: 'hint', text: t('auto.lead') })),
+      h('header', { class: 'a4-h' }, h('h1', { text: t('auto.title') }), h('p', { class: 'hint', text: t('auto.lead') }),
+        h('button', { type: 'button', class: 'btn sm a4-ses', text: t('ses.open'), onclick: () => NS.nav('sessions', {}) })),
       h('div', { class: 'a4-grid' },
         h('div', { class: 'a4-col' }, panel('a4-sched', t('auto.sched'), t('auto.sched_d'), sched, form.el)),
         h('div', { class: 'a4-col' },

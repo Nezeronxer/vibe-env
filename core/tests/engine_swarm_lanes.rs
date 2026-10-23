@@ -68,6 +68,100 @@ fn worker_models(w: &FakeAdapter) -> Vec<String> {
     calls_of(w, RoleKind::Worker).into_iter().map(|r| r.model.unwrap_or_default()).collect()
 }
 
+/// Wraps a fake: the worker runs on `model` wait until the test calls `open()`, so one lane keeps working while
+/// the test looks at another.
+struct HoldModel {
+    inner: FakeAdapter,
+    model: &'static str,
+    gate: std::path::PathBuf,
+}
+
+impl HoldModel {
+    fn open(&self) {
+        std::fs::write(&self.gate, "").unwrap();
+    }
+}
+
+impl Adapter for HoldModel {
+    fn id(&self) -> &str {
+        self.inner.id()
+    }
+    fn name(&self) -> &str {
+        self.inner.name()
+    }
+    fn available(&self) -> Result<(), String> {
+        self.inner.available()
+    }
+    fn command(&self, run: &nightshift_core::agent::Run) -> std::process::Command {
+        let inner = self.inner.command(run);
+        if run.role != RoleKind::Worker || run.model.as_deref() != Some(self.model) {
+            return inner;
+        }
+        let script = inner.get_args().nth(1).unwrap().to_string_lossy().to_string();
+        let mut c = std::process::Command::new("sh");
+        c.arg("-c").arg(format!("while [ ! -e '{}' ]; do sleep 0.02; done\n{script}", self.gate.display())).current_dir(&run.cwd).stdout(std::process::Stdio::piped());
+        c
+    }
+    fn parse(&self, line: &str) -> Vec<nightshift_core::agent::AgentEvent> {
+        self.inner.parse(line)
+    }
+    fn finish(&self, ok: bool, all: &str) -> Vec<nightshift_core::agent::AgentEvent> {
+        self.inner.finish(ok, all)
+    }
+    fn models(&self) -> Result<Vec<ModelFamily>, String> {
+        self.inner.models()
+    }
+    fn read_only_native(&self) -> bool {
+        self.inner.read_only_native()
+    }
+    fn reports_cost(&self) -> bool {
+        self.inner.reports_cost()
+    }
+}
+
+fn lane(e: &Engine, id: &str, letter: &str) -> nightshift_core::swarm::view::VariantView {
+    e.swarm_view(id).unwrap().variants.into_iter().find(|v| v.id == letter).unwrap()
+}
+
+#[test]
+fn a_limit_of_one_lane_pauses_only_that_lane_and_it_goes_on_by_itself_after_the_reset() {
+    let env = Env::new();
+    let p = project(&env);
+    let (clock, now) = manual_clock();
+    // B holds on its gate, so it is still working when A meets the limit
+    let w = Arc::new(HoldModel {
+        inner: fake(vec![("m1", vec![vec![FakeStep::Limit], ok_run("m1")]), ("m2", vec![ok_run("m2")])], &["A", "B"]),
+        model: "m2",
+        gate: env.d.path().join("hold-m2"),
+    });
+    let n = Arc::new(RecordingNotifier::default());
+    // the clock jumps half an hour while B holds: no Watcher, so B's silence is not taken for a stall
+    let settings = |s: &mut Settings| {
+        models3(s);
+        s.stall_min = 0;
+    };
+    let e = env.engine(env.store_v2(&p, settings), vec![w.clone() as Arc<dyn Adapter>], n.clone(), Some(clock));
+    let t0 = *now.lock().unwrap();
+    let id = go(&e, &p, "Add the feature file", SwarmMode::Race, 2);
+
+    until("A waits for the limit", || e.swarm_view(&id).is_some_and(|v| v.variants.iter().any(|x| x.id == "A" && x.state == "paused")));
+    let a = lane(&e, &id, "A");
+    let at = a.resume_at.as_deref().and_then(|r| chrono::DateTime::parse_from_rfc3339(r).ok()).expect("a paused lane says until when");
+    assert_eq!((at.with_timezone(&chrono::Local) - t0).num_minutes(), 30, "a limit without a reset is half an hour");
+    assert_eq!(lane(&e, &id, "B").state, "running", "B keeps working");
+    assert_ne!(task(&e, &id).status, Status::PausedLimit, "one lane on a limit does not stop the task");
+    assert!(task(&e, &id).resume_at.is_none());
+
+    advance(&now, 31 * 60);
+    until("A goes on by itself after the reset", || worker_models(&w.inner).iter().filter(|m| *m == "m1").count() == 2);
+    assert_eq!(lane(&e, &id, "B").state, "running", "B still holds: the task never stopped");
+    w.open();
+    until("the advice", || has_advice(&e, &id));
+    let v = e.swarm_view(&id).unwrap().variants;
+    assert!(v.iter().all(|x| x.state == "passed"), "{v:?}");
+    assert!(!kinds(&n).contains(&NoticeKind::Limit), "the person is not told about a pause of the task that did not happen");
+}
+
 #[test]
 fn a_limit_of_the_env_in_the_middle_of_a_race_pauses_the_whole_task_and_only_the_stopped_variant_goes_again() {
     let env = Env::new();
@@ -82,7 +176,8 @@ fn a_limit_of_the_env_in_the_middle_of_a_race_pauses_the_whole_task_and_only_the
     let t = wait_status(&e, &id, Status::PausedLimit);
     assert_eq!(t.resume_at.map(|r| (r - t0).num_minutes()), Some(30), "the time of a limit without a reset is half an hour");
     let v = e.swarm_view(&id).unwrap();
-    assert_eq!(v.variants.iter().map(|x| x.state.as_str()).collect::<Vec<_>>(), ["running", "passed", "passed"], "B and C finished, A waits for the limit");
+    assert_eq!(v.variants.iter().map(|x| x.state.as_str()).collect::<Vec<_>>(), ["paused", "passed", "passed"], "B and C finished, A waits for the limit");
+    assert_eq!(v.variants[0].resume_at, t.resume_at.map(|r| r.to_rfc3339()), "the task waits for the lane's reset");
     assert_eq!(kinds(&n), vec![NoticeKind::Limit]);
     assert!(matches!(e.limits("fa"), EnvLimits::Known(ws) if ws.iter().any(|x| x.exhausted)));
 

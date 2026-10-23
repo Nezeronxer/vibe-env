@@ -234,6 +234,11 @@ pub struct Task {
     /// Set while the project folder sits on this task's branch ("Забрать к себе"): the branch it was on before.
     #[serde(default)]
     pub taken_from: Option<String>,
+    // v6 (G68.1)
+    /// A session started in a terminal that this task goes on with (`--resume`): its id. The file of the session is
+    /// copied under the key of the task's copy before the first run.
+    #[serde(default)]
+    pub resume_session: Option<String>,
 }
 
 /// One item of a task's "До мержа" list.
@@ -287,6 +292,7 @@ impl Default for Task {
             db_name: None,
             todos: vec![],
             taken_from: None,
+            resume_session: None,
         }
     }
 }
@@ -421,6 +427,9 @@ pub struct Settings {
     /// Story 312: tools a role may use without asking, as the CLI names them; a role not here gets
     /// `agent::default_tools`.
     pub role_tools: BTreeMap<RoleKind, Vec<String>>,
+    /// v6 (G69): the address of the app's latest release (GitHub API `releases/latest`); None = the check is off
+    /// ("адрес обновлений не задан") until the repository is published.
+    pub release_feed: Option<String>,
 }
 #[derive(Serialize, Deserialize, Clone, Debug, Default)]
 pub struct TelegramSettings {
@@ -559,6 +568,7 @@ impl Default for Settings {
             keep_awake: true,
             compress_output: true,
             role_tools: BTreeMap::new(),
+            release_feed: None,
         }
     }
 }
@@ -838,6 +848,32 @@ pub struct Chat {
     pub updated_at: DateTime<Local>,
     #[serde(default)]
     pub archived: bool,
+    /// v6 (G62): messages of the person that wait for the chat to be free, oldest first; not in the feed yet.
+    #[serde(default)]
+    pub queue: Vec<QueuedMsg>,
+    /// v6 (G62.2): the message held back by a used-up limit and when the limit resets.
+    #[serde(default)]
+    pub wait: Option<ChatWait>,
+    /// v6 (G62.4): the message whose answer has started and not ended; after a restart it gets "Повторить".
+    #[serde(default)]
+    pub answering: Option<String>,
+}
+
+/// v6: a message of the person in the queue of a chat (G62).
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct QueuedMsg {
+    pub id: String,
+    pub text: String,
+    #[serde(default)]
+    pub attachments: Vec<PathBuf>,
+    pub at: DateTime<Local>,
+}
+
+/// v6: a chat waits for the reset of a limit to answer `msg_id` (G62.2).
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct ChatWait {
+    pub msg_id: String,
+    pub resets_at: DateTime<Local>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]

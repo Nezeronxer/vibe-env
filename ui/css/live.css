@@ -102,3 +102,24 @@ dialog.wide .act-log { max-height: 60vh; margin-bottom: 14px; border: 1px solid 
 .pane-lamp.calling { box-shadow: 0 0 0 2px color-mix(in srgb, var(--human) 30%, transparent), 0 0 11px 2px color-mix(in srgb, var(--human) 60%, transparent); }
 @keyframes lamp-breathe { 50% { filter: brightness(.8); } }
 .tab .tdot.stamp { background: transparent; box-shadow: none; border: 1.5px dashed var(--ink3); width: 8px; height: 8px; box-sizing: border-box; }
+
+/* v6 (G80, task 27): "думает" right after a message is sent - a shimmering word that changes, a timer; amber is the live accent */
+.livebar.thinking .lv-v { font-weight: 500; color: transparent; background: linear-gradient(90deg, var(--ink3) 0%, var(--ink3) 35%, var(--accent) 50%, var(--ink3) 65%, var(--ink3) 100%);
+  background-size: 220% 100%; -webkit-background-clip: text; background-clip: text; animation: think-shimmer 2.2s linear infinite; }
+.livebar.thinking.long .lv-v { color: var(--ink2); background: none; animation: none; }
+.cfeed .livebar.thinking .lv-spin { background: radial-gradient(circle at 35% 30%, color-mix(in srgb, var(--accent) 55%, var(--ink)), var(--accent) 60%); box-shadow: 0 0 9px 1px color-mix(in srgb, var(--accent) 45%, transparent); }
+.lv-stop { font-size: 12px; margin-left: 2px; }
+@keyframes think-shimmer { from { background-position: 100% 0; } to { background-position: -120% 0; } }
+/* the thoughts of the model: one grey folded line, the text opens on a click */
+.thought { margin-left: 0; font: 12.5px/1.5 var(--sans); color: var(--ink3); min-width: 0; }
+.th-h { display: flex; gap: 8px; align-items: baseline; max-width: 100%; background: none; border: 0; padding: 0; color: var(--ink3); font: inherit; cursor: pointer; text-align: left; }
+.th-h b { font-weight: 500; color: var(--ink2); flex: none; font-style: italic; }
+.th-p { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.th-h:hover b { text-decoration: underline; text-underline-offset: 3px; }
+.th-h .th-chev { flex: none; align-self: center; transform: rotate(-90deg); transition: transform .12s ease-out; }
+.thought.on .th-chev { transform: none; }
+.thought.on .th-p { display: none; }
+.th-b { margin: 4px 0 2px; padding-left: 10px; border-left: 1px solid var(--line2); white-space: pre-wrap; overflow-wrap: anywhere; max-height: 40vh; overflow: auto; }
+/* the answer while it prints (G81): plain text that grows, markdown once it is all there */
+.msg-b .rv { white-space: pre-wrap; overflow-wrap: anywhere; }
+@media (prefers-reduced-motion: reduce) { .livebar.thinking .lv-v { animation: none; color: var(--ink2); background: none; } }
