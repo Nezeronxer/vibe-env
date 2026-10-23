@@ -102,7 +102,10 @@
     const running = !action.done && opts.live !== false;
     const bad = action.done && action.ok === false;
     const st = running ? 'run' : bad ? 'bad' : 'ok';
-    const head = h('div', { class: 'act-h' }, h('span', { class: 'dot', 'aria-hidden': 'true', text: '●' }), h('b', { class: 'act-n', text: nameOf(action, inp) }),
+    // v4 (story 244): a command is a `$ command` block, a read or a search one `· Read path` line, an edit `± Edit path` with its diff
+    const mark = { bash: '$', read: '·', search: '·', web: '·', edit: '±', write: '±' }[inp.kind] || '●';
+    const head = h('div', { class: 'act-h' }, h('span', { class: 'dot', 'aria-hidden': 'true', text: mark }),
+      inp.kind === 'bash' ? h('span', { class: 'sr-only', text: nameOf(action, inp) }) : h('b', { class: 'act-n', text: nameOf(action, inp) }),
       h('span', { class: 'act-arg', text: argOf(inp, action) }));
     const el = h('div', { class: 'act k-' + inp.kind + ' s-' + st, dataset: { act: key } }, head);
     el.append(h('span', { class: 'sr-only', text: running ? t('act3.running') : bad ? t('act3.error') : '' }));
@@ -144,7 +147,7 @@
     const text = parts.join(', ');
     const d = h('details', { class: 'act act-g s-' + (running ? 'run' : 'ok'), open: !!(opts.open && opts.open.has(key)),
       ontoggle: () => { if (!opts.open) return; if (d.open) opts.open.add(key); else opts.open.delete(key); } },
-    h('summary', { class: 'act-h' }, h('span', { class: 'dot', 'aria-hidden': 'true', text: '●' }), h('b', { class: 'act-n', text: text.charAt(0).toUpperCase() + text.slice(1) }),
+    h('summary', { class: 'act-h' }, h('span', { class: 'dot', 'aria-hidden': 'true', text: '·' }), h('b', { class: 'act-n', text: text.charAt(0).toUpperCase() + text.slice(1) }),
       h('span', { class: 'act-chev', 'aria-hidden': 'true', text: '›' })),
     h('div', { class: 'act-b' }, entries.map((e) => { const inp = V.inputOf(e.action); return h('div', { class: 'act-l' }, h('span', { class: 'cn', text: '└' }), h('span', { class: 'act-tn', text: nameOf(e.action, inp) }), h('span', { class: 'act-arg', text: argOf(inp, e.action) })); })));
     return d;

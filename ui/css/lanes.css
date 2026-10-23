@@ -29,7 +29,7 @@
 .lanes-ctl { display: flex; gap: 6px; align-items: center; margin: 0 0 8px; }
 .lanes-more { color: var(--ink3); font-size: 12px; padding: 8px 0 0; }
 /* merge queue: a tube into main */
-.pipe-wrap { margin: 14px 0 0; padding: 12px 14px 14px; background: var(--raised); border-radius: 6px; }
+.pipe-wrap { margin: 14px 0 0; padding: 12px 14px 14px; background: var(--raised); border-radius: var(--radius-sm); }
 .pipe-h { display: flex; gap: 12px; align-items: baseline; margin-bottom: 10px; flex-wrap: wrap; }
 .pipe { display: flex; }
 .pipe-tube { flex: 1; min-height: 38px; background: var(--bg); border: 1px solid var(--line2); border-right: 0; display: flex; align-items: center; gap: 8px; padding: 0 8px; justify-content: flex-end; border-radius: var(--r) 0 0 var(--r); overflow: hidden; }

@@ -1,37 +1,45 @@
-/* Nightshift v2. Среда - верхний уровень. Янтарь зарезервирован за одним смыслом: "нужен человек". */
+/* Nightshift v4 tokens. The theme table lives in js/v4/theme.js (one source: CSS variables and the xterm theme); these are
+   the same values for the first paint, before the script runs - selftest (scripts/ui-selftest.js) checks they never drift.
+   No screen keeps a colour of its own. Amber (--human) has one meaning only: "нужен ты". */
 :root {
   color-scheme: dark;
-  --bg: #111112; --panel: #171718; --raised: #1f1f21; --raised2: #28282b; --line: #2b2b2e; --line2: #3a3a3e;
-  --ink: #ececea; --ink2: #b0b0ac; --ink3: #8a8a86;
-  --human: #f2b134; --human-bg: #2a2212; --human-line: #5c4818; --on-human: #1a1405;
-  --ok: #48b882; --bad: #ef6b60; --bad-bg: #2b1a19; --ok-bg: #14261e;
-  --btn: #ececea; --on-btn: #131313;
-  --plan: #5b9cf0; --crit: #ef6b60; --test: #3eb489; --exec: #38bdc8; --gate: #a2c44f; --rev: #e279ad; --integ: #8c9bb0;
-  --coord: #d8d8d4; --watch: #c9a56b; --queue: #8c9bb0;
+  --canvas: #0b0c0e; --bg: #0b0c0e; --panel: #131417; --raised: #1a1c20; --raised2: #24272c; --line: #26292e; --line2: #353a41; --ink: #e4e4e1;
+  --ink2: #acaeb2; --ink3: #8b8f95; --accent: #8fb3d9; --cursor: #e4e4e1; --sel: #2f3a48; --human: #f2b134; --human-bg: #2a2212;
+  --human-line: #5c4818; --on-human: #1a1405; --ok: #5dbb8a; --ok-bg: #15261e; --bad: #ef6b60; --bad-bg: #2b1a19; --btn: #e4e4e1; --on-btn: #131417;
+  --plan: #6aa4ee; --crit: #ef6b60; --test: #4cb894; --exec: #48bdc7; --gate: #a2c44f; --rev: #df84b2; --integ: #93a1b4; --coord: #d8d8d4;
+  --watch: #c9a56b; --queue: #93a1b4; --ansi-0: #1c1e22; --ansi-1: #e5675d; --ansi-2: #79bf86; --ansi-3: #d9b45f; --ansi-4: #6fa3e0;
+  --ansi-5: #c38bc9; --ansi-6: #5fbfc0; --ansi-7: #c8c9c6; --ansi-8: #4a4f57; --ansi-9: #f08a80; --ansi-10: #98d4a2; --ansi-11: #ebcb82;
+  --ansi-12: #93bdf0; --ansi-13: #d6a8db; --ansi-14: #86d4d4; --ansi-15: #f1f1ee;
+  --pane-bg: var(--panel);
+  --radius-pane: 12px; --radius-sm: 8px; --r: var(--radius-sm); --gap: 6px; --fs: 13px;
   --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, "DejaVu Sans Mono", monospace;
   --sans: system-ui, -apple-system, "Segoe UI", "Noto Sans", "Helvetica Neue", sans-serif;
-  --r: 4px;
+  --knob: #ffffff; --shadow: 0 10px 28px rgba(0, 0, 0, .34); --scrim: rgba(0, 0, 0, .5);
+  --ease: cubic-bezier(.2, .7, .2, 1); --t: 140ms;
 }
 @media (prefers-color-scheme: light) {
   :root:not([data-theme="dark"]) {
     color-scheme: light;
-    --bg: #e9eaeb; --panel: #f4f5f5; --raised: #ffffff; --raised2: #e4e5e6; --line: #d6d8da; --line2: #bfc2c5;
-    --ink: #16171a; --ink2: #4a4c50; --ink3: #64666b;
-    --human: #b46f00; --human-bg: #fbf0d8; --human-line: #e0b866; --on-human: #ffffff;
-    --ok: #17794d; --bad: #c2362b; --bad-bg: #fbe9e7; --ok-bg: #e3f3ea;
-    --btn: #16171a; --on-btn: #f4f5f5;
-    --plan: #2368c7; --crit: #c2362b; --test: #12805a; --exec: #0b7f8a; --gate: #5f7d12; --rev: #b8457f; --integ: #566478;
-    --coord: #2b2c30; --watch: #8a6420; --queue: #566478;
+    --canvas: #dfe1e4; --bg: #dfe1e4; --panel: #f6f6f7; --raised: #ffffff; --raised2: #e9eaec; --line: #d9dbde; --line2: #c2c5ca; --ink: #16171a;
+    --ink2: #45474c; --ink3: #5f6268; --accent: #2f6db0; --cursor: #16171a; --sel: #c9d9ec; --human: #b46f00; --human-bg: #fbf0d8;
+    --human-line: #e0b866; --on-human: #ffffff; --ok: #17794d; --ok-bg: #e3f3ea; --bad: #c2362b; --bad-bg: #fbe9e7; --btn: #16171a;
+    --on-btn: #f6f6f7; --plan: #2368c7; --crit: #c2362b; --test: #12805a; --exec: #0b7f8a; --gate: #5f7d12; --rev: #b8457f; --integ: #566478;
+    --coord: #2b2c30; --watch: #8a6420; --queue: #566478; --ansi-0: #16171a; --ansi-1: #c2362b; --ansi-2: #2d7d46; --ansi-3: #946a00;
+    --ansi-4: #2f6db0; --ansi-5: #9a4a9c; --ansi-6: #16808a; --ansi-7: #d4d5d8; --ansi-8: #5f6268; --ansi-9: #d9534a; --ansi-10: #3b9a59;
+    --ansi-11: #b07f00; --ansi-12: #4a86c6; --ansi-13: #b465b6; --ansi-14: #2a9aa4; --ansi-15: #f6f6f7;
+    --shadow: 0 10px 28px rgba(20, 22, 26, .16); --scrim: rgba(20, 22, 26, .32);
   }
 }
 :root[data-theme="light"] {
   color-scheme: light;
-  --bg: #e9eaeb; --panel: #f4f5f5; --raised: #ffffff; --raised2: #e4e5e6; --line: #d6d8da; --line2: #bfc2c5;
-  --ink: #16171a; --ink2: #4a4c50; --ink3: #64666b;
-  --human: #b46f00; --human-bg: #fbf0d8; --human-line: #e0b866; --on-human: #ffffff;
-  --ok: #17794d; --bad: #c2362b; --bad-bg: #fbe9e7; --ok-bg: #e3f3ea;
-  --btn: #16171a; --on-btn: #f4f5f5;
-  --plan: #2368c7; --crit: #c2362b; --test: #12805a; --exec: #0b7f8a; --gate: #5f7d12; --rev: #b8457f; --integ: #566478;
-  --coord: #2b2c30; --watch: #8a6420; --queue: #566478;
+  --canvas: #dfe1e4; --bg: #dfe1e4; --panel: #f6f6f7; --raised: #ffffff; --raised2: #e9eaec; --line: #d9dbde; --line2: #c2c5ca; --ink: #16171a;
+  --ink2: #45474c; --ink3: #5f6268; --accent: #2f6db0; --cursor: #16171a; --sel: #c9d9ec; --human: #b46f00; --human-bg: #fbf0d8;
+  --human-line: #e0b866; --on-human: #ffffff; --ok: #17794d; --ok-bg: #e3f3ea; --bad: #c2362b; --bad-bg: #fbe9e7; --btn: #16171a; --on-btn: #f6f6f7;
+  --plan: #2368c7; --crit: #c2362b; --test: #12805a; --exec: #0b7f8a; --gate: #5f7d12; --rev: #b8457f; --integ: #566478; --coord: #2b2c30;
+  --watch: #8a6420; --queue: #566478; --ansi-0: #16171a; --ansi-1: #c2362b; --ansi-2: #2d7d46; --ansi-3: #946a00; --ansi-4: #2f6db0;
+  --ansi-5: #9a4a9c; --ansi-6: #16808a; --ansi-7: #d4d5d8; --ansi-8: #5f6268; --ansi-9: #d9534a; --ansi-10: #3b9a59; --ansi-11: #b07f00;
+  --ansi-12: #4a86c6; --ansi-13: #b465b6; --ansi-14: #2a9aa4; --ansi-15: #f6f6f7;
+  --shadow: 0 10px 28px rgba(20, 22, 26, .16); --scrim: rgba(20, 22, 26, .32);
 }
 :root[data-theme="dark"] { color-scheme: dark; }
+@media (prefers-reduced-motion: reduce) { :root { --t: 0ms; } }

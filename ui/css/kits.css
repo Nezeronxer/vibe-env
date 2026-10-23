@@ -1,5 +1,5 @@
 /* Kits (export / import / snapshots) and the import screen "Импорт: <имя>" (story 204-217) */
-.kitnow { display: flex; gap: 10px; align-items: center; max-width: 860px; padding: 12px 14px; margin-bottom: 22px; background: var(--ok-bg); border-radius: 6px; color: var(--ink2); }
+.kitnow { display: flex; gap: 10px; align-items: center; max-width: 860px; padding: 12px 14px; margin-bottom: 22px; background: var(--ok-bg); border-radius: var(--radius-sm); color: var(--ink2); }
 .kitnow img, .kitnow svg { width: 16px; height: 16px; flex: none; }
 .kitnow b { color: var(--ink); }
 .kitnote { color: var(--ink3); font-size: 12.5px; max-width: 860px; margin: -12px 0 20px; }

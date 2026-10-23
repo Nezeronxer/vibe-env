@@ -18,6 +18,11 @@
     'data_state', 'open_data_folder', 'start_fresh',
     // v3 ("Границы v3"): the task log with actions, page by page
     'get_task_log',
+    // v4 ("Границы v4"): terminals, windows, catalog, CLI updates, GitHub, config file
+    'term_open', 'term_write', 'term_resize', 'term_close', 'term_attach', 'term_detach', 'term_ack', 'term_list',
+    'window_detach', 'window_tab', 'window_return',
+    'market_search', 'market_item', 'market_plan', 'market_apply', 'market_installed', 'market_remove', 'market_sources', 'market_set_sources',
+    'cli_status', 'cli_update', 'updates_history', 'gh_publish', 'git_log_page', 'git_revert_commit', 'config_open', 'config_errors',
   ]);
   const EVENTS = new Set(['task-changed', 'task-log', 'task-removed', 'project-changed', 'chat-msg', 'limits-changed', 'catalog-changed', 'frozen',
     'focus-input', 'open-task', 'tauri://drag-enter', 'tauri://drag-leave', 'tauri://drag-drop',
@@ -25,7 +30,9 @@
     // tray host missing (R10.2), kit install rolled back at start (G25.9). Names chosen by task 15, see its report.
     'settings-replaced', 'notify-blocked', 'tray-state', 'kits-recovered',
     // v3: actions of agents with output and diff, the answer while it is written
-    'task-action', 'chat-action', 'chat-delta']);
+    'task-action', 'chat-action', 'chat-delta',
+    // v4
+    'term-exit', 'cli-updated', 'new-model', 'config-changed', 'windows-changed', 'window-return', 'terms-restored']);
 
   const tauri = () => window.__TAURI__;
   function call(cmd, args) {

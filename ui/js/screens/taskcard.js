@@ -225,7 +225,9 @@
       return b;
     }
     function renderDet() {
-      clear(det).append(changesBlock(), checksBlock(), detailsBlock());
+      // v4: blocks of other tasks (handoff note, ports and base, …) come from the registry ('details')
+      const extra = NS.registry.points('details').map((d) => { try { return d.render(task, NS.shell.ctxFor({ task: task.id })); } catch (e) { return null; } }).filter(Boolean);
+      clear(det).append(changesBlock(), checksBlock(), detailsBlock(), ...extra);
     }
     async function setOpen(v) {
       open = v; det.hidden = !v; el.classList.toggle('open', v);

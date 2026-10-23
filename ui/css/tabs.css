@@ -1,44 +1,93 @@
-/* v3: tab strip over the chat, 1-4 panels. The "waits for you" dot lives in need.css (amber only there). */
-.screen > .ws { flex: 1; }
-.ws { display: flex; flex-direction: column; min-width: 0; min-height: 0; position: relative; }
-.tabstrip { display: flex; align-items: stretch; gap: 2px; padding: 6px 8px 0; border-bottom: 1px solid var(--line); background: var(--bg); flex: none; min-width: 0; }
-.tabs-scroll { display: flex; gap: 2px; overflow-x: auto; min-width: 0; scrollbar-width: thin; }
-.tab { display: flex; align-items: center; gap: 6px; height: 30px; padding: 0 4px 0 10px; border: 1px solid transparent; border-bottom: 0; border-radius: 6px 6px 0 0;
-  color: var(--ink3); cursor: pointer; flex: none; max-width: 240px; user-select: none; position: relative; top: 1px; }
+/* v4 workspace: tabs on the canvas, a tree of rounded panes with a gap, a thin accent border on the focused pane, the others dimmed.
+   The "waits for you" dot lives in need.css (amber only there). */
+.ws { display: flex; flex-direction: column; min-width: 0; min-height: 0; position: relative; gap: var(--gap); }
+.ws-top { display: flex; align-items: center; gap: 8px; min-width: 0; height: 30px; flex: none; }
+.tabstrip { display: flex; align-items: center; gap: 2px; flex: 1; min-width: 0; }
+.tabs-scroll { display: flex; gap: 2px; overflow-x: auto; min-width: 0; scrollbar-width: none; }
+.tabs-scroll::-webkit-scrollbar { display: none; }
+.tab { display: flex; align-items: center; gap: 7px; height: 28px; padding: 0 4px 0 10px; border-radius: var(--radius-sm); color: var(--ink3); cursor: pointer; flex: none;
+  max-width: 260px; user-select: none; font: 12px var(--mono); transition: color var(--t) ease-out, background var(--t) ease-out; }
 .tab:hover { background: var(--raised); color: var(--ink2); }
-.tab.on { background: var(--panel); border-color: var(--line); color: var(--ink); }
-.tab.shown:not(.on) { color: var(--ink2); }
-.tab.shown::after { content: ""; position: absolute; left: 10px; right: 10px; bottom: 3px; height: 2px; border-radius: 1px; background: var(--line2); }
-.tab.on.shown::after { background: var(--ink3); }
+.tab.on { color: var(--ink); background: var(--pane-bg); }
+.tab-t { min-width: 0; overflow: hidden; display: flex; }
+.tab-l { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-bottom: 2px; padding-top: 3px; }
+.tab.on .tab-l { box-shadow: 0 1px 0 var(--accent); }
+.tab-n { font: 11px var(--mono); color: var(--ink3); }
 .tab.drag { opacity: .5; }
-.tab.over { box-shadow: inset 2px 0 0 var(--ink); }
-.tab-ic .ic, .tab-ic img { width: 14px; height: 14px; }
-.tab-t { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; font-size: 12.5px; }
-.tdot { width: 7px; height: 7px; border-radius: 50%; flex: none; background: transparent; }
+.tab.over { box-shadow: inset 2px 0 0 var(--accent); }
+.tab-ic .ic, .tab-ic img { width: 13px; height: 13px; }
+.tdot { width: 6px; height: 6px; border-radius: 2px; flex: none; background: transparent; }
 .tdot.run { background: var(--exec); animation: lv-blink 1.2s ease-in-out infinite; }
 .tdot.done { background: var(--ok); }
 .tdot.fail { background: var(--bad); }
 .tdot.queue { background: var(--ink3); }
-.tab-x { width: 20px; height: 20px; border: 0; background: none; color: var(--ink3); border-radius: 3px; display: grid; place-items: center; font-size: 15px; line-height: 1; padding: 0; flex: none; }
+.tab-x { width: 18px; height: 18px; border: 0; background: none; color: var(--ink3); border-radius: 4px; display: grid; place-items: center; font-size: 14px; line-height: 1; padding: 0; flex: none; visibility: hidden; }
+.tab:hover .tab-x, .tab.on .tab-x, .tab-x:focus-visible { visibility: visible; }
 .tab-x:hover { background: var(--raised2); color: var(--ink); }
-.tab-m { opacity: 0; font-size: 13px; }
-.tab:hover .tab-m, .tab.on .tab-m, .tab-m:focus-visible { opacity: 1; }
-.tab-plus { width: 30px; height: 30px; border: 0; background: none; color: var(--ink3); border-radius: var(--r); display: grid; place-items: center; flex: none; }
-.tab-plus:hover { background: var(--raised); color: var(--ink); }
-.tab-more { align-self: center; margin-left: 4px; }
+.tab-plus, .tab-more { height: 26px; min-width: 26px; border: 0; background: none; color: var(--ink3); border-radius: var(--radius-sm); display: grid; place-items: center; flex: none; font: 12px var(--mono); padding: 0 6px; }
+.tab-plus:hover, .tab-more:hover { background: var(--raised); color: var(--ink); }
+.tabs-corner { flex: none; display: flex; align-items: center; min-width: 0; height: 28px; }
+.tabs-corner:empty { display: none; }
 .tabmenu { left: var(--x); top: var(--y); }
-.ws-hint { padding: 6px 16px; background: var(--raised2); color: var(--ink2); font-size: 12.5px; border-bottom: 1px solid var(--line); }
-.panes { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr); gap: 0; background: var(--line); }
-.panes.n2 { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1px; }
-.panes.n3, .panes.n4 { grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: repeat(2, minmax(0, 1fr)); gap: 1px; }
-.pane { background: var(--bg); min-width: 0; min-height: 0; display: flex; flex-direction: column; position: relative; container-type: inline-size; overflow: hidden; }
-.pane > .convo, .pane > * { flex: 1; min-height: 0; }
-.pane.on::after { content: ""; position: absolute; inset: 0; border: 1px solid var(--ink3); pointer-events: none; z-index: 4; }
-/* a narrow panel: tighter header, the input row wraps */
-@container (max-width: 620px) {
-  .convo-h { padding: 10px 14px; flex-wrap: wrap; row-gap: 4px; }
-  .cfeed { padding: 0 14px 18px; }
-  .composer { width: calc(100% - 24px); margin-bottom: 10px; }
-  .comp-row { flex-wrap: wrap; row-gap: 6px; gap: 10px; }
-  .act, .livebar { margin-left: 0; }
+
+/* the tree: nested flex boxes, --f is the share of each side; the divider is the gap itself and drags */
+.panes { flex: 1; min-height: 0; min-width: 0; display: flex; }
+.panes > .pane, .panes > .split { flex: 1; }
+.split { display: flex; min-width: 0; min-height: 0; flex: 1; }
+.split.h { flex-direction: row; }
+.split.v { flex-direction: column; }
+.sp-a, .sp-b { flex: var(--f) 1 0; min-width: 0; min-height: 0; display: flex; }
+.sp-a > *, .sp-b > * { flex: 1; }
+.divider { flex: 0 0 var(--gap); position: relative; z-index: 2; }
+.split.h > .divider { cursor: col-resize; }
+.split.v > .divider { cursor: row-resize; }
+.divider::after { content: ""; position: absolute; inset: 0 -3px; }
+.split.v > .divider::after { inset: -3px 0; }
+.divider::before { content: ""; position: absolute; border-radius: 1px; background: var(--accent); opacity: 0; transition: opacity var(--t) ease-out; }
+.split.h > .divider::before { top: 30%; bottom: 30%; left: calc(50% - 1px); width: 2px; }
+.split.v > .divider::before { left: 30%; right: 30%; top: calc(50% - 1px); height: 2px; }
+.divider:hover::before, .split.dragging > .divider::before { opacity: .7; }
+.split.dragging { user-select: none; }
+
+.pane { background: var(--pane-bg); border: 1px solid var(--line); border-radius: var(--radius-pane); min-width: 0; min-height: 0; display: flex; flex-direction: column;
+  position: relative; container-type: inline-size; overflow: hidden; transition: border-color var(--t) ease-out; }
+.pane.focus { border-color: var(--accent); }
+.panes.single .pane.focus { border-color: var(--line2); }
+.pane-body { flex: 1; min-height: 0; display: flex; flex-direction: column; transition: opacity var(--t) ease-out; }
+.pane-body > .convo, .pane-body > .swarm, .pane-body > * { min-height: 0; }
+.pane-body > .convo, .pane-body > .envstate { flex: 1; }
+.pane:not(.focus) .pane-body { opacity: .74; }
+.panes.single .pane .pane-body { opacity: 1; }
+.pane-store { display: none; }
+.pane-missing { margin: auto; color: var(--ink3); font: 12px var(--mono); }
+
+/* the pane's title row: kind icon, title, project · branch, registry slots, tools on hover */
+.pane-h { display: flex; align-items: center; gap: 8px; height: 32px; padding: 0 8px 0 12px; flex: none; min-width: 0; font: 12px var(--mono); color: var(--ink3); border-bottom: 1px solid var(--line); }
+.pane-ic { display: inline-flex; flex: none; }
+.pane-ic .ic, .pane-ic img { width: 13px; height: 13px; }
+.pane-h h1, .pane-ttl { font: 12px var(--mono); color: var(--ink); font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.pane-sub { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; flex: 1; color: var(--ink3); }
+.pane-sub:empty { flex: 1; }
+.pane-slots { display: flex; align-items: center; gap: 6px; flex: none; }
+.pane-slots:empty { display: none; }
+.pane-tools { display: none; align-items: center; gap: 2px; flex: none; }
+.pane:hover .pane-tools, .pane-tools:focus-within { display: flex; }
+.pt { width: 22px; height: 22px; border: 0; background: none; color: var(--ink3); border-radius: 5px; display: grid; place-items: center; padding: 0; }
+.pt:hover { color: var(--ink); background: var(--raised2); }
+.pg { width: 12px; height: 10px; border: 1.4px solid currentColor; border-radius: 2px; position: relative; display: block; }
+.pg-r::after { content: ""; position: absolute; top: 0; bottom: 0; left: 50%; border-left: 1.4px solid currentColor; }
+.pg-d::after { content: ""; position: absolute; left: 0; right: 0; top: 50%; border-top: 1.4px solid currentColor; }
+.pg-z::after { content: ""; position: absolute; inset: 1.5px; background: currentColor; border-radius: 1px; }
+.pg-u { width: 8px; height: 6px; }
+.pg-x { font-size: 15px; line-height: 1; }
+.pane-h .menu-btn { height: 22px; min-width: 22px; padding: 0 4px; border: 0; background: none; color: var(--ink3); }
+.pane-h .menu-btn:hover { color: var(--ink); background: var(--raised2); }
+.pane-h .projsel { height: 22px; font: 12px var(--mono); padding: 0 6px; }
+
+/* a narrow pane: tighter feed, the input row wraps */
+@container (max-width: 560px) {
+  .cfeed { padding: 10px 12px 14px; }
+  .composer { margin: 0 8px 8px; }
+  .comp-row .envpick span { max-width: 9ch; overflow: hidden; text-overflow: ellipsis; }
+  .pane-sub { display: none; }
 }

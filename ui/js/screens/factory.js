@@ -35,7 +35,7 @@
     const envId = ctx.params.env || S.lastEnv || (envs.find((e) => e.state === 'ok') || envs[0] || {}).id;
     const env = st.env(envId) || { id: envId, name: envId || '', state: 'ok' };
     const alive = { v: true };
-    if (env.id && S.route.env !== env.id) { S.route.env = env.id; NS.shell.renderRail(); }
+    if (env.id && S.route.env !== env.id) { S.route.env = env.id; NS.shell.barUpdate('route'); }
     let offset = 0, filter = 'all', evs = [], timer = 0, closeMenu = null;      // closeMenu: the open model menu, if any
     const tasks = () => st.envTasks(envId);
 

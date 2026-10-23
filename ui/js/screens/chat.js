@@ -24,13 +24,13 @@
     const V = window.NSLive;                  // the swarm screen reuses this chat as its main surface (story 156): extra composer control, note target
 
     // ---------- header ----------
-    const title = h('h1'), sub = h('span', { class: 'hint' });
+    const title = h('h1', { class: 'pane-ttl' }), sub = h('span', { class: 'pane-sub' });
     const limits = NS.limits.limitsBar(envId);
     const menuBtn = h('button', { type: 'button', class: 'btn sm menu-btn', 'aria-haspopup': 'menu', 'aria-label': t('chat.menu'), text: '⋯' });
     const projSel = h('select', { class: 'projsel', 'aria-label': t('chat.project') });
-    const header = h('header', { class: 'convo-h' },
-      h('button', { type: 'button', class: 'btn sm side-toggle', onclick: () => NS.shell.toggleSide() }, ic('i-chat'), t('chat.chats')),
-      title, sub, isNew ? projSel : null, limits.el, !isNew ? menuBtn : null);
+    // v4: this header is the pane's title row (tabs.js adds the registry slots and the pane tools); env, model and limits are in the bar
+    const header = h('header', { class: 'convo-h pane-h' }, h('span', { class: 'pane-ic' }, envIcon(env.custom ? 'custom' : envId)),
+      title, sub, isNew ? projSel : null, !isNew ? menuBtn : null);
     function fillProjects() {
       clear(projSel);
       for (const p of S.projects) projSel.append(h('option', { value: p.id, text: p.name, selected: p.id === selProject }));
@@ -41,8 +41,9 @@
       selProject = projSel.value; S.lastProject = selProject; drawHeader();
     };
     function drawHeader() {
-      const m = NS.models.label(envId);
-      title.textContent = env.name + (m ? ' · ' + m : '');
+      const c = isNew ? null : st.findChat(chatId), tk = isNew ? null : st.chatTasks(chatId)[0];
+      title.textContent = isNew ? t('tabs.new_chat') : (c && c.title) || (tk && tk.title) || t('chat.untitled');
+      title.title = env.name + (NS.models.label(envId) ? ' · ' + NS.models.label(envId) : '');
       const p = st.project(selProject);
       const repo = p && S.repos.get(p.id);
       const branch = repo ? (repo.current_branch || p.base_branch) + (repo.ahead ? ' ↑' + repo.ahead : '') + (repo.behind ? ' ↓' + repo.behind : '') : '';
@@ -109,8 +110,9 @@
     function humanNode(m, isPending) {
       const note = !isPending && m.task_id;
       const to = m.to ? ' · ' + (m.to === 'reviewer' ? t('swarm.to_reviewer') : t('swarm.to_variant', { v: m.to })) : '';     // a note to a swarm: who gets it (story 156)
-      return h('div', { class: 'me' }, h('div', {}, h('small', { text: t('feed.you') + ' · ' + NS.hhmm(m.at) }), richText(m.text),
-        isPending ? h('small', { class: 'deliv', text: t('msg.sending') }) : note ? h('small', { class: 'deliv', text: (m.delivered_at ? t('msg.delivered', { time: NS.hhmm(m.delivered_at) }) : t('msg.will_pass')) + to }) : null));
+      // v4 (story 244): my message is a prompt line `❯ text`, the time and delivery at the right edge
+      return h('div', { class: 'me' }, h('span', { class: 'pr', 'aria-hidden': 'true', text: '❯' }), h('div', { class: 'me-b' }, h('span', { class: 'sr-only', text: t('feed.you') }), richText(m.text)),
+        h('small', { class: 'me-m' }, NS.hhmm(m.at), isPending ? ' · ' + t('msg.sending') : note ? ' · ' + (m.delivered_at ? t('msg.delivered', { time: NS.hhmm(m.delivered_at) }) : t('msg.will_pass')) + to : ''));
     }
     function systemNodes(m) {
       const out = [];
@@ -380,7 +382,7 @@
           schedule();
         } else if (evt === 'limits') { if (payload === envId) { limits.refresh(); composer.drawHint(); } }
         else if (evt === 'catalog' || evt === 'settings') { drawHeader(); composer.refresh(); }
-        else if (evt === 'project') { drawHeader(); }
+        else if (evt === 'project' || evt === 'chats') { drawHeader(); }
         else if (evt === 'focus-input') composer.focus();
       },
       destroy() { alive.v = false; live.destroy(); if (convoy) convoy.destroy(); closeChatMenu(); NS.taskCard.closeMenu(); clearInterval(tick); document.removeEventListener('keydown', onKey); limits.destroy(); composer.destroy(); },

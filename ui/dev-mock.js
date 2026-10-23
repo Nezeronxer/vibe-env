@@ -69,7 +69,7 @@
     T('t-round', 'p1', 'claude', 'round', 'Округление в итогах', 'checking', { branch: 'ns/rounding-totals', steps: steps('gates'), started_at: ago(7), runs: RUNS.map((r) => Object.assign({}, r, { state: r.role === 'worker' ? 'done' : r.state })) }),
     T('t-chlog', 'p1', 'claude', 'chlog', 'Changelog 2.4', 'queued', { steps: steps('plan').map((p) => [p[0], 'pending']), started_at: null, cost_usd: null }),
     T('t-cur', 'p1', 'claude', 'cur', 'Поле currency в payments', 'done', { steps: steps('merge').map((p) => [p[0], p[1] === 'running' || p[1] === 'pending' ? 'done' : p[1]]), finished_at: ago(160), started_at: ago(180),
-      outcome: { summary: 'Влито в main', commit: 'a3f9c21d8e', tests: { passed: true, tail: '42 passed' }, review: { approved: true, issues: [] }, files_changed: 6, insertions: 120, deletions: 14 } }),
+      outcome: { summary: 'Смержено в main', commit: 'a3f9c21d8e', tests: { passed: true, tail: '42 passed' }, review: { approved: true, issues: [] }, files_changed: 6, insertions: 120, deletions: 14 } }),
     T('t-hero', 'p2', 'claude', 'hero', 'Герой на странице цен', 'awaiting_outward', { branch: 'ns/pricing-hero', steps: steps('merge'), started_at: ago(22), outcome: { tests: { passed: true, tail: '30 passed' }, review: { approved: true, issues: [] }, files_changed: 5, insertions: 142, deletions: 38 },
       question: { kind: 'outward', text: 'Готово и проверено, ревьюер доволен. Отправить ветку ns/pricing-hero и открыть PR в main?', options: [] } }),
     T('t-acc', 'p1', 'codex', 'acc', 'customer_id → account_id', 'working', { started_at: ago(31), steps: steps('code'), models: { worker: { family: 'gpt-codex', version: null } } }),
@@ -77,7 +77,7 @@
       models: { worker: { family: 'gpt-codex', version: null } }, outcome: { error: 'tests still failing after 3 attempts', tests: RED } }),
     T('t-img', 'p2', 'gemini', 'img', 'Сжатие картинок', 'working', { started_at: ago(9), steps: steps('code'), cost_usd: null, models: {} }),
     T('t-es', 'p2', 'gemini', 'es', 'Переводы на испанский', 'done', { steps: steps('merge').map((p) => [p[0], p[1] === 'running' || p[1] === 'pending' ? 'done' : p[1]]), finished_at: ago(300), started_at: ago(330), cost_usd: null,
-      outcome: { summary: 'Влито в main', commit: 'c02d55e1b7', files_changed: 3, insertions: 88, deletions: 0 } }),
+      outcome: { summary: 'Смержено в main', commit: 'c02d55e1b7', files_changed: 3, insertions: 88, deletions: 0 } }),
   ];
   const C = (id, env, project_id, title, last, ageMin) => ({ id, env, project_id, title, last, session: null, convoy: false, created_at: ago(ageMin + 60), updated_at: ago(ageMin), archived: false });
   let chats = scenario === 'empty' ? [] : [C('inv', 'claude', 'p1', 'Пагинация в /invoices', '', 1), C('round', 'claude', 'p1', 'Округление в итогах', '', 7), C('how', 'claude', 'p1', 'Как устроен биллинг?', 'Три слоя: routes, service, repo', 20),
@@ -101,7 +101,7 @@
       M('inv', 12, 14, 11, 'system', '', { tool: { name: 'edit', arg: 'src/invoices/routes.py', result: '+64 −12', ok: true } }),
       M('inv', 13, 14, 12, 'system', '', { tool: { name: 'edit', arg: 'src/invoices/cursor.py', result: 'новый, +41', ok: true } }),
       M('inv', 14, 14, 12, 'system', '', { tool: { name: 'run', arg: 'pytest tests/test_invoices_pagination.py', result: '7 passed, 2 failed', ok: false } }),
-      M('inv', 15, 14, 13, R('verifier'), 'Тесты 7 из 9, линтер и типы чистые. Вливать пока нельзя.', { model: 'pytest · ruff · mypy' }),
+      M('inv', 15, 14, 13, R('verifier'), 'Тесты 7 из 9, линтер и типы чистые. Мержить пока нельзя.', { model: 'pytest · ruff · mypy' }),
       M('inv', 16, 14, 14, 'human', 'Курсор пусть будет непрозрачным, id наружу не свети.', { task_id: 't-inv', delivered_at: today(14, 15) }),
       M('inv', 17, 14, 15, R('worker'), 'Подписываю курсор, чиню два теста. Задал вопрос про старый клиент - он в карточке задачи.', { model: 'Opus 5.5' })],
     how: [M('how', 1, 13, 40, 'human', 'Как устроен биллинг? Коротко.'), M('how', 9, 13, 40, 'system', '', { action: { id: 'h1', name: 'Grep', input: { kind: 'search', pattern: 'class .*Service', hits: 3 }, output: 'a\nb\nc', ok: true, done: true } }),
@@ -238,7 +238,7 @@
   const LOGS = {
     't-inv': [{ at: ago(26), kind: 'stage', role: 'coordinator', text: '«Подготовить релиз 2.4» разбито на 5 задач.' }, { at: ago(22), kind: 'agent', role: 'test_author', model: 'Sonnet 5.5', text: 'Автор тестов (Sonnet 5.5): 9 тестов, все красные как надо.' },
       { at: ago(8), kind: 'check', role: 'verifier', text: 'Пагинация: тесты 7 из 9.' }],
-    't-cur': [{ at: ago(160), kind: 'git', role: 'integrator', text: 'Влито в main: Поле currency в payments.' }],
+    't-cur': [{ at: ago(160), kind: 'git', role: 'integrator', text: 'Смержено в main: Поле currency в payments.' }],
     't-round': [{ at: ago(3), kind: 'agent', role: 'watcher', text: 'Округление: нет вывода 15 минут, толкнул, жду.' }],
     't-acc': [{ at: ago(10), kind: 'agent', role: 'watcher', text: 'Завис 15 мин. Исполнитель (GPT-Codex 5) на «customer_id → account_id».' }],
     't-pf': [{ at: ago(2), kind: 'error', text: 'tests still failing after 3 attempts' }],
@@ -329,6 +329,10 @@
   const baseRepo = cmds.repo_info;
   cmds.repo_info = ({ id }) => { const r = repos[id]; if (r === null) fail('folder not found: ' + (projects.find((p) => p.id === id) || {}).path); return baseRepo({ id }); };
 
+  // v4 config file (story 293-294): ?cfgerr=1 shows one bad line the way core::config reports it
+  cmds.config_open = () => 'config';
+  cmds.config_errors = () => (q.get('cfgerr') ? [{ line: 12, key: 'font-size', msg: 'нужно число, а не «big»' }] : []);
+
   // ================= v3: the live course of work (Границы v3) =================
   // task-action {id, action} (each action twice: start with done=false, then the result), chat-delta {id, msgId, text}, chat-msg at the end.
   // ?live=fast|slow|off - speed of the scripted runs; two chats run at once: "Кэш для отчётов" (streamed answer) and "Линтер в CI" (typed answer).
@@ -415,7 +419,7 @@
         const finish = () => {
           pushMsg({ id: msgId, chat_id: chatId, at: iso(Date.now()), who: { role: w.role }, text: w.answer, model: w.model, task_id: taskId });
           setTimeout(() => { tk.status = 'done'; tk.finished_at = iso(Date.now()); tk.steps = steps('merge').map((p) => [p[0], 'done']); tk.runs = tk.runs.map((r) => Object.assign({}, r, { state: 'done' }));
-            tk.outcome = { summary: 'Влито в main: **кэш с TTL**, `ReportCache(ttl=300)`.\n\nТест проверяет один случай.\n\n**Что ждёт меня:** ничего.\n**Что изменено:** `src/reports/cache.py`, `tests/test_cache_ttl.py`.', commit: '7c1e0b2a9d', tests: { passed: true, tail: '14 passed' }, review: { approved: true, issues: [] } }; changed(tk); }, 900 * liveSpeed);
+            tk.outcome = { summary: 'Смержено в main: **кэш с TTL**, `ReportCache(ttl=300)`.\n\nТест проверяет один случай.\n\n**Что ждёт меня:** ничего.\n**Что изменено:** `src/reports/cache.py`, `tests/test_cache_ttl.py`.', commit: '7c1e0b2a9d', tests: { passed: true, tail: '14 passed' }, review: { approved: true, issues: [] } }; changed(tk); }, 900 * liveSpeed);
         };
         if (!a) return finish();
         const words = w.answer.match(/\S+\s*/g);
@@ -456,7 +460,7 @@
 
   // deep links for screenshots, after the app is up
   window.addEventListener('ns-ready', () => {
-    if (scenario === 'full') emit('task-log', { id: 't-round', event: { kind: 'check', text: 'Ворота: 12 из 18 тестов' } });
+    if (scenario === 'full') emit('task-log', { id: 't-round', event: { kind: 'check', text: 'Проверки: 12 из 18 тестов' } });
     const env = q.get('env');
     const screen = q.get('screen');
     if (q.get('notice') && NOTICES[q.get('notice')]) emit(NOTICES[q.get('notice')][0], NOTICES[q.get('notice')][1]);

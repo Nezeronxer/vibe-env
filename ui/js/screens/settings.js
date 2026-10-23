@@ -37,12 +37,10 @@
   }
 
   // "Внешний вид": theme, size, role labels take effect at once (they are the window's own)
-  let themeSet = false;
+  // v4: the whole look (theme, font, radius, gap, …) goes through theme.js; the extras of v4 live in settings.ui.tabs.look
   function applyLook() {
-    const look = sget('look'), root = document.documentElement;
-    if (look.theme === 'dark' || look.theme === 'light') { root.setAttribute('data-theme', look.theme); themeSet = true; }
-    else if (themeSet) { root.removeAttribute('data-theme'); themeSet = false; }
-    root.style.setProperty('--fs', look.font_px + 'px');
+    const look = sget('look');
+    if (window.NSTheme) window.NSTheme.applyTheme(window.NSTheme.fromSettings(S.settings));
     document.body.classList.toggle('no-role-labels', !look.role_labels);
   }
   window.addEventListener('ns-ready', applyLook);
@@ -386,28 +384,35 @@
     ].filter(Boolean);
   } });
 
+  // a section of the registry ('settings' point) looks like one of SEC to the frame
+  const extSec = (id) => { const d = NS.registry.points('settings').find((x) => x.id === id); return d ? Object.assign({ live: [] }, d, { title: d.title || (() => t(d.labelKey)) }) : null; };
+
   // ---------- the frame ----------
   function frame(root, ctx, sectionId, extra) {
     const envs = S.envs;
     const envId = ctx.params.env || S.lastEnv || (envs.find((e) => e.state === 'ok') || envs[0] || {}).id;
     const env = st.env(envId) || envs[0] || { id: envId, name: envId || '', state: 'ok' };
     const alive = { v: true };
-    if (env.id && S.route.env !== env.id) { S.route.env = env.id; NS.shell.renderRail(); }     // the rail shows which env these settings belong to
+    if (env.id && S.route.env !== env.id) { S.route.env = env.id; NS.shell.barUpdate('route'); }     // the bar shows which env these settings belong to
     const nav = h('nav', { class: 'snav', 'aria-label': t('set.label') });
     const body = h('section', { class: 'sbody' });
     root.append(h('div', { class: 'settings' }, nav, body));
     const go = (id) => (id === 'kits' ? ctx.nav('kits', { env: env.id }) : ctx.nav('settings', { env: env.id, section: id }));
     const fx = { ctx, env, extra, alive, redraw: () => draw() };
     function drawNav() {
-      const link = (id) => { const on = id === sectionId || (id === 'kits' && sectionId === 'import');
-        return h('button', { type: 'button', class: on ? 'on' : '', 'aria-current': on ? 'page' : null, text: t('set.nav.' + id), onclick: () => go(id) }); };
+      const link = (id, key) => { const on = id === sectionId || (id === 'kits' && sectionId === 'import');
+        return h('button', { type: 'button', class: on ? 'on' : '', 'aria-current': on ? 'page' : null, text: t(key || 'set.nav.' + id), onclick: () => go(id) }); };
       const ids = (g) => L.SETTINGS_SECTIONS.filter((x) => x.group === g).map((x) => x.id);
-      clear(nav).append(h('h2', {}, envIcon(env.custom ? 'custom' : env.id), env.name), ...ids('env').map(link), h('h2', { text: t('set.group_all') }), ...ids('all').map(link),
-        h('div', { class: 'snav-gap' }), ...ids('projects').map(link));
+      // v4 (story 295): "Основное" first, then "Расширенное" (search over every key) with the sections of v2 under it;
+      // sections of other tasks come from the registry ('settings', level basic | advanced)
+      const ext = (lvl) => NS.registry.points('settings').filter((d) => d.level === lvl).map((d) => link(d.id, d.labelKey));
+      clear(nav).append(h('h2', { text: t('set.group_v4') }), ...ext('basic'), ...ext('advanced'),
+        h('h2', {}, envIcon(env.custom ? 'custom' : env.id), env.name), ...ids('env').map((id) => link(id)), h('h2', { text: t('set.group_all') }), ...ids('all').map((id) => link(id)),
+        h('div', { class: 'snav-gap' }), ...ids('projects').map((id) => link(id)));
     }
     function draw() {
       const top = body.scrollTop;
-      const sec = SEC[sectionId] || SEC.models;
+      const sec = SEC[sectionId] || extSec(sectionId) || SEC.models;
       clear(body);
       const nodes = sec.build(env, fx) || [];
       const title = sec.title ? sec.title(env, fx) : t('set.nav.' + sec.id);
@@ -446,5 +451,5 @@
 
   // "section: 'env'" is what the first-run composer passes (model of the env)
   NS.registry.register({ id: 'settings', layout: 'full', keepEnv: true, rail: { zone: 'foot', icon: 'i-gear', labelKey: 'rail.settings', order: 2 },
-    mount(root, ctx) { const sec = ctx.params.section; return frame(root, ctx, !sec || sec === 'env' ? 'models' : sec); } });
+    mount(root, ctx) { const sec = ctx.params.section; return frame(root, ctx, !sec ? 'basic' : sec === 'env' ? 'models' : sec); } });
 })();

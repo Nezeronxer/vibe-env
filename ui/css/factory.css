@@ -25,7 +25,7 @@
 .oneline input { flex: 1; min-width: 0; height: 32px; }
 .oneline select { max-width: 170px; }
 .convoys { display: grid; gap: 8px; margin-top: 12px; }
-.cv { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 10px 12px; text-align: left; cursor: pointer; display: block; width: 100%; }
+.cv { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 10px 12px; text-align: left; cursor: pointer; display: block; width: 100%; }
 .cv:hover { border-color: var(--ink3); }
 .cv-h { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; }
 .cv-h b { font-weight: 650; }

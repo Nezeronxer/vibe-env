@@ -1,42 +1,49 @@
-// Tabs and split panels (stories 232-236): a strip over the chat, "+", a menu per tab, drag to reorder, state dots;
-// up to 4 panels (2 side by side, 3-4 in a 2x2 grid), each with its own feed, live line and input field.
-// The state is pure (NSLive.tabs*, selftested); it is kept in localStorage and copied to settings.ui.tabs.
-// Keys are handled here, in the window (no global shortcuts): see NSLive.tabKeyAction.
+// v4 workspace (stories 246, 258-259, 296): tabs on top, each tab a tree of panes like a tiling WM (NSPanes, selftested),
+// rounded panes on the canvas with a gap, a thin accent border on the focused one, the others dimmed; dividers drag, double
+// click makes them equal; a pane is zoomed with ⌘⇧Enter. Pane kinds come from the registry ('paneKind'): 'agent' (the v3 feed)
+// is built here, 'term' arrives with task 23. The state is kept in localStorage and copied to settings.ui.tabs.
+// Keys (window, capture phase): ⌘T tab · ⌘W pane · ⌘D split right · ⌘⇧D split down · ⌘⇧Enter zoom · ⌘⌥←↑→↓ focus ·
+// ⌘1…9, ⌘⇧[ ], Ctrl+Tab tabs. Linux: Ctrl instead of ⌘.
 (function () {
   const NS = window.NS;
   const V = window.NSLive;
+  const P = new Proxy({}, { get: (_, k) => window.NSPanes[k] });    // panes.js loads after this file (index.html order)
   const L = window.NSLogic;
-  const { h, ic, envIcon, clear } = NS;
+  const { h, ic, envIcon, clear, setVars } = NS;
   const t = (k, p) => NS.t(k, p);
-  const KEY = 'ns.tabs', NARROW = 900, STRIP_MAX = 12, TITLE_MAX = 24, KEEP_MOUNTED = 8;
+  const KEY = 'ns.tabs', STRIP_MAX = 12, TITLE_MAX = 26, KEEP_MOUNTED = 12;
   const S = () => NS.store.s;
 
-  let state = V.tabsEmpty(), restored = false, ws = null, saveTimer = 0;
-  const newId = () => 'tab-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 7);
+  let state = { v: 2, tabs: [], active: null }, restored = false, ws = null, saveTimer = 0;
+  const uid = (p) => p + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 7);
   const platform = () => (/Mac/i.test(navigator.platform || '') || /[?&]platform=mac/.test(location.search) ? 'mac' : 'linux');
+  const agentPane = (env, chat) => ({ id: uid('p-'), kind: 'agent', env, chat: chat || 'new' });
 
-  // only once the chat lists of the saved tabs' envs are in: before that every saved chat looks deleted and all tabs would go
+  // ---------- saving: localStorage + settings.ui.tabs (the look extras ride along in .look, see settings-v4.js) ----------
+  function savedRaw() { return [NS.storage.get(KEY), ((S().settings || {}).ui || {}).tabs || null]; }
+  // only once the chat lists of the saved panes' envs are in: before that every saved chat looks deleted
   function restore() {
     if (restored) return;
-    const saved = [NS.storage.get(KEY), ((S().settings || {}).ui || {}).tabs || null];
-    const envsOf = (raw) => { try { const o = typeof raw === 'string' ? JSON.parse(raw) : raw; return ((o && o.tabs) || []).map((x) => x && x.env).filter(Boolean); } catch (e) { return []; } };
+    const saved = savedRaw();
+    const envsOf = (raw) => { try { const o = typeof raw === 'string' ? JSON.parse(raw) : raw; const st = P.wsRestore(o); return st ? P.allPanes(st).map((x) => x.pane.env).filter(Boolean) : []; } catch (e) { return []; } };
     const waiting = saved.flatMap(envsOf).some((env) => { const e = NS.store.env(env); return e && e.state !== 'missing' && !S().chats.has(env); });
     if (waiting || !S().envs.length) return;
     restored = true;
-    const known = (env, chat) => !!NS.store.env(env) && !!NS.store.findChat(chat);
-    const st = V.tabsRestore(saved[0], known) || V.tabsRestore(saved[1], known);
+    const keep = (p) => p.kind !== 'agent' || (!!NS.store.env(p.env) && (p.chat === 'new' || !!NS.store.findChat(p.chat)));
+    const st = P.wsRestore(saved[0], keep) || P.wsRestore(saved[1], keep);
     if (st) state = st;
   }
   function persist() {
-    const raw = V.tabsSerialize(state);
+    const raw = P.wsSerialize(state);
     NS.storage.set(KEY, raw);
-    clearTimeout(saveTimer);                // a copy in the settings, so another start of the window finds it too (spec: ui.tabs)
+    clearTimeout(saveTimer);
     saveTimer = setTimeout(() => {
       const st = S().settings;
       if (!st) return;
-      st.ui = Object.assign({}, st.ui, { tabs: JSON.parse(raw) });
+      const prev = (st.ui && st.ui.tabs) || {};
+      st.ui = Object.assign({}, st.ui, { tabs: Object.assign(JSON.parse(raw), prev.look ? { look: prev.look } : {}) });
       NS.api.call('set_settings', { settings: st }).catch(() => { /* the localStorage copy stays */ });
-    }, 1500);
+    }, 1200);
   }
   function setState(next) {
     if (next === state) return;
@@ -45,231 +52,364 @@
     if (ws) ws.draw();
     syncRoute();
   }
-  const activeTab = () => state.tabs.find((x) => x.id === state.active) || null;
+  const activeTab = () => P.tabOf(state);
+  const focused = () => P.focusedPane(state);
+  // the shell (bar, chat list, theme accent) follows the focused agent pane
   function syncRoute() {
-    const tb = activeTab();
-    if (tb && ws) NS.shell.setRoute(tb.env, tb.chat);
+    const p = focused();
+    if (p && p.kind === 'agent' && ws) NS.shell.setRoute(p.env, p.chat);
+    if (p && NS.applyTheme) NS.applyTheme(undefined, p.env || null);
+    if (NS.shell.barUpdate) NS.shell.barUpdate('focus');
   }
-  const keysOf = () => Object.assign(V.tabKeyDefaults(platform()), ((S().settings || {}).keys) || {});
 
-  // ---------- API for shell.js and chat.js ----------
-  // nav('env', {env, chat}) lands here: an open tab of that chat is activated, otherwise the active tab shows it
+  // ---------- API for shell.js, chat.js and the palette ----------
+  // nav('env', {env, chat}) lands here: the pane that shows that chat gets the focus, otherwise the focused agent pane shows it
   function show(env, chat) {
     restore();
     const mountWs = () => { if (!ws) NS.shell.mountScreen('tabs', {}); };
-    if (chat === undefined && state.tabs.length && !ws) { mountWs(); syncRoute(); return; }           // the start of the window: restored tabs
+    if (chat === undefined && state.tabs.length && !ws) { mountWs(); syncRoute(); return; }      // the start of the window: restored tabs
     if (chat === undefined || chat === null) {
-      const same = state.tabs.find((x) => x.env === env && x.id === state.active) || state.tabs.slice().reverse().find((x) => x.env === env);
-      if (same) { mountWs(); setState(V.tabsActivate(state, same.id)); if (ws) ws.draw(); syncRoute(); return; }
+      const f = focused();
+      if (f && f.kind === 'agent' && f.env === env) { mountWs(); ws && ws.draw(); syncRoute(); return; }
+      const same = P.allPanes(state).find((x) => x.pane.kind === 'agent' && x.pane.env === env);
+      if (same) { mountWs(); setState(P.wsFocusPane(state, same.pane.id)); return; }
       chat = NS.shell.defaultChat(env);
     }
-    const hit = state.tabs.find((x) => x.env === env && x.chat === chat);
-    if (hit) state = V.tabsActivate(state, hit.id);
-    else if (!state.tabs.length) state = V.tabsOpen(state, { id: newId(), env, chat });
-    else state = V.tabsSetChat(state, state.active, env, chat);
+    const hit = P.allPanes(state).find((x) => x.pane.kind === 'agent' && x.pane.env === env && x.pane.chat === chat);
+    const f = focused();
+    let st = state;
+    if (hit) st = P.wsFocusPane(st, hit.pane.id);
+    else if (!st.tabs.length) st = P.wsOpen(st, uid('tab-'), agentPane(env, chat));
+    else if (f && f.kind === 'agent') st = P.wsSetPane(st, f.id, { env, chat });
+    else st = P.wsOpen(st, uid('tab-'), agentPane(env, chat));
+    state = st;
     persist();
     mountWs();
     if (ws) ws.draw();
     syncRoute();
   }
-  function setChat(tabId, env, chat) { setState(V.tabsSetChat(state, tabId, env, chat || 'new')); }
+  // chat.js calls this with the pane id it was mounted with (ctx.params.tab)
+  function setChat(paneId, env, chat) { setState(P.wsSetPane(state, paneId, { env, chat: chat || 'new' })); }
   function dropChat(chatId) {
     let st = state;
-    for (const tb of state.tabs.filter((x) => x.chat === chatId)) st = V.tabsSetChat(st, tb.id, tb.env, 'new');
+    for (const x of P.allPanes(state)) if (x.pane.kind === 'agent' && x.pane.chat === chatId) st = P.wsSetPane(st, x.pane.id, { chat: 'new' });
     setState(st);
   }
-  function newTab() {
-    const cur = activeTab(), env = (cur && cur.env) || S().lastEnv || ((S().envs.find((e) => e.state === 'ok') || {}).id);
-    if (!env) return;
-    setState(V.tabsOpen(state, { id: newId(), env, chat: 'new' }));
+  const curEnv = () => { const f = focused(); return (f && f.env) || S().lastEnv || ((S().envs.find((e) => e.state === 'ok') || {}).id); };
+  // a fresh pane: of the given kind (task 23: 'term'), or an agent session of the env in focus
+  function freshPane(kind) {
+    if (kind && kind !== 'agent') {
+      const def = NS.registry.points('paneKind').find((d) => d.kind === kind);
+      return Object.assign({ id: uid('p-'), kind }, def && def.create ? def.create(NS.shell.ctxFor({})) : {});
+    }
+    const env = curEnv();
+    return env ? agentPane(env, 'new') : null;
+  }
+  function newTab(kind) {
+    const p = freshPane(kind);
+    if (!p) return;
+    if (!ws) { state = P.wsOpen(state, uid('tab-'), p); persist(); NS.shell.mountScreen('tabs', {}); syncRoute(); focusActive(); return; }
+    setState(P.wsOpen(state, uid('tab-'), p));
     focusActive();
   }
-  // the cursor goes to the input field of the shown tab (after ⌘T, ⌘1…9, the next/previous tab)
-  function focusActive() { if (ws) (window.requestAnimationFrame || setTimeout)(() => ws && ws.focus()); }
+  function split(dir, kind) {
+    const tb = activeTab();
+    if (!tb) return newTab(kind);
+    if (P.count(tb.root) >= P.MAX_PANES) { NS.shell.toast(t('pane.max')); return; }
+    const p = freshPane(kind);
+    if (p) { setState(P.wsSplit(state, dir === 'v' ? 'v' : 'h', p)); focusActive(); }
+  }
+  function closePane(paneId) {
+    const tb = activeTab();
+    if (!tb) return;
+    let st = P.wsClosePane(state, paneId);
+    if (!st.tabs.length) { const p = freshPane(); if (p) st = P.wsOpen(st, uid('tab-'), p); }   // the window never stays empty
+    setState(st);
+    focusActive();
+  }
   function closeTab(id) {
-    let st = V.tabsClose(state, id);
-    if (!st.tabs.length) { const tb = state.tabs.find((x) => x.id === id); st = V.tabsOpen(st, { id: newId(), env: tb.env, chat: 'new' }); }
+    let st = P.wsClose(state, id);
+    if (!st.tabs.length) { const p = freshPane(); if (p) st = P.wsOpen(st, uid('tab-'), p); }
     setState(st);
   }
-  function split(id) {
-    if (window.innerWidth < NARROW) { NS.shell.toast(t('tabs.narrow')); return; }
-    if (state.panels.length >= V.MAX_PANELS) { NS.shell.toast(t('tabs.max')); return; }
-    const tb = state.tabs.find((x) => x.id === id);
-    setState(V.tabsSplit(state, id, tb ? { id: newId(), env: tb.env, chat: 'new' } : null));
+  const zoom = () => setState(P.wsZoom(state));
+  const focusDir = (dir) => { setState(P.wsFocus(state, dir)); focusActive(); };
+  function equalize() {
+    const tb = activeTab();
+    if (!tb) return;
+    let st = state;
+    const walk = (n, path) => { if (!n || n.pane) return; st = P.wsRatio(st, path, 0.5); walk(n.split.a, path + 'a'); walk(n.split.b, path + 'b'); };
+    walk(tb.root, '');
+    setState(st);
   }
+  // the cursor goes to the focused pane (its input field, or the terminal)
+  function focusActive() { if (ws) (window.requestAnimationFrame || setTimeout)(() => ws && ws.focus()); }
 
-  // ---------- keys (window handler, active only while the tabs screen is shown) ----------
-  // capture phase on the window: no handler of a feed, a field or a pop-up can swallow ⌘D / ⌘W / ⌘T before this one
+  // ---------- keys (window, capture phase, only while the workspace is shown) ----------
+  const keysOf = () => Object.assign(V.tabKeyDefaults(platform()), ((S().settings || {}).keys) || {});
   window.addEventListener('keydown', (e) => {
     if (!ws || e.defaultPrevented || e.isComposing) return;
-    if (document.querySelector('dialog[open]')) return;
+    if (document.querySelector('dialog[open]') || (NS.palette && NS.palette.isOpen)) return;
     if (e.target && e.target.closest && e.target.closest('.keyfield')) return;      // the hotkey field in the settings records keys
-    const a = V.tabKeyAction(e, platform(), keysOf());
+    const mac = platform() === 'mac', mod = mac ? e.metaKey : e.ctrlKey;
+    const code = e.code || '';
+    let a = null;
+    if (mod && e.shiftKey && !e.altKey && (code === 'Enter' || e.key === 'Enter')) a = { type: 'zoom' };
+    else if (mod && e.altKey && !e.shiftKey && /^Arrow(Up|Down|Left|Right)$/.test(code || e.key)) a = { type: 'focus', dir: (code || e.key).slice(5).toLowerCase() };
+    else a = V.tabKeyAction(e, platform(), keysOf());
     if (!a) return;
     e.preventDefault();
     e.stopPropagation();
     const ids = state.tabs.map((x) => x.id), i = ids.indexOf(state.active);
     if (a.type === 'new') newTab();
-    else if (a.type === 'close') { if (state.active) closeTab(state.active); }
-    else if (a.type === 'split') { if (state.active) split(state.active); }
-    else if (a.type === 'unsplit') setState(V.tabsUnsplit(state, state.active));
-    else if (a.type === 'goto') { if (ids[a.n - 1]) setState(V.tabsActivate(state, ids[a.n - 1])); }
-    else if (a.type === 'last') { if (ids.length) setState(V.tabsActivate(state, ids[ids.length - 1])); }
-    else if (a.type === 'next' || a.type === 'prev') { if (ids.length > 1) setState(V.tabsActivate(state, ids[(i + (a.type === 'next' ? 1 : -1) + ids.length) % ids.length])); }
-    else if (a.type === 'panel') setState(V.tabsFocusPanel(state, a.dir));
-    if (a.type !== 'new') focusActive();          // newTab() focuses its own field
+    else if (a.type === 'close') closePane();
+    else if (a.type === 'split') split('h');
+    else if (a.type === 'unsplit') split('v');                 // v4: ⌘⇧D splits down (it took the panel out of a v3 split)
+    else if (a.type === 'zoom') zoom();
+    else if (a.type === 'focus') focusDir(a.dir);
+    else if (a.type === 'panel') focusDir(a.dir < 0 ? 'left' : 'right');
+    else if (a.type === 'goto') { if (ids[a.n - 1]) setState(P.wsActivate(state, ids[a.n - 1])); }
+    else if (a.type === 'last') { if (ids.length) setState(P.wsActivate(state, ids[ids.length - 1])); }
+    else if (a.type === 'next' || a.type === 'prev') { if (ids.length > 1) setState(P.wsActivate(state, ids[(i + (a.type === 'next' ? 1 : -1) + ids.length) % ids.length])); }
+    if (!['new', 'split', 'unsplit', 'close', 'focus'].includes(a.type)) focusActive();
   }, true);
 
-  // ---------- the screen ----------
-  function tabTitle(tb) {
-    if (tb.chat === 'new') return t('tabs.new_chat');
-    const c = NS.store.findChat(tb.chat);
-    const task = NS.store.chatTasks(tb.chat)[0];
-    return (c && c.title) || (task && task.title) || t('chat.untitled');
-  }
+  // ---------- pane kind 'agent': the v3 chat / swarm / env state screens inside a pane ----------
+  NS.registry.extend('paneKind', { kind: 'agent', labelKey: 'pane.kind.agent', order: 1,
+    mount(el, pane) {
+      const env = NS.store.env(pane.env);
+      let id = 'chat';
+      const params = { env: pane.env, chat: pane.chat, tab: pane.id };
+      if (!env || env.state !== 'ok') id = 'envstate';
+      else {
+        const sw = NS.registry.get('swarm');
+        const swt = pane.chat !== 'new' && sw && !sw.placeholder ? L.swarmTaskOf(NS.store.chatTasks(pane.chat)) : null;
+        if (swt) { id = 'swarm'; params.task = swt.id; }
+      }
+      return NS.registry.get(id).mount(el, NS.shell.ctxFor(params)) || null;
+    },
+    sig: (pane) => pane.env + '|' + pane.chat,
+    title(pane) {
+      if (pane.chat === 'new') return t('tabs.new_chat');
+      const c = NS.store.findChat(pane.chat), task = NS.store.chatTasks(pane.chat)[0];
+      return (c && c.title) || (task && task.title) || t('chat.untitled');
+    },
+  });
+  const kindDef = (kind) => NS.registry.points('paneKind').find((d) => d.kind === kind) || null;
+  function paneTitle(p) { const d = kindDef(p.kind); return d && d.title ? d.title(p) : d ? t(d.labelKey) : p.kind; }
+  const stateOf = (p) => (p.kind !== 'agent' || p.chat === 'new' ? 'talk' : L.chatState(NS.store.chatTasks(p.chat)).kind);
   const short = (s) => (s.length > TITLE_MAX ? s.slice(0, TITLE_MAX - 1) + '…' : s);
-  const stateOf = (tb) => (tb.chat === 'new' ? 'talk' : L.chatState(NS.store.chatTasks(tb.chat)).kind);
 
+  // ---------- the screen ----------
   function mount(root) {
     restore();
     const strip = h('div', { class: 'tabstrip', role: 'tablist', 'aria-label': t('tabs.label') });
-    const hint = h('div', { class: 'ws-hint', role: 'status', hidden: true, text: t('tabs.narrow') });
-    const panes = h('div', { class: 'panes' });
-    const wsEl = h('section', { class: 'ws' }, strip, hint, panes);
+    const corner = h('div', { class: 'tabs-corner' });
+    const top = h('div', { class: 'ws-top' }, strip, corner);
+    const area = h('div', { class: 'panes' });
+    const wsEl = h('section', { class: 'ws' }, top, area);
     root.append(wsEl);
-    const mounted = new Map();       // tab id -> {el, inst, sig, used}
+    const mounted = new Map();       // pane id -> {el, body, inst, sig, used, slots}
     let menu = null, dragId = null;
     const closeMenu = () => { if (menu) { menu.remove(); menu = null; document.removeEventListener('click', onDocMenu); } };
     const onDocMenu = (e) => { if (menu && !menu.contains(e.target)) closeMenu(); };
 
+    // the corner right of the tabs: a slot for Clawd (task 25); the last registered def wins
+    let cornerInst = null;
+    function drawCorner() {
+      const defs = NS.registry.points('tabsCorner');
+      const def = defs[defs.length - 1];
+      if (cornerInst && cornerInst.destroy) cornerInst.destroy();
+      clear(corner);
+      cornerInst = def ? def.mount(corner, NS.shell.ctxFor({})) || null : null;
+    }
+
     function openMenu(tb, anchor) {
       closeMenu();
-      const shown = state.panels.includes(tb.id) && state.panels.length > 1;
       const item = (label, fn, disabled) => h('button', { type: 'button', role: 'menuitem', text: label, disabled: !!disabled, onclick: () => { closeMenu(); fn(); } });
       menu = h('div', { class: 'menu tabmenu', role: 'menu', 'aria-label': t('tabs.menu') },
-        item(t('tabs.split'), () => split(tb.id), state.panels.length >= V.MAX_PANELS || window.innerWidth < NARROW),
-        shown ? item(t('tabs.unsplit'), () => setState(V.tabsUnsplit(state, tb.id))) : null,
         item(t('tabs.close'), () => closeTab(tb.id)),
-        state.tabs.length > 1 ? item(t('tabs.close_others'), () => { let st = state; for (const x of state.tabs) if (x.id !== tb.id) st = V.tabsClose(st, x.id); setState(V.tabsActivate(st, tb.id)); }) : null,
-        window.innerWidth < NARROW ? h('small', { text: t('tabs.narrow') }) : null);
-      // under the tab, inside the .ws box the menu is positioned in (it was placed against the screen: the left edge of the window)
+        state.tabs.length > 1 ? item(t('tabs.close_others'), () => { let st = state; for (const x of state.tabs) if (x.id !== tb.id) st = P.wsClose(st, x.id); setState(P.wsActivate(st, tb.id)); }) : null);
       const r = anchor.getBoundingClientRect(), rr = wsEl.getBoundingClientRect();
-      NS.setVars(menu, { '--x': Math.max(0, Math.min(r.left - rr.left, rr.width - 220)) + 'px', '--y': (r.bottom - rr.top + 2) + 'px' });
+      setVars(menu, { '--x': Math.max(0, Math.min(r.left - rr.left, rr.width - 220)) + 'px', '--y': (r.bottom - rr.top + 4) + 'px' });
       wsEl.append(menu);
       setTimeout(() => document.addEventListener('click', onDocMenu), 0);
     }
-
     function tabEl(tb, i) {
-      const on = tb.id === state.active, kind = stateOf(tb), title = tabTitle(tb), env = NS.store.env(tb.env);
-      const shown = state.panels.includes(tb.id) && state.panels.length > 1;
+      const on = tb.id === state.active;
+      const p = P.findPane(tb.root, tb.focus) || P.leaves(tb.root)[0];
+      const n = P.count(tb.root), kind = stateOf(p), title = paneTitle(p), env = p.env ? NS.store.env(p.env) : null;
       const word = { run: 'tabs.st_run', wait: 'tabs.st_wait', done: 'tabs.st_done', fail: 'tabs.st_fail', queue: 'tabs.st_queue', talk: 'tabs.st_talk' }[kind];
-      const menuBtn = h('button', { type: 'button', class: 'tab-x tab-m', 'aria-label': t('tabs.menu'), 'aria-haspopup': 'menu', text: '⋯', onclick: (e) => { e.stopPropagation(); openMenu(tb, el); } });
-      const el = h('div', { class: 'tab' + (on ? ' on' : '') + (shown ? ' shown' : ''), role: 'tab', 'aria-selected': String(on), tabIndex: on ? 0 : -1, draggable: 'true',
+      const el = h('div', { class: 'tab' + (on ? ' on' : ''), role: 'tab', 'aria-selected': String(on), tabIndex: on ? 0 : -1, draggable: 'true',
         title: (env ? env.name + ' · ' : '') + title + ' · ' + t(word) + (i < 9 ? ' · ' + (platform() === 'mac' ? '⌘' : 'Ctrl+') + (i + 1) : ''), dataset: { tab: tb.id },
-        onclick: () => setState(V.tabsActivate(state, tb.id)),
+        onclick: () => { setState(P.wsActivate(state, tb.id)); focusActive(); },
         onauxclick: (e) => { if (e.button === 1) { e.preventDefault(); closeTab(tb.id); } },
         onmousedown: (e) => { if (e.button === 1) e.preventDefault(); },
         oncontextmenu: (e) => { e.preventDefault(); openMenu(tb, el); },
-        onkeydown: (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setState(V.tabsActivate(state, tb.id)); } },
+        onkeydown: (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setState(P.wsActivate(state, tb.id)); } },
         ondragstart: (e) => { dragId = tb.id; e.dataTransfer.effectAllowed = 'move'; try { e.dataTransfer.setData('text/plain', tb.id); } catch (er) { /* some engines refuse */ } el.classList.add('drag'); },
         ondragend: () => { dragId = null; el.classList.remove('drag'); },
         ondragover: (e) => { if (dragId && dragId !== tb.id) { e.preventDefault(); el.classList.add('over'); } },
         ondragleave: () => el.classList.remove('over'),
-        ondrop: (e) => { e.preventDefault(); el.classList.remove('over'); if (dragId && dragId !== tb.id) setState(V.tabsMove(state, dragId, state.tabs.findIndex((x) => x.id === tb.id))); } },
-      h('span', { class: 'tab-ic' }, envIcon(env && env.custom ? 'custom' : tb.env)),
-      h('span', { class: 'tab-t', text: short(title) }),
+        ondrop: (e) => { e.preventDefault(); el.classList.remove('over'); if (dragId && dragId !== tb.id) setState(P.wsMove(state, dragId, state.tabs.findIndex((x) => x.id === tb.id))); } },
+      h('span', { class: 'tab-ic' }, p.env ? envIcon(env && env.custom ? 'custom' : p.env) : ic('i-dash')),
+      h('span', { class: 'tab-t' }, h('span', { class: 'tab-l', text: short(title) })),
+      n > 1 ? h('small', { class: 'tab-n', text: String(n), title: n + ' · ' + t('tabs.label') }) : null,
       h('i', { class: 'tdot ' + kind, 'aria-hidden': 'true' }), h('span', { class: 'sr-only', text: t(word) }),
-      menuBtn,
       h('button', { type: 'button', class: 'tab-x', 'aria-label': t('tabs.close'), text: '×', onclick: (e) => { e.stopPropagation(); closeTab(tb.id); } }));
       return el;
     }
     function drawStrip() {
-      const list = state.tabs.map(tabEl);
+      const list = state.tabs.slice(0, STRIP_MAX).map(tabEl);
       const rest = state.tabs.slice(STRIP_MAX);
-      const more = rest.length ? h('button', { type: 'button', class: 'btn sm tab-more', text: t('tabs.more', { n: rest.length }), onclick: (e) => {
+      const more = rest.length ? h('button', { type: 'button', class: 'tab-more', text: t('tabs.more', { n: rest.length }), onclick: (e) => {
         e.stopPropagation(); closeMenu();
-        menu = h('div', { class: 'menu tabmenu', role: 'menu' }, rest.map((tb) => h('button', { type: 'button', role: 'menuitem', text: short(tabTitle(tb)), onclick: () => { closeMenu(); setState(V.tabsActivate(state, tb.id)); } })));
+        menu = h('div', { class: 'menu tabmenu', role: 'menu' }, rest.map((tb) => h('button', { type: 'button', role: 'menuitem', text: short(paneTitle(P.findPane(tb.root, tb.focus))), onclick: () => { closeMenu(); setState(P.wsActivate(state, tb.id)); } })));
         const r = e.target.getBoundingClientRect(), rr = wsEl.getBoundingClientRect();
-        NS.setVars(menu, { '--x': Math.max(0, r.right - rr.left - 220) + 'px', '--y': (r.bottom - rr.top + 2) + 'px' });
+        setVars(menu, { '--x': Math.max(0, r.right - rr.left - 220) + 'px', '--y': (r.bottom - rr.top + 4) + 'px' });
         wsEl.append(menu); setTimeout(() => document.addEventListener('click', onDocMenu), 0);
       } }) : null;
-      NS.append(clear(strip), [h('div', { class: 'tabs-scroll' }, list), h('button', { type: 'button', class: 'tab-plus', 'aria-label': t('tabs.new'), title: t('tabs.new') + ' (' + (platform() === 'mac' ? '⌘T' : 'Ctrl+T') + ')', onclick: newTab }, ic('i-plus')), more]);
+      NS.append(clear(strip), [h('div', { class: 'tabs-scroll' }, list), more,
+        h('button', { type: 'button', class: 'tab-plus', 'aria-label': t('tabs.new'), title: t('tabs.new') + ' (' + (platform() === 'mac' ? '⌘T' : 'Ctrl+T') + ')', onclick: () => newTab() }, ic('i-plus'))]);
       const a = strip.querySelector('.tab.on');
       if (a && a.scrollIntoView) a.scrollIntoView({ block: 'nearest', inline: 'nearest' });
     }
-    function paneFor(tb) {
-      const sig = tb.env + '|' + tb.chat;
-      let m = mounted.get(tb.id);
+
+    // the header of a pane: the kind's own (chat.js draws .pane-h) or a plain one; slots of the registry and the hover tools
+    function tools(p) {
+      const tb = activeTab(), zoomed = tb && tb.zoom && tb.focus === p.id;
+      const b = (label, icon, fn, cls) => h('button', { type: 'button', class: 'pt' + (cls ? ' ' + cls : ''), 'aria-label': label, title: label, onclick: (e) => { e.stopPropagation(); setState(P.wsFocusPane(state, p.id)); fn(); } }, icon);
+      return h('div', { class: 'pane-tools' },
+        b(t('pane.split_r'), h('span', { class: 'pg pg-r', 'aria-hidden': 'true' }), () => split('h')),
+        b(t('pane.split_d'), h('span', { class: 'pg pg-d', 'aria-hidden': 'true' }), () => split('v')),
+        P.count(tb ? tb.root : null) > 1 ? b(zoomed ? t('pane.unzoom') : t('pane.zoom'), h('span', { class: 'pg ' + (zoomed ? 'pg-u' : 'pg-z'), 'aria-hidden': 'true' }), zoom) : null,
+        b(t('pane.close'), h('span', { class: 'pg-x', 'aria-hidden': 'true', text: '×' }), () => closePane(p.id), 'pt-x'));
+    }
+    function paneFor(p) {
+      const def = kindDef(p.kind);
+      const sig = p.kind + '|' + (def && def.sig ? def.sig(p) : JSON.stringify(p));
+      let m = mounted.get(p.id);
       if (m && m.sig === sig) { m.used = Date.now(); return m; }
-      if (m) { if (m.inst && m.inst.destroy) m.inst.destroy(); m.el.remove(); }
-      const el = h('div', { class: 'pane', dataset: { tab: tb.id } });
-      el.addEventListener('pointerdown', () => { if (state.active !== tb.id && state.panels.includes(tb.id)) setState(V.tabsActivate(state, tb.id)); }, true);
-      const env = NS.store.env(tb.env);
-      let id = 'chat';
-      const params = { env: tb.env, chat: tb.chat, tab: tb.id };
-      if (!env || env.state !== 'ok') id = 'envstate';
-      else {
-        const sw = NS.registry.get('swarm');
-        const swt = tb.chat !== 'new' && sw && !sw.placeholder ? L.swarmTaskOf(NS.store.chatTasks(tb.chat)) : null;
-        if (swt) { id = 'swarm'; params.task = swt.id; }
+      if (m) destroyPane(p.id);
+      const body = h('div', { class: 'pane-body' });
+      const el = h('div', { class: 'pane k-' + p.kind, dataset: { pane: p.id } }, body);
+      el.addEventListener('pointerdown', () => { const f = focused(); if (!f || f.id !== p.id) setState(P.wsFocusPane(state, p.id)); }, true);
+      el.addEventListener('focusin', () => { const f = focused(); if (!f || f.id !== p.id) setState(P.wsFocusPane(state, p.id)); });
+      let inst = null;
+      if (def) inst = def.mount(body, p, NS.shell.ctxFor({ pane: p })) || null;
+      else body.append(h('p', { class: 'pane-missing', text: t('pane.missing_kind', { kind: p.kind }) }));
+      let head = body.querySelector('.pane-h');
+      if (!head) { head = h('header', { class: 'pane-h' }, h('span', { class: 'pane-ttl', text: paneTitle(p) })); body.prepend(head); }
+      const slots = h('div', { class: 'pane-slots' });
+      const slotInst = [];
+      for (const s of NS.registry.points('paneHeader')) {
+        if (s.kinds && !s.kinds.includes(p.kind)) continue;
+        const holder = h('span', { class: 'pane-slot', dataset: { slot: s.id } });
+        slots.append(holder);
+        slotInst.push(s.render(holder, p, NS.shell.ctxFor({ pane: p })) || null);
       }
-      const def = NS.registry.get(id);
-      const inst = def.mount(el, NS.shell.ctxFor(params)) || null;
-      m = { el, inst, sig, used: Date.now() };
-      mounted.set(tb.id, m);
+      const tl = tools(p);
+      const menuBtn = head.querySelector('.menu-btn');
+      if (menuBtn) { menuBtn.before(slots); menuBtn.before(tl); } else head.append(slots, tl);
+      m = { el, body, inst, sig, used: Date.now(), slotInst, tools: tl };
+      mounted.set(p.id, m);
       return m;
     }
-    function drawPanes() {
-      const narrow = window.innerWidth < NARROW;
-      const visible = narrow ? [state.active] : state.panels;
-      hint.hidden = !(narrow && state.panels.length > 1);
-      const els = [];
-      for (const id of visible) { const tb = state.tabs.find((x) => x.id === id); if (tb) els.push(paneFor(tb).el); }
-      for (const [id, m] of mounted) {
-        const vis = visible.includes(id);
-        m.el.hidden = !vis;
-        m.el.classList.toggle('on', id === state.active && visible.length > 1);
+    function destroyPane(id) {
+      const m = mounted.get(id);
+      if (!m) return;
+      if (m.inst && m.inst.destroy) m.inst.destroy();
+      for (const s of m.slotInst) if (s && s.destroy) s.destroy();
+      m.el.remove();
+      mounted.delete(id);
+    }
+    // the tree as nested flex boxes; panes are moved into place, never re-created while their kind and data stay
+    function build(n, path, tb) {
+      if (n.pane) {
+        const m = paneFor(n.pane);
+        const nt = tools(n.pane); m.tools.replaceWith(nt); m.tools = nt;
+        m.el.classList.toggle('focus', tb.focus === n.pane.id);
+        m.el.hidden = false;
+        return m.el;
       }
-      // drop panes of closed tabs; keep a few hidden ones mounted (their feed and draft stay), the oldest go
-      for (const [id, m] of [...mounted]) if (!state.tabs.some((x) => x.id === id)) { if (m.inst && m.inst.destroy) m.inst.destroy(); m.el.remove(); mounted.delete(id); }
-      const hidden = [...mounted].filter(([id]) => !visible.includes(id)).sort((a, b) => a[1].used - b[1].used);
-      while (hidden.length > KEEP_MOUNTED) { const [id, m] = hidden.shift(); if (m.inst && m.inst.destroy) m.inst.destroy(); m.el.remove(); mounted.delete(id); }
-      panes.className = 'panes n' + els.length;
-      const want = visible.map((id) => mounted.get(id)).filter(Boolean).map((m) => m.el);
-      const keep = [...mounted.values()].map((m) => m.el).filter((el) => !want.includes(el));
-      const order = want.concat(keep);
-      if (order.length !== panes.childNodes.length || order.some((el, i) => panes.childNodes[i] !== el)) panes.replaceChildren(...order);
+      const { dir, ratio, a, b } = n.split;
+      const A = h('div', { class: 'sp-a' }, build(a, path + 'a', tb)), B = h('div', { class: 'sp-b' }, build(b, path + 'b', tb));
+      setVars(A, { '--f': String(ratio) }); setVars(B, { '--f': String(1 - ratio) });
+      const box = h('div', { class: 'split ' + dir });
+      const div = h('div', { class: 'divider', role: 'separator', 'aria-orientation': dir === 'h' ? 'vertical' : 'horizontal', title: t('pane.divider'),
+        ondblclick: () => setState(P.wsRatio(state, path, 0.5)),
+        onpointerdown: (e) => {
+          e.preventDefault();
+          div.setPointerCapture(e.pointerId);
+          const r = box.getBoundingClientRect();
+          box.classList.add('dragging');
+          const move = (ev) => {
+            const v = dir === 'h' ? (ev.clientX - r.left) / r.width : (ev.clientY - r.top) / r.height;
+            const c = Math.max(0.1, Math.min(0.9, v));
+            setVars(A, { '--f': String(c) }); setVars(B, { '--f': String(1 - c) });
+            div.dataset.v = String(c);
+          };
+          const up = () => { div.removeEventListener('pointermove', move); div.removeEventListener('pointerup', up); box.classList.remove('dragging'); if (div.dataset.v) setState(P.wsRatio(state, path, Number(div.dataset.v))); };
+          div.addEventListener('pointermove', move); div.addEventListener('pointerup', up);
+        } });
+      box.append(A, div, B);
+      return box;
+    }
+    function drawPanes() {
+      const tb = activeTab();
+      const live = new Set(P.allPanes(state).map((x) => x.pane.id));
+      for (const id of [...mounted.keys()]) if (!live.has(id)) destroyPane(id);
+      // hidden panes (other tabs) stay mounted up to a limit: their feed and draft stay; the oldest go
+      const shown = new Set(tb ? P.leaves(tb.root).map((p) => p.id) : []);
+      const hidden = [...mounted].filter(([id]) => !shown.has(id)).sort((x, y) => x[1].used - y[1].used);
+      while (hidden.length > KEEP_MOUNTED) destroyPane(hidden.shift()[0]);
+      const keep = h('div', { class: 'pane-store', hidden: true });
+      for (const [id, m] of mounted) if (!shown.has(id)) { m.el.hidden = true; keep.append(m.el); }
+      if (!tb) { area.replaceChildren(keep); return; }
+      let tree = build(tb.root, '', tb);
+      area.classList.toggle('zoomed', !!tb.zoom);
+      if (tb.zoom) { const m = mounted.get(tb.focus); for (const [id, x] of mounted) if (id !== tb.focus) { x.el.hidden = true; keep.append(x.el); } tree = m ? m.el : tree; }
+      area.classList.toggle('single', P.count(tb.root) === 1);
+      area.replaceChildren(tree, keep);
     }
     function draw() { closeMenu(); drawStrip(); drawPanes(); }
-    const onResize = () => drawPanes();
-    window.addEventListener('resize', onResize);
-    const focus = () => { const m = mounted.get(state.active); if (m && m.inst && m.inst.update) m.inst.update('focus-input'); };
+    const focus = () => {
+      const f = focused(), m = f && mounted.get(f.id);
+      if (!m) return;
+      if (m.inst && m.inst.focus) m.inst.focus();
+      else if (m.inst && m.inst.update) m.inst.update('focus-input');
+    };
     ws = { draw, focus };
+    const offExt = NS.registry.onExtend((point) => { if (point === 'tabsCorner') drawCorner(); if (point === 'paneHeader' || point === 'paneKind') { for (const id of [...mounted.keys()]) destroyPane(id); drawPanes(); } });
+    drawCorner();
     draw();
     const forward = (evt, payload) => {
+      const f = focused();
       for (const [id, m] of mounted) {
-        if (!m.inst || !m.inst.update) continue;
-        if (evt === 'focus-input' && id !== state.active) continue;
-        m.inst.update(evt, payload);
+        if (evt === 'focus-input' && (!f || id !== f.id)) continue;
+        if (m.inst && m.inst.update) m.inst.update(evt, payload);
+        for (const s of m.slotInst) if (s && s.update) s.update(evt, payload);
       }
+      if (cornerInst && cornerInst.update) cornerInst.update(evt, payload);
     };
     return {
       update(evt, payload) {
         if (['task', 'chats', 'chatmsg', 'envs', 'taskremoved'].includes(evt)) drawStrip();
-        if (evt === 'task' && payload && payload.chat_id) {      // a chat that became a swarm switches its pane to the swarm screen
-          for (const tb of state.tabs.filter((x) => x.chat === payload.chat_id)) { const m = mounted.get(tb.id); if (m && payload.swarm && m.sig.indexOf('|swarm') < 0 && NS.registry.get('swarm') && !NS.registry.get('swarm').placeholder) { m.sig = ''; } }
+        if (evt === 'task' && payload && payload.chat_id && payload.swarm) {      // a chat that became a swarm switches its pane to the swarm screen
+          for (const x of P.allPanes(state)) if (x.pane.chat === payload.chat_id) { const m = mounted.get(x.pane.id); if (m) m.sig = ''; }
           drawPanes();
         }
         forward(evt, payload);
       },
       destroy() {
-        ws = null; closeMenu(); window.removeEventListener('resize', onResize);
-        for (const m of mounted.values()) if (m.inst && m.inst.destroy) m.inst.destroy();
-        mounted.clear();
+        ws = null; closeMenu(); offExt();
+        if (cornerInst && cornerInst.destroy) cornerInst.destroy();
+        for (const id of [...mounted.keys()]) destroyPane(id);
       },
     };
   }
 
   NS.registry.register({ id: 'tabs', layout: 'chats', mount });
-  NS.tabs = { show, setChat, dropChat, newTab, closeTab, split, get state() { return state; }, get active() { return activeTab(); } };
+  NS.tabs = { show, setChat, dropChat, newTab, closeTab, closePane, split, zoom, focusDir, equalize,
+    get state() { return state; }, get active() { return focused(); }, get activeTab() { return activeTab(); } };
 })();

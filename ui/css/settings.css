@@ -14,7 +14,7 @@
 .sgrp { margin-bottom: 22px; max-width: 860px; }
 .sgrp > h2 { font-size: 13px; font-weight: 650; margin-bottom: 8px; }
 .sgrp > h2 .hint { margin-left: 6px; }
-.srows { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; }
+.srows { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius-sm); }
 .srow { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px 24px; align-items: center; padding: 11px 14px; border-bottom: 1px solid var(--line); }
 .srow:last-child { border-bottom: 0; }
 .srow b { font-weight: 600; display: block; }

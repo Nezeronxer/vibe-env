@@ -1,4 +1,5 @@
-// The input field: exactly five controls - "<Среда> · <Модель>", "Качество", "Рой", "настроить", "Отправить ↵" (G19).
+// The input field: exactly five controls - the model, "Качество", "Рой", "настроить", "Отправить ↵" (G19).
+// v4 (story 246): one line that grows with the text, a `❯` prompt, the controls are quiet labels inside it.
 // Everything rarer lives under "настроить" (quality steps, swarm mode/count, "Когда начать").
 (function () {
   const NS = window.NS;
@@ -29,13 +30,14 @@
     const gate = L.createSendGate(() => (crypto.randomUUID ? crypto.randomUUID() : 'm-' + Date.now() + '-' + Math.random().toString(16).slice(2)));
     let mode = { kind: 'message', task: null };
     const form = h('form', { class: 'composer', onsubmit: (e) => { e.preventDefault(); send(); } });
-    const ta = h('textarea', { id: 'taskText' + sfx, rows: 2, 'aria-label': t('composer.label') });
+    const ta = h('textarea', { id: 'taskText' + sfx, rows: 1, 'aria-label': t('composer.label'), spellcheck: false });
+    const grow = () => { NS.setVars(ta, { height: 'auto' }); NS.setVars(ta, { height: Math.min(ta.scrollHeight, 220) + 'px' }); };
     const modebar = h('div', { class: 'modebar', hidden: true });
     const hint = h('p', { class: 'cmp-hint', role: 'alert', hidden: true });
     const swhint = h('small', { class: 'swhint', hidden: true });
     const envText = h('span'), pickBtn = h('button', { type: 'button', class: 'envpick', 'aria-expanded': 'false', 'aria-controls': 'modelPop' + sfx }, h('span', { class: 'icw' }, envIcon(envId)), envText, ic('i-chev', 'chev'));
-    const sendBtn = h('button', { type: 'submit', class: 'btn primary', id: 'sendBtn' + sfx }, t('composer.send'), h('kbd', { text: '↵' }));
-    const tuneBtn = h('button', { type: 'button', class: 'linkb', id: 'tune' + sfx, 'aria-expanded': 'false', 'aria-controls': 'tunePanel' + sfx, text: t('composer.tune') });
+    const sendBtn = h('button', { type: 'submit', class: 'send4', id: 'sendBtn' + sfx, 'aria-label': t('composer.send'), title: t('composer.send') + ' ↵' }, h('span', { 'aria-hidden': 'true', text: '↵' }));
+    const tuneBtn = h('button', { type: 'button', class: 'tune4', id: 'tune' + sfx, 'aria-expanded': 'false', 'aria-controls': 'tunePanel' + sfx, 'aria-label': t('composer.tune'), title: t('composer.tune'), text: '⋯' });
     const modelPop = h('div', { class: 'pop', id: 'modelPop' + sfx, hidden: true, role: 'dialog' });
     const tunePanel = h('div', { class: 'pop', id: 'tunePanel' + sfx, hidden: true, role: 'dialog' });
     let quality, swarm, qSw, sSw;
@@ -53,7 +55,8 @@
     // ---- label, placeholder, switches ----
     function refresh() {
       const e = st.env(envId), m = NS.models.label(envId);
-      envText.textContent = e.name + (m ? ' · ' + m : '');
+      envText.textContent = m || e.name;
+      pickBtn.title = e.name + (m ? ' · ' + m : '');
       readSettings(); readStart();
       qSw.set(quality.on); sSw.set(!!swarm);
       applyMode();
@@ -78,7 +81,7 @@
 
     // ---- draft: one per chat, survives a restart ----
     ta.value = NS.storage.get(key) || '';
-    ta.addEventListener('input', () => { if (ta.value) NS.storage.set(key, ta.value); else NS.storage.del(key); drawHint(); });
+    ta.addEventListener('input', () => { if (ta.value) NS.storage.set(key, ta.value); else NS.storage.del(key); drawHint(); grow(); });
     ta.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); send(); }
       else if (e.key === 'Escape' && mode.kind !== 'message') { e.stopPropagation(); setMode('message'); }
@@ -93,7 +96,7 @@
       sendBtn.disabled = true;
       try {
         await dispatch(text, id);
-        ta.value = ''; NS.storage.del(key); gate.done(); setMode('message');
+        ta.value = ''; NS.storage.del(key); gate.done(); setMode('message'); grow();
       } catch (e) {
         gate.fail();                               // the same text will reuse this id, the core ignores a repeat
         if (hooks.dropPending) hooks.dropPending(id);
@@ -169,10 +172,12 @@
 
     qSw = makeSwitch(t('composer.quality'), true, (v) => { quality.on = v; save(); if (!tunePanel.hidden) drawTune(); });
     sSw = makeSwitch(t('composer.swarm'), false, (v) => { swarm = v ? { mode: 'race', n: 3 } : null; save(); drawHint(); if (!tunePanel.hidden) drawTune(); });
-    form.append(modebar, ta, hint,
-      h('div', { class: 'comp-row' }, pickBtn, h('span', { class: 'vsep' }), qSw, sSw, tuneBtn, h('span', { class: 'grow' }), sendBtn),
-      swhint, modelPop, tunePanel);
+    form.append(modebar,
+      h('div', { class: 'cmp-line' }, h('span', { class: 'pr', 'aria-hidden': 'true', text: '❯' }), ta,
+        h('div', { class: 'comp-row' }, pickBtn, qSw, sSw, tuneBtn, sendBtn)),
+      hint, swhint, modelPop, tunePanel);
     refresh();
+    if (ta.value) setTimeout(grow, 0);
     // an example from the empty chat goes into the field, it is not sent (story 239)
     function insert(text) { ta.value = text; ta.dispatchEvent(new Event('input')); ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); }
     return { el: form, ta, refresh, setMode, drawHint, focus: () => ta.focus(), closePops, insert,

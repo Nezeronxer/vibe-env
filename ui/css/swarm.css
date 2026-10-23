@@ -13,12 +13,12 @@
 .sw-ph .st { margin-bottom: 8px; }
 .sw-ph h2 { font-size: 17px; font-weight: 650; letter-spacing: -.01em; line-height: 1.25; }
 .sw-ph .acts { display: flex; gap: 6px; flex: none; }
-.verdict { display: flex; align-items: flex-start; gap: 12px; padding: 12px 14px; background: var(--bg); border: 1px solid var(--line2); border-radius: 6px; }
+.verdict { display: flex; align-items: flex-start; gap: 12px; padding: 12px 14px; background: var(--bg); border: 1px solid var(--line2); border-radius: var(--radius-sm); }
 .verdict .rl { width: 18px; height: 18px; margin-top: 2px; }
 .verdict p { flex: 1; color: var(--ink2); }
 .verdict p b { color: var(--ink); }
 .verdict .tick { display: block; color: var(--ink3); font-size: 12px; margin-top: 2px; }
-.sw-race { background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 12px 0 8px; }
+.sw-race { background: var(--bg); border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 12px 0 8px; }
 .sw-race h3 { font-size: 13px; font-weight: 650; padding: 0 14px 20px; display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; }
 .sw-race .lanes { --lab: 150px; padding: 0 12px 6px; }
 .sw-race .lane-now-wrap { left: calc(var(--lab) + 12px); right: 36px; }
@@ -28,7 +28,7 @@
 .sw-tabs button.on { color: var(--ink); font-weight: 600; border-bottom-color: var(--ink); }
 .sw-tabs small { margin-left: 6px; }
 .variants { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 10px; }
-.var { background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 12px; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.var { background: var(--bg); border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 12px; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
 .var.best { border: 2px solid var(--ok); padding: 11px; }
 .var-h { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .var-l { width: 24px; height: 24px; border-radius: 3px; background: var(--raised2); display: grid; place-items: center; font-weight: 700; font-size: 13px; flex: none; }
@@ -47,10 +47,10 @@
 .cbar i { display: block; height: 100%; width: var(--w, 0%); background: var(--ink3); }
 .cbar.good i { background: var(--ok); } .cbar.bad i { background: var(--bad); }
 .var-f { margin-top: auto; display: flex; gap: 6px; flex-wrap: wrap; }
-.var-diff { grid-column: 1 / -1; background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 10px 12px; }
+.var-diff { grid-column: 1 / -1; background: var(--bg); border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 10px 12px; }
 .var-diff .flist { margin-bottom: 6px; }
 .var-why { color: var(--bad); font-size: 12.5px; }
-.part, .prop { background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 12px; display: grid; gap: 6px; min-width: 0; align-content: start; }
+.part, .prop { background: var(--bg); border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 12px; display: grid; gap: 6px; min-width: 0; align-content: start; }
 .part h4, .prop h4 { font-size: 13px; font-weight: 650; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .part ul { color: var(--ink2); font: 12px var(--mono); display: grid; gap: 1px; }
 .prop.win { border: 2px solid var(--ok); padding: 11px; }
@@ -58,7 +58,7 @@
 .votes li { display: flex; gap: 8px; align-items: baseline; padding: 6px 0; border-bottom: 1px solid var(--line); color: var(--ink2); }
 .votes li:last-child { border-bottom: 0; }
 .votes li b { color: var(--ink); }
-.tally { display: flex; gap: 14px; flex-wrap: wrap; align-items: baseline; padding: 10px 12px; background: var(--bg); border: 1px solid var(--line2); border-radius: 6px; margin-bottom: 8px; }
+.tally { display: flex; gap: 14px; flex-wrap: wrap; align-items: baseline; padding: 10px 12px; background: var(--bg); border: 1px solid var(--line2); border-radius: var(--radius-sm); margin-bottom: 8px; }
 .tally b { font-size: 15px; }
 @media (max-width: 1280px) { .sw-wrap { grid-template-columns: minmax(0, 1fr) minmax(360px, 50%); } }
 @media (max-width: 1099px) { .sw-wrap, .sw-wrap.collapsed { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 42%) minmax(0, 1fr); } .sw-wrap .sw-panel { order: -1; min-height: 0; overflow: auto; border-left: 0; border-bottom: 1px solid var(--line); } }   /* bug 7: the panel row is bounded, the chat keeps the rest */

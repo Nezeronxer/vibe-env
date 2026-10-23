@@ -20,7 +20,7 @@ textarea { height: auto; padding: 10px 12px; resize: none; width: 100%; line-hei
 .sw { width: 28px; height: 16px; background: var(--line2); border-radius: 3px; position: relative; flex: none; cursor: pointer; transition: background .15s ease-out; display: inline-block; }
 .sw i { position: absolute; top: 2px; left: 2px; width: 12px; height: 12px; background: var(--ink); border-radius: 2px; transition: transform .15s ease-out; }
 .sw.on { background: var(--ok); }
-.sw.on i { transform: translateX(12px); background: #fff; }
+.sw.on i { transform: translateX(12px); background: var(--knob); }
 .stepper { display: inline-flex; align-items: center; border: 1px solid var(--line2); border-radius: var(--r); background: var(--bg); }
 .stepper button { width: 28px; height: 28px; border: 0; background: transparent; font-size: 16px; }
 .stepper output { min-width: 26px; text-align: center; font-weight: 600; }
@@ -31,7 +31,7 @@ textarea { height: auto; padding: 10px 12px; resize: none; width: 100%; line-hei
 
 .btn:disabled, .btn[aria-disabled="true"] { opacity: .45; cursor: not-allowed; transform: none; }
 .sw:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
-.menu { position: absolute; z-index: 30; min-width: 200px; background: var(--raised); border: 1px solid var(--line2); border-radius: 6px; padding: 4px; box-shadow: 0 8px 24px rgba(0,0,0,.3); }
+.menu { position: absolute; z-index: 30; min-width: 200px; background: var(--raised); border: 1px solid var(--line2); border-radius: var(--radius-sm); padding: 4px; box-shadow: var(--shadow); }
 .menu button { display: flex; width: 100%; text-align: left; padding: 6px 10px; border: 0; background: none; border-radius: var(--r); gap: 8px; align-items: center; }
 .menu button:hover:not(:disabled) { background: var(--raised2); }
 .menu button:disabled { color: var(--ink3); cursor: not-allowed; }

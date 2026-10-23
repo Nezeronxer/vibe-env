@@ -349,7 +349,7 @@ eq('council lanes carry the model of the member even without an executor run', L
 const need = [].concat(L.SETTINGS_SECTIONS.map((x) => 'set.nav.' + x.id), L.KIT_GROUPS.map((g) => 'kit.g.' + g), ['correctness', 'coverage', 'simplicity', 'risk'].map((k) => 'crit.' + k),
   ['not_a_kit', 'bad_zip', 'unsafe_path', 'symlink', 'file_too_large', 'kit_too_large', 'too_many_files', 'corrupt', 'wrong_env', 'clone_failed', 'unknown_env', 'dest_not_empty', 'not_found', 'changed', 'bad_name', 'bad_value', 'interrupted', 'io', 'not_applied'].map((k) => 'kit.err.' + k));
 eq('labels exist in ru and en', need.filter((k) => !(k in NSI18n.dicts.ru) || !(k in NSI18n.dicts.en)), []);
-eq('the wrong-env refusal reads as in the spec (story 210)', t('kit.err.wrong_env', { detail: 'Codex', env: 'Claude Code' }), 'Это набор Codex. В Claude Code он не ставится: у каждой среды свои скиллы и правила.');
+eq('the wrong-env refusal reads as in the spec (story 210)', t('kit.err.wrong_env', { detail: 'Codex', env: 'Claude Code' }), 'Это конфиг Codex. В Claude Code он не ставится: у каждой среды свои скиллы и правила.');
 
 // ================= v3: live feed, markdown, diff, tabs, keys, first run (stories 225-242) =================
 {   // own block: names of the v3 checks do not clash with the ones above
@@ -496,6 +496,77 @@ const tEn = (k, p) => { NSI18n.setLang('en'); const r = NSI18n.t(k, p); NSI18n.s
 eq('budget in en reads "of", in ru "из" (bug 10)', [L.formatBudget(14.89, 40, tEn), L.formatBudget(14.89, 40, t)], ['$14.89 of $40', '$14.89 из $40']);
 eq('the "day" limit window is a word in ru and en, not the raw name (bug 12)', [L.windowName({ name: 'day' }, t), L.windowName({ name: 'day' }, tEn)], ['День', 'Day']);
 }
+// ================= v4 shell (task 22): panes, registry, palette, theme, words =================
+if (typeof NSPanes !== 'undefined') {
+const P = NSPanes;
+const pane = (id, chat) => ({ id, kind: 'agent', env: 'claude', chat: chat || 'new' });
+let w = P.wsOpen(P.wsEmpty(), 't1', pane('a'));
+w = P.wsSplit(w, 'h', pane('b'));                     // ⌘D: a | b, focus b
+w = P.wsSplit(w, 'v', pane('c'));                     // ⌘⇧D on b: a | (b / c), focus c
+const tb = P.tabOf(w);
+eq('panes: ⌘D splits right, ⌘⇧D splits the focused pane down; the new pane takes the focus',
+  [JSON.stringify(tb.root), tb.focus],
+  ['{"split":{"dir":"h","ratio":0.5,"a":{"pane":' + JSON.stringify(pane('a')) + '},"b":{"split":{"dir":"v","ratio":0.5,"a":{"pane":' + JSON.stringify(pane('b')) + '},"b":{"pane":' + JSON.stringify(pane('c')) + '}}}}}', 'c']);
+eq('panes: rectangles of a | (b / c) in a unit square', P.rects(tb.root), { a: { x: 0, y: 0, w: 0.5, h: 1 }, b: { x: 0.5, y: 0, w: 0.5, h: 0.5 }, c: { x: 0.5, y: 0.5, w: 0.5, h: 0.5 } });
+eq('panes: focus by arrows - c up is b, c left is a, a right is the pane level with its middle (b and c tie: the first), a left is nothing',
+  [P.neighbor(tb.root, 'c', 'up'), P.neighbor(tb.root, 'c', 'left'), P.neighbor(tb.root, 'a', 'right'), P.neighbor(tb.root, 'a', 'left')], ['b', 'a', 'b', null]);
+eq('panes: ⌘⌥← moves the focus from c to a', P.tabOf(P.wsFocus(w, 'left')).focus, 'a');
+const w2 = P.wsClosePane(w);
+eq('panes: ⌘W closes the focused pane, its sibling takes the place, the focus goes to the neighbour on the left',
+  [JSON.stringify(P.tabOf(w2).root), P.tabOf(w2).focus], ['{"split":{"dir":"h","ratio":0.5,"a":{"pane":' + JSON.stringify(pane('a')) + '},"b":{"pane":' + JSON.stringify(pane('b')) + '}}}', 'a']);
+eq('panes: ⌘W on the last pane closes the tab', P.wsClosePane(P.wsOpen(P.wsEmpty(), 't9', pane('z'))).tabs, []);
+const z = P.wsZoom(w);
+eq('panes: ⌘⇧Enter zooms the focused pane and back; one pane cannot zoom; a split ends the zoom',
+  [P.tabOf(z).zoom, P.tabOf(P.wsZoom(z)).zoom, P.tabOf(P.wsZoom(P.wsOpen(P.wsEmpty(), 'x', pane('q')))).zoom, P.tabOf(P.wsSplit(z, 'h', pane('d'))).zoom], [true, false, false, false]);
+let six = P.wsOpen(P.wsEmpty(), 't', pane('p1'));
+for (let i = 2; i <= 7; i++) six = P.wsSplit(six, i % 2 ? 'h' : 'v', pane('p' + i));
+eq('panes: at most 6 panes in a tab - the 7th split changes nothing', [P.count(P.tabOf(six).root), P.findPane(P.tabOf(six).root, 'p7')], [6, null]);
+eq('panes: dragging the divider clamps to 10…90%, double click makes it 50/50', [P.tabOf(P.wsRatio(w, '', 0.02)).root.split.ratio, P.tabOf(P.wsRatio(w, 'b', 0.7)).root.split.b.split.ratio, P.tabOf(P.wsRatio(P.wsRatio(w, '', 0.8), '', 0.5)).root.split.ratio], [0.1, 0.7, 0.5]);
+const saved4 = P.wsSerialize(P.wsOpen(w, 't2', pane('k', 'gone')));
+const back = P.wsRestore(saved4, (p) => p.chat !== 'gone');
+eq('panes: saved to settings.ui.tabs and restored; a tab whose only chat was deleted goes, the active one falls back',
+  [back.tabs.length, back.active, JSON.stringify(back.tabs[0].root) === JSON.stringify(tb.root), back.tabs[0].focus], [1, 't1', true, 'c']);
+const back2 = P.wsRestore(P.wsSerialize(w), (p) => p.id !== 'b');
+eq('panes: a pane that cannot come back leaves its sibling in place', JSON.stringify(P.tabOf(back2).root), '{"split":{"dir":"h","ratio":0.5,"a":{"pane":' + JSON.stringify(pane('a')) + '},"b":{"pane":' + JSON.stringify(pane('c')) + '}}}');
+eq('panes: a v3 save (tabs of chats) becomes one tab per chat', P.wsRestore('{"v":1,"tabs":[{"id":"a","env":"claude","chat":"c1"},{"id":"b","env":"codex","chat":"new"}],"active":"b","panels":["a","b"]}').tabs.map((x) => [x.id, P.leaves(x.root)[0].env, P.leaves(x.root)[0].chat]),
+  [['a', 'claude', 'c1'], ['b', 'codex', 'new']]);
+eq('panes: broken data -> nothing', [P.wsRestore('{oops'), P.wsRestore(null), P.wsRestore('{"v":2,"tabs":[{"id":"x","root":{"bogus":1}}]}')], [null, null, null]);
+
+// --- registry: extension points for tasks 23-25 ---
+const R = NS.registry;
+eq('registry: the seven extension points', R.POINTS, ['command', 'settings', 'bar', 'paneHeader', 'details', 'paneKind', 'tabsCorner']);
+R.extend('bar', { id: 'zz-late', side: 'right', order: 300 }); R.extend('bar', { id: 'zz-early', side: 'right', order: 1 }); R.extend('bar', { id: 'zz-late', side: 'left', order: 300 });
+eq('registry: sorted by order, the same id replaces the old one', R.points('bar').filter((x) => /^zz-/.test(x.id)).map((x) => x.id + ':' + x.side), ['zz-early:right', 'zz-late:left']);
+R.extend('paneKind', { kind: 'zz-term' });
+eq('registry: a pane kind is keyed by kind; an unknown point throws', [R.points('paneKind').some((x) => x.kind === 'zz-term'), (() => { try { R.extend('nope', { id: 'x' }); return 'no throw'; } catch (e) { return 'throws'; } })()], [true, 'throws']);
+
+// --- palette: fuzzy search, recent first ---
+const cmds = [{ id: 'split.right', label: 'Сплит вправо' }, { id: 'split.down', label: 'Сплит вниз' }, { id: 'settings', label: 'Настройки' }, { id: 'theme', label: 'Тема: светлая' }, { id: 'term.new', label: 'Новый терминал' }];
+eq('palette: letters in order match ("спвп" -> only Сплит вправо), unrelated letters do not', [NSPalette.rank(cmds, 'спвп').map((r) => r.cmd.id).join(), NSPalette.rank(cmds, 'xyz').length], ['split.right', 0]);
+eq('palette: a word start beats the middle of a word ("нт" -> Новый терминал)', NSPalette.rank(cmds, 'нт')[0].cmd.id, 'term.new');
+eq('palette: empty query - recent ones on top in recent order, then the rest', NSPalette.rank(cmds, '', ['theme', 'settings']).map((r) => r.cmd.id), ['theme', 'settings', 'split.right', 'split.down', 'term.new']);
+eq('palette: the recent list keeps 8, the newest first, no repeats', NSPalette.pushRecent(['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'], 'c'), ['c', 'a', 'b', 'd', 'e', 'f', 'g', 'h']);
+
+// --- theme: one table -> CSS variables and xterm ---
+const TV = NSTheme.vars('dark', {}, 'claude');
+eq('theme: Nightshift Dark - near-black canvas (not #000), panes one step lighter, the focused pane takes the Claude colour #D97757',
+  [TV['--canvas'] !== '#000000' && TV['--canvas'] !== TV['--panel'], TV['--accent'], TV['--radius-pane'], TV['--radius-sm'], TV['--gap']], [true, '#d97757', '12px', '8px', '6px']);
+eq('theme: 16 ANSI colours, cursor and selection in the variables', [Object.keys(TV).filter((k) => /^--ansi-\d+$/.test(k)).length, !!TV['--cursor'], !!TV['--sel']], [16, true, true]);
+eq('theme: the person\'s accent, radius "round", gap and opacity win', ((v) => [v['--accent'], v['--radius-pane'], v['--gap'], v['--pane-bg']])(NSTheme.vars('light', { accent: '#2f6db0', radius: 'round', gap: 10, opacity: 90 }, 'claude')),
+  ['#2f6db0', '18px', '10px', 'rgba(246, 246, 247, 0.9)']);
+const XT = NSTheme.xterm('dark', {});
+eq('theme: xterm gets the same table (background = pane, 16 colours by name)', [XT.background, XT.foreground, XT.brightWhite, Object.keys(XT).length], [NSTheme.THEMES.dark.panel, NSTheme.THEMES.dark.ink, NSTheme.THEMES.dark.ansi[15], 21]);
+eq('theme: system follows the OS; out-of-range choices fall back', [NSTheme.resolve('system', true), NSTheme.resolve('system', false), NSTheme.resolve('light', true), ((l) => [l.gap, l.font_px, l.radius, l.accent])(NSTheme.look({ gap: 99, font_px: 'x', radius: 'blob', accent: 'red' }))],
+  ['dark', 'light', 'light', [16, 13, 'soft', 'env']]);
+
+// --- words (story 289): the ru dictionary uses the technical terms ---
+const OLD = /(^|[^а-яё])(ворот|влив|влит|влить|влей|набор|копи[яиюей] задачи|очеред[ьи] слияния|финиш|наружу)/i;
+eq('words: no «Ворота», «Влив», «Наборы», «Копия задачи», «Очередь слияния», «Финиш», «Наружу» in visible ru strings',
+  Object.entries(NSI18n.dicts.ru).filter(([, v]) => OLD.test(v)).map(([k]) => k), []);
+eq('words: the new terms', [t('step.gates'), t('step.merge'), t('set.nav.kits'), t('factory.pipe'), t('proj.finish')], ['Проверки', 'Merge', 'Конфиги', 'Merge-очередь', 'После готовности']);
+eq('v4 shell words exist in ru and en', Object.keys(NSI18n.dicts.ru).filter((k) => /^(pal|bar|pane|shell4|look4|adv|cmd)\./.test(k)).filter((k) => !(k in NSI18n.dicts.en)), []);
+} else eq('v4 shell scripts are loaded', 'missing', 'loaded');
+
 const total = out.length;
 if (typeof document !== 'undefined') {
   document.getElementById('out').textContent = out.join('\n') + `\n\n${bad ? 'FAILED ' + bad : 'ALL PASSED'}: ${total - bad} of ${total}`;
