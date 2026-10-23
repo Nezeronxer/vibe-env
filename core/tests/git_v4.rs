@@ -90,6 +90,24 @@ fn a_key_anywhere_in_the_history_refuses_publishing_before_gh_is_called() {
 }
 
 #[test]
+fn a_key_added_only_in_a_merge_commit_refuses_publishing_before_gh_is_called() {
+    fake_gh();
+    let d = tempfile::tempdir().unwrap();
+    let r = repo(d.path());
+    g(&r, &["checkout", "-q", "-b", "side"]);
+    fs::write(r.join("s.txt"), "s").unwrap();
+    g(&r, &["add", "-A"]);
+    g(&r, &["commit", "-q", "-m", "side"]);
+    g(&r, &["checkout", "-q", "main"]);
+    g(&r, &["merge", "-q", "--no-ff", "--no-commit", "side"]);
+    fs::write(r.join(".env"), "X=1").unwrap();
+    g(&r, &["add", ".env"]);
+    g(&r, &["commit", "-q", "-m", "merge side"]);
+    assert_eq!(publish(&r, "my-app", true, "d"), Err(PublishError::ProtectedInHistory { paths: vec![".env".into()] }));
+    assert!(gh_args(d.path()).is_empty(), "gh was not called");
+}
+
+#[test]
 fn publish_errors_come_as_keys() {
     fake_gh();
     let d = tempfile::tempdir().unwrap();

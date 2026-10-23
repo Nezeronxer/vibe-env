@@ -610,16 +610,18 @@ fn repo_name_ok(name: &str) -> bool {
 }
 
 /// Secret-like files any commit reachable from HEAD added or changed: what `gh repo create --push` would send.
+/// `-m`: a merge commit's own files too (against each parent), plain `log` shows none for merges.
 pub fn protected_in_history(repo: &Path) -> Result<Vec<String>, GitError> {
     if !has_commit(repo) {
         return Ok(vec![]);
     }
-    Ok(nul_list(&ok(repo, &["log", "--format=", "--name-only", "--no-renames", "--diff-filter=d", "-z", "HEAD"])?))
+    Ok(nul_list(&ok(repo, &["log", "-m", "--format=", "--name-only", "--no-renames", "--diff-filter=d", "-z", "HEAD"])?))
 }
 
 /// Creates the GitHub repository and pushes the current branch: `gh repo create <name> --private|--public
 /// --description --source <path> --push`. The history is checked for protected files first (F1); with one
 /// there, gh is never called. Returns the repository URL.
+/// Checked bound = what `gh --push` sends: the current branch, every commit reachable from HEAD.
 pub fn publish(path: &Path, name: &str, private: bool, desc: &str) -> Result<String, PublishError> {
     if !repo_name_ok(name) {
         return Err(PublishError::BadName);
