@@ -762,6 +762,15 @@ eq('clawd: story text in ru and en, 6-8 sentences each', ['ru', 'en'].map((l) =>
 eq('v4 Clawd/updates/practices words exist in ru and en', Object.keys(NSI18n.dicts.ru).filter((k) => /^(clawd|upd|pr|mock)\./.test(k)).filter((k) => !(k in NSI18n.dicts.en)), []);
 } else eq('v4 Clawd scripts are loaded', 'missing', 'loaded');
 
+// G26: dev-mock limits are honest - only Claude Code has windows, Gemini/Codex say "no data" like the real core
+if (typeof NSMockLimits !== 'undefined') {
+  const ml = NSMockLimits.build({ now: Date.UTC(2026, 9, 23, 10, 0, 0) });
+  const view = (env) => NSLogic.limitsView(ml[env]).kind;
+  eq('dev-mock limits: Gemini and Codex show "no data", not percentages', [view('gemini'), view('codex')], ['nodata', 'nodata']);
+  eq('dev-mock limits: Claude Code shows windows with percentages', [view('claude'), NSLogic.limitsView(ml.claude).windows.every((w) => typeof w.used_pct === 'number')], ['known', true]);
+  eq('dev-mock limits: the "no data" text exists in ru and en', ['ru', 'en'].map((l) => !!NSI18n.dicts[l]['lim.no_data']), [true, true]);
+} else eq('dev-mock limits script is loaded', 'missing', 'loaded');
+
 const total = out.length;
 if (typeof document !== 'undefined') {
   document.getElementById('out').textContent = out.join('\n') + `\n\n${bad ? 'FAILED ' + bad : 'ALL PASSED'}: ${total - bad} of ${total}`;

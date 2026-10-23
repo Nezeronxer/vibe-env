@@ -90,3 +90,5 @@ gitleaks for v1-v3: no record of a run is kept in the repository or the task not
 
 No v4 finding was refuted. gitleaks v4 (tree and whole history): only false positives, `api_message_id` in a test
 fixture and the minified xterm bundle.
+
+gitleaks clean (`gitleaks git .` and `gitleaks dir .`: no leaks found), allowlist in `.gitleaks.toml`: it extends the default rules and allows only checked false positives, by path (the `claude_stream_partial.jsonl` fixture with its `msg_...` ids, the minified `ui/vendor/xterm/*.js`, and `target/` plus `graphify-out/`, which git ignores) and by regex (the fake `tok-123456789` of the kits test and the `keys3.*` i18n keys); no rule is switched off.

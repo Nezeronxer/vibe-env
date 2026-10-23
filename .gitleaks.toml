@@ -1,0 +1,23 @@
+title = "Nightshift gitleaks config"
+
+[extend]
+useDefault = true
+
+# Every default rule stays on. Only the places below are allowed, each one a checked false positive (blind check G4 v4).
+[allowlist]
+description = "checked false positives of generic-api-key"
+paths = [
+  # build output and the graph cache: ignored by git, but `gitleaks dir` walks them
+  '''^target/''',
+  '''^graphify-out/''',
+  # recorded Claude stream: the long `api_message_id` / `msg_...` ids are not keys
+  '''^core/tests/fixtures/claude_stream_partial\.jsonl$''',
+  # minified third-party terminal code (xterm.js and its addons)
+  '''^ui/vendor/xterm/[^/]+\.js$''',
+]
+regexes = [
+  # fake token used by the kits test to prove secrets stay out of the files
+  '''tok-123456789''',
+  # i18n keys of the shortcuts screen (keys3.*), not secrets
+  '''keys3\.[a-z_]+''',
+]

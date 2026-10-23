@@ -2,6 +2,7 @@
 // Command and event names follow interfaces.md ("Границы v2", row `app`); payload shapes are the ones js/ expects (see report).
 // Query: ?scenario=full|empty|nogit  ?theme=dark|light  ?lang=ru|en  ?env=<id>  ?chat=<id|new>  ?open=<taskId>  ?pop=model|tune  ?limits=exhausted
 (function () {
+  document.write('<script src="js/v4/mock-limits.js"><\/script>');
   const q = new URLSearchParams(location.search);
   if (q.get('theme')) document.documentElement.setAttribute('data-theme', q.get('theme'));
   const scenario = q.get('scenario') || 'full';
@@ -45,13 +46,9 @@
       F('deepseek', 'DeepSeek', 'deepseek', ['3'], 'Через твой ключ DeepSeek.')],
   };
   const exhausted = q.get('limits') === 'exhausted';
-  const W = (name, pct, resetsAt, extra) => Object.assign({ name, model: null, used_pct: pct, remaining: null, resets_at: resetsAt, exhausted: false, source: 'cli', seen_at: ago(10) }, extra);
-  const limits = {
-    claude: { known: [W('five_hour', exhausted ? 100 : 54, nextAt(19, 0), { exhausted }), W('seven_day', 16, nextAt(10, 0, 5)), W('seven_day_opus', 31, nextAt(10, 0, 5), { model: 'opus' }), W('seven_day_sonnet', 22, nextAt(10, 0, 5), { model: 'sonnet' }), W('day', 7, nextAt(0, 0))] },
-    codex: { no_data: 'Codex не сообщает лимиты в неинтерактивном режиме' },
-    gemini: { known: [W('day', 85, nextAt(3, 0))] },
-    opencode: { no_data: 'after_first_run' },
-  };
+  // limits come from js/v4/mock-limits.js (loaded right after this file, read lazily by get_limits)
+  let limitsCache = null;
+  const W = (name, pct, resetsAt, extra) => Object.assign({ name, model: null, used_pct: pct, remaining: null, resets_at: resetsAt, exhausted: false, source: 'cli', seen_at: ago(10) }, extra);   // for the summary mock below
   const P = (id, name, finish, check) => ({ id, name, path: '/Users/dev/code/' + name, base_branch: 'main', check_cmd: check === false ? null : 'pytest', setup_cmd: null, copy_files: ['.env*'], finish, ask_outward: true, agent: 'claude', reviewer: null, fallback_agent: null });
   let projects = scenario === 'empty' ? [] : [P('p1', 'billing-api', 'push'), P('p2', 'web-site', 'pr'), P('p3', 'docs-tool', 'local', false)];
   const repos = { p1: { is_repo: true, base_branch: 'main', current_branch: 'main', ahead: 3, behind: 0 }, p2: { is_repo: true, base_branch: 'main', current_branch: 'main', ahead: 0, behind: 0 }, p3: { is_repo: true, base_branch: 'main', current_branch: 'main', ahead: 0, behind: 0 } };
@@ -135,7 +132,7 @@
     init_repo: () => null,
     get_catalog: ({ env }) => (catalogs[env] ? { env, families: catalogs[env], source: 'built_in', at: ago(60 * 5) } : null),
     refresh_catalog: ({ env }) => (catalogs[env] ? { env, families: catalogs[env], source: 'cli_list', at: iso(Date.now()) } : null),
-    get_limits: ({ env }) => limits[env] || null,
+    get_limits: ({ env }) => { limitsCache = limitsCache || window.NSMockLimits.build({ exhausted }); return limitsCache[env] || null; },
     list_chats: ({ env }) => chats.filter((c) => c.env === env),
     get_chat: ({ id, before, limit }) => chatMsgs(id).filter((m) => !before || Date.parse(m.at) < Date.parse(before)).slice(-limit),
     send_chat: ({ target, msgId, text }) => {
