@@ -29,16 +29,43 @@ pub fn tail(s: &str, n: usize) -> String {
     lines[lines.len().saturating_sub(n)..].join("\n")
 }
 
-/// Runs `sh -c cmd` in `cwd` with stderr merged into stdout. None = cancelled (process group killed).
+/// What `sh` keeps of a command's output: a runaway check must not fill the memory. The end stays (the failure is there).
+const OUT_MAX: usize = 8 << 20;
+const OUT_CUT: &str = "[... the start of the output was cut ...]\n";
+
+fn char_start(s: &str, mut i: usize) -> usize {
+    while !s.is_char_boundary(i) {
+        i += 1;
+    }
+    i
+}
+
+/// Runs `sh -c cmd` in `cwd` with stderr merged into stdout. None = cancelled (process group killed). Only the last
+/// `OUT_MAX` bytes of the output are kept.
 pub fn sh(cwd: &Path, cmd: &str, envs: &[(String, String)], cancel: &AtomicBool) -> Option<(bool, String)> {
     let mut c = Command::new("sh");
     c.arg("-c").arg(format!("exec 2>&1\n{cmd}")).current_dir(cwd).envs(envs.iter().map(|(k, v)| (k, v)));
     let mut out = String::new();
+    let mut cut = false;
     match crate::agent::run_lines(c, cancel, &mut |l| {
-        out.push_str(&l);
+        // a line of its own bigger than half the room: its end is what is kept
+        let l = &l[char_start(&l, l.len().saturating_sub(OUT_MAX / 2))..];
+        out.push_str(l);
         out.push('\n');
+        if out.len() > OUT_MAX {
+            // the older half goes, from a line start
+            let from = char_start(&out, out.len() / 2);
+            let from = out[from..].find('\n').map_or(from, |n| from + n + 1);
+            out.drain(..from);
+            cut = true;
+        }
     }) {
-        Ok(Some((ok, _))) => Some((ok, out)),
+        Ok(Some((ok, _))) => {
+            if cut {
+                out.insert_str(0, OUT_CUT);
+            }
+            Some((ok, out))
+        }
         Ok(None) => None,
         Err(e) => Some((false, format!("{cmd}: {e}"))),
     }
@@ -126,5 +153,24 @@ pub fn in_window(now: DateTime<Local>, from: &str, to: &str) -> bool {
         std::cmp::Ordering::Equal => false,
         std::cmp::Ordering::Less => m >= f && m < t,
         std::cmp::Ordering::Greater => m >= f || m < t,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_runaway_output_keeps_its_end_and_not_the_whole() {
+        let c = AtomicBool::new(false);
+        // 40 MB in lines, then the sign of the end; and 120 MB without one newline
+        let (ok, out) = sh(Path::new("/tmp"), "yes 0123456789abcdef0123456789abcdef | head -c 40000000; echo; echo THE-END", &[], &c).unwrap();
+        assert!(ok && out.len() <= OUT_MAX + OUT_CUT.len(), "{} bytes", out.len());
+        assert!(out.starts_with(OUT_CUT) && out.ends_with("THE-END\n"));
+        let (_, out) = sh(Path::new("/tmp"), "head -c 120000000 /dev/zero | tr '\\0' a; echo; echo AFTER", &[], &c).unwrap();
+        assert!(out.len() <= OUT_MAX + OUT_CUT.len(), "{} bytes", out.len());
+        assert!(out.ends_with("AFTER\n"));
+        // a small output is as it was
+        assert_eq!(sh(Path::new("/tmp"), "echo one; echo two", &[], &c).unwrap(), (true, "one\ntwo\n".to_string()));
     }
 }

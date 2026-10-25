@@ -34,7 +34,8 @@ fn scan(line: &str) -> Scan {
         Some("init") => s.session = j["session_id"].as_str().map(String::from),
         Some("message") if j["role"] == "assistant" => {
             if let Some(t) = j["content"].as_str() {
-                s.events.push(AgentEvent::Text(t.to_string()));
+                // `delta: true` is a piece of the answer (the chat streams it; the log and the secret scrub see it whole in Done)
+                s.events.push(if j["delta"] == true { AgentEvent::TextDelta(t.to_string()) } else { AgentEvent::Text(t.to_string()) });
                 s.text = Some(t.to_string());
             }
         }

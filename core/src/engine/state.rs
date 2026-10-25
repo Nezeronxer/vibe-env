@@ -81,6 +81,9 @@ pub(super) struct TaskState {
     /// "Сжать" was asked with this text: done before the worker's next resumed run (story 305).
     #[serde(default)]
     pub compact: Option<String>,
+    /// Images the person attached in the chat to the task's words or to a note: every run of the task gets them.
+    #[serde(default)]
+    pub attachments: Vec<std::path::PathBuf>,
 }
 
 /// Where a lane (a variant, a part of a crew) stands.

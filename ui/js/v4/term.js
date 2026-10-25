@@ -31,12 +31,15 @@
   }
 
   // path:line[:col] and file:// in a line of output (264); a match needs a line number or file://, so 12:30 and host:port stay text
-  const REF = /(?<![\w:/.~\-])(file:\/\/)?((?:~|\.{1,2})?\/?[\w.@+\-]+(?:\/[\w.@+\-]+)*)(?::(\d+)(?::(\d+))?)?/g;
+  // letters of any script (the person's folders are Cyrillic: «Моя папка»), % of an encoded file:// URL
+  const REF = /(?<![\p{L}\p{N}_:/.~\-%])(file:\/\/)?((?:~|\.{1,2})?\/?[\p{L}\p{N}_.@+\-%]+(?:\/[\p{L}\p{N}_.@+\-%]+)*)(?::(\d+)(?::(\d+))?)?/gu;
   function fileRefs(text) {
     const out = [];
     for (const m of String(text).matchAll(REF)) {
-      const url = !!m[1], path = m[2], line = m[3] ? +m[3] : null, col = m[4] ? +m[4] : null;
-      if (url ? path[0] !== '/' : !line || !(path.includes('/') || /\.\w+$/.test(path))) continue;
+      const url = !!m[1], line = m[3] ? +m[3] : null, col = m[4] ? +m[4] : null;
+      let path = m[2];
+      if (url) try { path = decodeURIComponent(path); } catch (e) { /* a lone % stays as it is */ }
+      if (url ? path[0] !== '/' : !line || !(path.includes('/') || /\.[\p{L}\p{N}_]+$/u.test(path))) continue;
       out.push({ path, line, col, start: m.index, end: m.index + m[0].length });
     }
     return out;
@@ -71,7 +74,27 @@
     return envId !== 'claude' && f.versions && exact[f.versions[0]] ? exact[f.versions[0]] : f.id;
   }
 
-  root.NSTerm = { prefixStep, keyName, fileRefs, resolvePath, acker, looksIdle, cliArgv, modelArg };
+  // v7: the argv that continues the last talk of an env CLI in its folder (after a restart of the app); the first task prompt is
+  // never part of pane.argv, so it is not sent again; null = this CLI has no "continue" word
+  function resumeArgv(argv, envId) {
+    const r = RESUME[envId];
+    if (!r || !argv || !argv.length) return null;
+    if (r.every((w) => argv.includes(w))) return argv.slice();
+    return [argv[0]].concat(r, argv.slice(1));
+  }
+  // v7: the last lines worth showing on the agent card - frames, rules, spinners and bare prompts out, spaces squeezed
+  const FRAME = /[\u2500-\u257f\u2580-\u259f\u2800-\u28ff\u23f5\u2502]/g;
+  function previewLines(lines, n) {
+    const out = [];
+    for (let i = lines.length - 1; i >= 0 && out.length < n; i--) {
+      const x = String(lines[i] || '').replace(FRAME, ' ').replace(/\s+/g, ' ').trim();
+      if (!x || /^[>❯$%#›»·•*✻✳✶✢\-–—=_~.\s]*$/.test(x) || /^\?\s+for shortcuts/i.test(x)) continue;
+      out.unshift(x.length > 90 ? x.slice(0, 89) + '…' : x);
+    }
+    return out;
+  }
+
+  root.NSTerm = { prefixStep, keyName, fileRefs, resolvePath, acker, looksIdle, cliArgv, modelArg, resumeArgv, previewLines };
   if (typeof document === 'undefined' || !root.NS || !root.NS.h) return;
 
   // ---------- the window ----------
@@ -97,6 +120,7 @@
   const live = new Map();          // pane id -> session view
   const broadcast = new Set();     // tab ids with "ввод во все панели" on
   let restored = [];               // TermSaved of the last run (terms-restored)
+  const resumedHere = new Set();   // v7: env|folder pairs whose CLI already continued its talk after the restart
   let adopt = null;                // fields for the next pane 'term' made by create() (attach, env CLI, a returned tab)
 
   const project = () => {
@@ -107,7 +131,8 @@
   const envOk = (e) => e && e.state !== 'missing';
   // F8: "Терминал · Claude Code" - the name of the tab and of the header says what runs in it
   const termName = (pane) => (pane.env && NS.store.env(pane.env) ? NS.store.env(pane.env).name : pane.title || '');
-  const termTitle = (pane) => pane.ptitle || (termName(pane) ? t('term.tab', { name: termName(pane) }) : t('term.kind'));
+  // v7: an agent terminal is named by its task (the launcher) or by what the CLI calls the talk (OSC title), else by its env
+  const termTitle = (pane) => pane.ptitle || (pane.env && pane.title && termName(pane) && pane.title !== termName(pane) ? pane.title : pane.env && termName(pane) ? termName(pane) : termName(pane) ? t('term.tab', { name: termName(pane) }) : t('term.kind'));
 
   // ---------- one session in one pane ----------
   function View(el, pane, opts) {
@@ -186,19 +211,31 @@
 
     // ---------- the session ----------
     let id = pane.termId || null, running = false, attached = false, exitCode = null, state = 'talk', lastOut = 0, actTimer = 0;
+    let resumed = null;   // v7: {at, argv} of a run that continues the talk after a restart; its quick failure starts the CLI plain
     let cmdStart = 0, cmdText = '';
-    const spec = () => ({ cwd: pane.cwd || null, argv: pane.argv || [], env: [], cols: term.cols, rows: term.rows, title: pane.title || '' });
+    let runSince = 0, lastIn = 0, bytes = 0, rateNow = 0, pvTimer = 0;     // v7: work spans, echo filter, output rate for the aura
+    // the first task prompt rides only on the very first start of the pane (pane.started is set then and survives restarts)
+    const spec = () => ({ cwd: pane.cwd || null, argv: (pane.argv || []).concat(!pane.started && pane.prompt ? [pane.prompt] : []), env: [], cols: term.cols, rows: term.rows, title: pane.title || '' });
+    const isCli = () => !!(pane.env && pane.argv && pane.argv.length);
     const note = (s, cls) => term.write('\r\n\x1b[' + (cls === 'bad' ? '31' : '2') + 'm' + s + '\x1b[0m\r\n');
-    function setState(s) { if (state === s) return; state = s; head.dataset.state = s; markTabs(); }
-    function activity() {
+    function setState(s) { if (state === s) return; const was = state; state = s; head.dataset.state = s; box.dataset.state = s; markTabs(); if (NS.agents) NS.agents.changed(view, was); }
+    function activity(n) {
       lastOut = Date.now();
-      if (state !== 'run') setState('run');
+      // the echo of what the person types is not work: no aura, no "ждёт тебя" after it
+      if (lastOut - lastIn < 150 && n < 96) return;
+      bytes += n;
+      if (state !== 'run') { setState('run'); runSince = lastOut; }
       clearTimeout(actTimer);
-      actTimer = setTimeout(settle, 1500);
+      actTimer = setTimeout(settle, isCli() ? 2600 : 1500);
+      if (!pvTimer) pvTimer = setTimeout(() => { pvTimer = 0; markTabs(); }, 600);
     }
     // output went quiet: the env CLI is free again; a shell back at its prompt ends the command (the long-command notice)
     function settle() {
       if (!running) return;
+      // v7: an env CLI that went quiet after real work is waiting for the person (its answer or a permission); seen -> just free
+      const worked = runSince && Date.now() - runSince > 3000;
+      runSince = 0;
+      if (isCli() && worked && !seen()) { setState('wait'); if (NS.agents) NS.agents.calling(view); return; }
       setState('talk');
       if (cmdStart && idle()) {
         const secs = (Date.now() - cmdStart) / 1000, lim = cfg().notify_secs;
@@ -230,7 +267,7 @@
         if (m instanceof ArrayBuffer || ArrayBuffer.isView(m)) {
           const u = m instanceof ArrayBuffer ? new Uint8Array(m) : m;
           if (!u.length) return;
-          activity();
+          activity(u.length);
           term.write(u, () => a.wrote(u.length));
           return;
         }
@@ -248,6 +285,7 @@
         if (!id || fresh) {
           id = await call('term_open', { spec: spec() });
           pane.termId = id;
+          if (!pane.started) { pane.started = Date.now(); delete pane.prompt; if (NS.tabs && NS.tabs.save) NS.tabs.save(); }
           refreshSessions();
         }
         exitCode = null; running = true; dead.hidden = true;
@@ -263,10 +301,17 @@
     }
     // the session is gone (the app was restarted): the text of the last run, then Enter starts it again (253)
     function restore() {
-      const i = restored.findIndex((x) => x.cwd === (pane.cwd || x.cwd) && (!pane.title || x.title === pane.title));
+      // the session id first (two shells of one project share folder and title); the folder and title only for older snapshots
+      let i = pane.termId ? restored.findIndex((x) => x.id && x.id === pane.termId) : -1;
+      if (i < 0) i = restored.findIndex((x) => !x.id && x.cwd === (pane.cwd || x.cwd) && (!pane.title || x.title === pane.title));
       const saved = i >= 0 ? restored.splice(i, 1)[0] : null;
       id = null; running = false; exitCode = 0;
-      if (saved && saved.text) term.write(String(saved.text).replace(/\r?\n/g, '\r\n'));
+      if (saved && saved.text) term.write(String(saved.text).replace(/\r?\n/g, '\r\n') + '\x1b[?1049l\x1b[?1000l\x1b[?1002l\x1b[?1003l\x1b[?1006l\x1b[?2004l\x1b[?1l\x1b[?25h\x1b[0m');
+      // `--continue` takes the latest talk of the folder: only one CLI of an env per folder goes on by itself, the others wait for Enter
+      const rkey = (env && env.id) + '|' + (pane.cwd || '');
+      const again = env && envOk(env) && pane.started && !resumedHere.has(rkey) ? resumeArgv(pane.argv, env.id) : null;
+      if (again) resumedHere.add(rkey);
+      if (again) { resumed = { at: Date.now(), argv: pane.argv.filter((w) => !RESUME[env.id].includes(w)) }; note('── ' + t('term.resumed') + ' ──'); restart(again); return; }      // v7: the talk goes on by itself
       if (saved) { note('── ' + t('term.restored') + ' ──'); note(t('term.again')); setState('done'); drawDead(0); }
       else start(true);
     }
@@ -280,6 +325,9 @@
     }
     function exited(code) {
       if (!running && exitCode !== null) return;
+      // the folder has no talk to continue (an agent nobody wrote to saves none): start it plain once instead of a dead card
+      const r = resumed; resumed = null;
+      if (r && code !== 0 && Date.now() - r.at < 8000) { running = false; exitCode = code; note('── ' + t('term.no_talk') + ' ──'); restart(r.argv); return; }
       running = false; attached = false; exitCode = code == null ? -1 : code;
       drawDead(code);
       note(t('term.exited', { code: code == null ? t('term.signal') : code, close: keyText('Cmd+W') }));
@@ -300,6 +348,7 @@
     }
 
     function input(d) {
+      lastIn = Date.now();
       if (!running) { if (d === '\r' && exitCode !== null) restart(); return; }
       if (d === '\r' && !pane.argv?.length && idle()) {
         const b = term.buffer.active, line = b.getLine(b.baseY + b.cursorY);
@@ -313,7 +362,7 @@
     }
     const write = (d) => { if (id && running) call('term_write', { id, data: d }).catch(() => {}); };
     term.onData(input);
-    term.onBinary((d) => write(d));
+    term.onBinary((d) => { if (id && running) call('term_write', { id, data: '', bytes: Array.from(d, (c) => c.charCodeAt(0) & 255) }).catch(() => {}); });
     term.onResize(({ cols, rows }) => { if (id && running) call('term_resize', { id, cols, rows }).catch(() => {}); });
     term.onTitleChange((s) => { pane.ptitle = s.slice(0, 60); title.textContent = termTitle(pane); });
     let fitT = 0;
@@ -374,12 +423,29 @@
     function focused() { return document.hasFocus() && !document.hidden && (box.contains(document.activeElement) || (P() && NS.tabs && NS.tabs.active && NS.tabs.active.id === pane.id)); }
     function seen() { return document.hasFocus() && !document.hidden && box.offsetParent !== null; }
     box.addEventListener('focusin', () => { if (state === 'wait') setState(running ? 'talk' : 'done'); });
+    // the output rate (bytes/s, smoothed) drives the speed of the aura around a working agent
+    const rateT = setInterval(() => { rateNow = rateNow * 0.6 + bytes * 0.4; bytes = 0; if (state === 'run') NS.setVars(box, { '--aura-dur': (rateNow > 6000 ? 1.6 : rateNow > 1500 ? 2.6 : 4) + 's' }); }, 1000);
+    // a line wrapped at the pane's width is joined back: a half of a key without its prefix would slip past the scrub
+    const lastLines = (n) => {
+      const b = term.buffer.active, out = [];
+      let i = Math.max(0, b.baseY + b.cursorY - 40);
+      while (i > 0 && b.getLine(i) && b.getLine(i).isWrapped) i--;
+      for (; i <= b.baseY + b.cursorY && i < b.length; i++) {
+        const l = b.getLine(i);
+        if (!l) continue;
+        const x = l.translateToString(true);
+        if (l.isWrapped && out.length) out[out.length - 1] += x; else out.push(x);
+      }
+      return previewLines(out, n);
+    };
     // a click on a pane out of focus redraws the layout (tabs.js moves the pane element), which blurs xterm: take the focus back
     box.addEventListener('pointerup', (e) => { if (!e.target.closest('input, button, .menu')) requestAnimationFrame(() => { if (!box.contains(document.activeElement)) term.focus(); }); });
 
     const view = {
       pane, term, box,
-      running: () => running, write, id: () => id, state: () => state, env: () => env,
+      running: () => running, write, id: () => id, state: () => state, env: () => env, tail: lastLines, rate: () => rateNow, seen,
+      search: (q) => { const b = term.buffer.active, hits = [], ql = String(q).toLowerCase(); for (let i = 0; i < b.length && hits.length < 5; i++) { const l = b.getLine(i); const x = l ? l.translateToString(true) : ''; if (x.toLowerCase().includes(ql)) hits.push({ line: i, text: x.trim().slice(0, 120) }); } return hits; },
+      reveal(q) { find.hidden = false; fin.value = q; search.findNext(q); },
       focus: () => term.focus(), openFind, drawStrips, restart, fit: () => { try { fit.fit(); } catch (e) { /* hidden */ } },
       cliUpdated(to) { if (running) { updateTo = to; drawStrips(); } },
       applyLook() {
@@ -391,14 +457,15 @@
         renderer(L2.ligatures); setPad(L2.padding);
         view.fit();
       },
-      async detach() { if (attaching) await attaching.catch(() => {}); if (id && attached) { attached = false; await call('term_detach', { id }).catch(() => {}); } },
-      async reattach() { if (!id || exitCode !== null || attached || attaching) return; term.reset(); await attach().catch(() => {}); },
+      taken() { attached = false; note('── ' + t('term.taken') + ' ──'); },
+      async detach(onHide) { if (attaching) await attaching.catch(() => {}); if (onHide && !document.hidden) return; if (id && attached) { attached = false; await call('term_detach', { id }).catch(() => {}); } },
+      async reattach() { if (attaching) await attaching.catch(() => {}); if (!id || exitCode !== null || attached) return; term.reset(); await attach().catch(() => {}); },
       text: () => { const b = term.buffer.active, out = []; for (let i = 0; i < b.length; i++) { const l = b.getLine(i); if (l) out.push(l.translateToString(true)); } return out.join('\n'); },
       async close() { const x = id; id = null; running = false; if (x) await call('term_close', { id: x }).catch(() => {}); refreshSessions(); },
       idle, what: () => cmdText || pane.ptitle || (env ? env.name : pane.title) || t('term.kind'),
-      dispose() { ro.disconnect(); closeMenu(); clearTimeout(actTimer); if (webgl) webgl.dispose(); term.dispose(); },
+      dispose() { ro.disconnect(); closeMenu(); clearTimeout(actTimer); clearTimeout(pvTimer); clearInterval(rateT); if (webgl) webgl.dispose(); term.dispose(); },
     };
-    head.dataset.state = state;
+    head.dataset.state = state; box.dataset.state = state;
     drawStrips();
     if (!opts.noStart) start(false);
     return view;
@@ -437,8 +504,9 @@
     const env = (f && f.env) || S().lastEnv || ((S().envs.find((e) => e.state === 'ok') || {}).id);
     if (!env) return toast(t('term.no_env'), true);
     const body = (delegate ? t('term.delegate_text') : t('term.ask_text')) + '\n\n```\n' + text.replace(/\s+$/, '') + '\n```\n';
-    NS.storage.set(window.NSLogic.draftKey(env, null), body);
-    NS.tabs.split('h');
+    const k = window.NSLogic.draftKey(env, null), old = NS.storage.get(k);
+    NS.storage.set(k, old ? old + '\n\n' + body : body);
+    NS.tabs.split('h', 'chat');
   }
   const tabOf = (paneId) => { const st = NS.tabs && NS.tabs.state; const tb = st && st.tabs.find((x) => P().findPane(x.root, paneId)); return tb ? tb.id : null; };
   const activeView = () => { const f = NS.tabs && NS.tabs.active; return f && f.kind === 'term' ? live.get(f.id) : WIN ? live.get('win') : null; };
@@ -459,6 +527,12 @@
       if (!dot.classList.contains(s)) dot.className = 'tdot ' + s;
       const sr = el.querySelector('.sr-only');
       if (sr && sr.textContent !== t('term.st_' + s)) sr.textContent = t('term.st_' + s);
+      // v7: the agent card shows what the terminal says now and glows while it works
+      if (el.dataset.state !== s) el.dataset.state = s;
+      const pv = el.querySelector('.tab-pv'), txt = v.tail(2).join('\n');
+      if (pv && pv.textContent !== txt) pv.textContent = txt;
+      const dur = v.box.style.getPropertyValue('--aura-dur');
+      if (dur && el.style.getPropertyValue('--aura-dur') !== dur) el.style.setProperty('--aura-dur', dur);
     }
     const strip = document.querySelector('.tabstrip');
     if (strip && !observed.has(strip)) { observed.add(strip); new MutationObserver(() => markTabs()).observe(strip, { childList: true, subtree: true }); }
@@ -478,6 +552,7 @@
     // ⌘W / × on a pane with a running process asks first and the layout waits for the answer (253, live run v4)
     async beforeClose(pane) {
       const v = live.get(pane.id);
+      if (!v && pane.termId && !pane.moved) { call('term_close', { id: pane.termId }).catch(() => {}); return true; }   // evicted from the mount cache: no destroy follows
       if (!v || pane.moved || !v.id() || !v.running() || v.idle()) { closing.add(pane.id); return true; }
       const ok = await NS.projects.confirm(t('term.close_q', { what: v.what() }), t('term.close_text'), t('term.close_ok'));
       if (ok) closing.add(pane.id); else v.focus();
@@ -536,7 +611,7 @@
     NS.tabs.putBack('term', s.place);
     adopt = null;
   }
-  function envTerm(envId, where, reuse) {
+  function envTerm(envId, where, reuse, extra) {
     const env = NS.store.env(envId);
     if (!env) return;
     // the bar button never leaves the click without an answer: a terminal of this env already open is brought to the front (F8)
@@ -545,9 +620,14 @@
       if (have) { if (NS.shell && NS.shell.current && NS.shell.current.def.id !== 'tabs' && NS.shell.back) NS.shell.back(); NS.tabs.focusPane(have.pane.id); return; }
     }
     if (!envOk(env)) { toast(t('term.cli_missing', { env: env.name }), true); return; }
-    const p = project();
-    const model = modelArg(NS.store.envSettings(env.id).default_model, S().catalogs.get(env.id), env.id);
-    openTerm({ env: env.id, argv: cliArgv(env, model), cwd: p ? p.path : null, title: env.name }, where);
+    openTerm(envFields(env.id, extra), where);
+  }
+  // v7: what a fresh agent terminal of an env is made of; extra = { cwd, model (CLI id), prompt, title, branch } from the launcher
+  function envFields(envId, extra) {
+    const env = NS.store.env(envId), p = project(), x = extra || {};
+    if (!env) return null;
+    const model = x.model !== undefined ? x.model : modelArg(NS.store.envSettings(env.id).default_model, S().catalogs.get(env.id), env.id);
+    return { env: env.id, argv: cliArgv(env, model), cwd: x.cwd || (p ? p.path : null), title: x.title || env.name, prompt: x.prompt || undefined, branch: x.branch || undefined };
   }
   // "Продолжить в терминале" for the chat in focus: the built-in tab, or the system terminal with the setting "Внешний терминал"
   async function continueChat() {
@@ -610,7 +690,7 @@
       if (!tauri()) return;
       let list = [];
       try { list = (await call('term_list')) || []; } catch (e) { return; }
-      const here = new Set([...live.values()].map((v) => v.id()).filter(Boolean));
+      const here = new Set([...live.values()].map((v) => v.id()).concat(NS.tabs ? P().allPanes(NS.tabs.state).map((x) => x.pane.termId) : []).filter(Boolean));
       const now = new Set();
       for (const x of list) {
         if (!x.running || here.has(x.id) || x.title === 'editor') continue;
@@ -656,15 +736,17 @@
     if (mod && e.shiftKey && !e.altKey && code === 'KeyT') openTerm();
     else if (mod && !e.altKey && code === 'KeyF' && (mac() ? !e.shiftKey : e.shiftKey) && v) v.openFind();
     else if (mod && e.altKey && !e.shiftKey && code === 'KeyI') toggleBroadcast();
-    else if (mod && !e.altKey && !e.shiftKey && code === 'KeyN' && !WIN) newWindow();
+    else if (mod && !e.altKey && code === 'KeyN' && !WIN && (mac() ? !e.shiftKey : e.shiftKey || !inTerm)) newWindow();   // Linux: Ctrl+N in a shell is its history
     else if (mod && e.shiftKey && !e.altKey && code === 'KeyW') offWindow();
     else hit = false;
     if (hit) { e.preventDefault(); e.stopPropagation(); }
   }, true);
 
   // a hidden page stops confirming writes (WebKit slows its timers) and flow control would pause the processes: detach, attach on show
+  // the session was attached in another window: this pane stops drawing it and never takes it back by itself
+  NS.api.listen('term-taken', (p) => { for (const v of live.values()) if (p && v.id() === p.id) v.taken(); }).catch(() => {});
   document.addEventListener('visibilitychange', () => {
-    for (const v of live.values()) { if (document.hidden) v.detach(); else v.reattach(); }
+    for (const v of live.values()) { if (document.hidden) v.detach(true); else v.reattach(); }
     if (!document.hidden) refreshSessions();
   });
 
@@ -739,5 +821,5 @@
     }).catch((e) => holder.append(h('p', { class: 'hint', text: errText(e) })));
   }
 
-  NS.term = { open: openTerm, envTerm, detachToWindow, newWindow, offWindow, refreshSessions, views: live, toggleBroadcast };
+  NS.term = { open: openTerm, envTerm, envFields, detachToWindow, newWindow, offWindow, refreshSessions, views: live, toggleBroadcast };
 }(typeof window !== 'undefined' ? window : globalThis));

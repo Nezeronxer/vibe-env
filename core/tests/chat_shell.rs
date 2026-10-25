@@ -289,6 +289,33 @@ fn the_terminal_continues_the_session_in_the_chats_copy_and_marks_the_chat() {
 }
 
 #[test]
+fn a_chat_open_in_a_terminal_keeps_what_the_terminal_made_and_takes_no_second_terminal() {
+    let env = Env::new();
+    let p = env.project(|_| {});
+    let app = start(&env, &p, chat_fake(vec![vec![done("Hi.")], vec![done("Second.")]]));
+    let chat = app.chats.send(ChatTarget::New { env: "fake".into(), project_id: p.id.clone() }, "m1", "hello").unwrap();
+    app.wait_feed(&chat, "the answer", |m| m.iter().any(|x| x.who == Who::Model));
+    let l = app.chats.terminal_open(&chat, false).unwrap();
+    // what the CLI of the terminal makes in the copy: an edit and an installed package
+    fs::write(l.cwd.join("a.txt"), "edited in the terminal\n").unwrap();
+    fs::create_dir_all(l.cwd.join("node_modules/x")).unwrap();
+    fs::write(l.cwd.join("node_modules/x/index.js"), "x").unwrap();
+    // one terminal per chat: a second would write the same session, and the first to end would take the mark off
+    assert_eq!(app.chats.terminal_open(&chat, false).unwrap_err(), "already_in_terminal");
+    assert_eq!(app.chats.terminal_open(&chat, true).unwrap_err(), "already_in_terminal");
+    assert_eq!(app.feed(&chat).iter().filter(|m| m.text.starts_with("opened_in_terminal")).count(), 1);
+    assert!(app.chats.list("fake")[0].in_terminal);
+    // the window sends a message meanwhile: the copy is not wiped under the terminal
+    app.chats.send(ChatTarget::Existing(chat.clone()), "m2", "and now?").unwrap();
+    app.wait_feed(&chat, "the second answer", |m| m.iter().any(|x| x.who == Who::Model && x.reply_to.as_deref() == Some("m2")));
+    assert_eq!(fs::read_to_string(l.cwd.join("a.txt")).unwrap(), "edited in the terminal\n");
+    assert!(l.cwd.join("node_modules/x/index.js").exists());
+    // when it ends the chat is free again, and the copy is the chat's own again on the next answer
+    app.chats.terminal_closed(&chat).unwrap();
+    assert!(app.chats.terminal_open(&chat, false).is_ok());
+}
+
+#[test]
 fn without_a_session_or_a_cli_the_person_gets_a_reason_and_may_start_a_new_conversation() {
     let env = Env::new();
     let p = env.project(|_| {});
@@ -332,6 +359,9 @@ fn a_claude_session_continued_in_the_terminal_is_read_back_into_the_feed() {
         format!(r#"{{"type":"user","uuid":"u1","timestamp":"{now}","message":{{"role":"user","content":"Что в main.rs?"}}}}"#),
         format!(r#"{{"type":"assistant","uuid":"a1","timestamp":"{now}","message":{{"role":"assistant","content":[{{"type":"thinking","thinking":"hm"}},{{"type":"text","text":"Точка входа."}}]}}}}"#),
         format!(r#"{{"type":"user","uuid":"u2","timestamp":"{now}","message":{{"role":"user","content":[{{"type":"tool_result","tool_use_id":"t","content":"x"}}]}}}}"#),
+        // the chat's own run, sent from the window while the terminal was open: already in the feed, and its prompt is not the person's words
+        format!(r#"{{"type":"user","uuid":"u3","timestamp":"{now}","message":{{"role":"user","content":"Message of the person (answer it; do not change any file):\n<MESSAGE>\nand more?\n</MESSAGE>"}}}}"#),
+        format!(r#"{{"type":"assistant","uuid":"a3","timestamp":"{now}","message":{{"role":"assistant","content":[{{"type":"text","text":"Own answer."}}]}}}}"#),
         format!(r#"{{"type":"assistant","uuid":"a2","isSidechain":true,"timestamp":"{now}","message":{{"role":"assistant","content":[{{"type":"text","text":"subagent"}}]}}}}"#),
         "not json".to_string(),
     ];
@@ -344,7 +374,7 @@ fn a_claude_session_continued_in_the_terminal_is_read_back_into_the_feed() {
     let talk: Vec<(Who, String)> = feed.iter().filter(|m| m.who != Who::System && m.action.is_none()).map(|m| (m.who.clone(), m.text.clone())).collect();
     assert_eq!(feed.last().unwrap().text, "back_from_terminal: 2", "the feed says the chat is back and what came of the terminal");
     assert_eq!(talk[talk.len() - 2..].to_vec(), vec![(Who::Human, "Что в main.rs?".to_string()), (Who::Model, "Точка входа.".to_string())]);
-    assert!(!feed.iter().any(|m| m.text == "old" || m.text == "subagent"));
+    assert!(!feed.iter().any(|m| m.text == "old" || m.text == "subagent" || m.text.contains("Own answer.") || m.text.starts_with("Message of the person")), "the chat's own exchange is not read back a second time");
     // the chat goes on with the same session
     app.chats.send(ChatTarget::Existing(chat.clone()), "m2", "and more?").unwrap();
     app.wait_feed(&chat, "the second answer", |m| m.iter().any(|x| x.who == Who::Model && x.reply_to.as_deref() == Some("m2")));
@@ -403,6 +433,22 @@ fn the_menu_shows_the_skills_commands_mcp_and_mods_of_claude_code() {
     assert!(!all.contains("tok-"), "no argument, URL query or env value leaks into the menu: {all}");
     // the adapter's own inventory reads the same places (the person's HOME)
     assert_eq!(Claude::new().inventory(&proj), inventory::scan("claude", &inventory::home().unwrap(), &proj));
+}
+
+#[test]
+fn a_block_description_in_the_frontmatter_is_read_as_text_and_not_as_its_mark() {
+    let d = tempfile::tempdir().unwrap();
+    let (home, proj) = (d.path().join("home"), d.path().join("proj"));
+    put(&home.join(".claude/skills/folded/SKILL.md"), "---\nname: folded\ndescription: >-\n  Reads the PDF\n  and the text in it\nallowed-tools: Read\n---\n# Title of the body\n");
+    put(&home.join(".claude/skills/keep/SKILL.md"), "---\ndescription: |\n  First line\n\n  second line\n---\n# Not this\n");
+    put(&home.join(".claude/skills/plain/SKILL.md"), "---\ndescription: \"Plain one\"\n---\n");
+    put(&home.join(".claude/skills/empty/SKILL.md"), "---\ndescription: >\n---\n# Heading is the fallback\n");
+    let inv = inventory::scan("claude", &home, &proj);
+    let d = |n: &str| inv.skills.iter().find(|s| s.name == n).unwrap().description.clone();
+    assert_eq!(d("folded"), "Reads the PDF and the text in it");
+    assert_eq!(d("keep"), "First line second line");
+    assert_eq!(d("plain"), "Plain one");
+    assert_eq!(d("empty"), "Heading is the fallback", "a block with no text falls back to the body as before");
 }
 
 #[test]

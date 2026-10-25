@@ -1,7 +1,23 @@
 //! GUI apps start with a minimal PATH; agents, gh and node live elsewhere.
 use std::process::Command;
 
+/// Markers of a Claude Code session the app was started from (`open` in its terminal): an agent that inherits them
+/// counts as that session's child, saves no transcript (so no `--continue`) and gets its messaging token.
+const PARENT_SESSION: [&str; 8] = [
+    "CLAUDECODE",
+    "CLAUDE_PID",
+    "CLAUDE_CODE_CHILD_SESSION",
+    "CLAUDE_CODE_SESSION_ID",
+    "CLAUDE_CODE_SESSION_ATTENDED",
+    "CLAUDE_CODE_ENTRYPOINT",
+    "CLAUDE_CODE_MESSAGING_TOKEN",
+    "CLAUDE_CODE_MESSAGING_SOCKET",
+];
+
 pub fn fix_path() {
+    for k in PARENT_SESSION {
+        std::env::remove_var(k);
+    }
     if !cfg!(unix) {
         return;
     }

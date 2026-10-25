@@ -1,5 +1,6 @@
 //! Window, tray, keys, notifications and the OS around the core: the commands are thin wrappers over `Hub`
 //! (see `hub.rs` and its neighbours, where the logic and its tests live).
+mod agentcmds;
 mod auto;
 mod config;
 mod custom;
@@ -50,6 +51,7 @@ use tauri_plugin_dialog::{DialogExt, MessageDialogButtons};
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
 use tauri_plugin_notification::NotificationExt;
 
+#[derive(Clone)]
 struct Tray {
     icon: TrayIcon,
     freeze: MenuItem<Wry>,
@@ -120,7 +122,10 @@ fn refresh_tray(app: &AppHandle) {
     let label = tray::label(running, waiting);
     let ru = st.ru.load(Ordering::Relaxed);
     let frozen = st.hub.engine.is_frozen();
-    if let Some(t) = lk(&st.tray).as_ref() {
+    // The setters wait for the main thread: the lock is let go first, or a refresh on the main thread (the tray's
+    // "Freeze", the global key) would wait for the lock a refresh on another thread holds while it waits for the main thread.
+    let tray = lk(&st.tray).clone();
+    if let Some(t) = tray.as_ref() {
         if cfg!(target_os = "macos") {
             let _ = t.icon.set_title(if label.is_empty() { None } else { Some(label.as_str()) });
         }
@@ -232,12 +237,25 @@ fn quit(app: &AppHandle) {
                 return;
             }
         }
-        pty.save_and_end(&st.hub.dir.join(TERMS_FILE));
-        st.hub.chats.shutdown();
-        st.hub.engine.shutdown();
-        st.keep.update(false);
+        shut_down(&app);
         app.exit(0);
     });
+}
+
+static SHUT_DOWN: AtomicBool = AtomicBool::new(false);
+
+/// The terminals are saved and the runs stopped, once. `quit` comes here, and so does the end of the process by another
+/// way (Dock "Quit", log-out, shutdown on macOS), which never passes `quit`: otherwise the tabs would not come back and
+/// the agents' processes would be left running.
+fn shut_down(app: &AppHandle) {
+    if SHUT_DOWN.swap(true, Ordering::SeqCst) {
+        return;
+    }
+    let Some(st) = app.try_state::<App>() else { return };
+    app.state::<ptycmds::Pty>().save_and_end(&st.hub.dir.join(TERMS_FILE));
+    st.hub.chats.shutdown();
+    st.hub.engine.shutdown();
+    st.keep.update(false);
 }
 
 // ---------- notifications ----------
@@ -256,6 +274,11 @@ impl Sink for SystemSink {
                 v.remove(0);
             }
         }
+        // `show` returns Ok whatever the system does with it (the plugin sends from another thread): without a server to
+        // take it the notification is lost, and the window must be told how to switch it on
+        if tray::notification_server() == Some(false) {
+            return Err("no_notification_server".into());
+        }
         let mut b = self.0.notification().builder().id(s.id).title(&s.title).body(&s.body);
         if let Some(sound) = &s.sound {
             b = b.sound(sound);
@@ -267,6 +290,11 @@ impl Sink for SystemSink {
 /// Click on a system notification: show the window and, if the platform says which one, open its task.
 fn on_notification_click(app: &AppHandle, a: &tauri_plugin_notification::ActionPerformed) {
     show_window(app);
+    // a terminal agent's notification names its pane; a task's names its task
+    if let Some(pane) = a.notification().and_then(|n| agentcmds::pane_of(n.id())) {
+        let _ = app.emit("agent-notify-click", json!({ "pane": pane }));
+        return;
+    }
     let task = a.notification().and_then(|n| lk(&NOTES).iter().find(|(id, _)| *id == n.id()).map(|(_, t)| t.clone()));
     if let Some(t) = task {
         let _ = app.emit("open-task", t);
@@ -794,7 +822,7 @@ async fn freeze(app: AppHandle, s: State<'_, App>, on: bool) -> Res<()> {
 #[tauri::command]
 async fn hand_off(s: State<'_, App>, task_id: String) -> Res<Value> {
     let dir = terminal_dir(&s);
-    s.hub.hand_off(&task_id, &|l| term::open(l, &dir))
+    s.hub.hand_off(&task_id, &term::available, &|l| term::open(l, &dir))
 }
 
 #[tauri::command]
@@ -1052,15 +1080,22 @@ fn build_app(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-/// The window may load later than the things it must be told: send them (again) when a page has loaded.
-fn emit_startup(app: &AppHandle) {
-    let Some(st) = app.try_state::<App>() else { return };
-    for (name, payload) in lk(&st.startup).iter() {
-        let _ = app.emit(name, payload);
+/// The window may load later than the things it must be told: send them (again) when a page has loaded. Only to the
+/// window that loaded: another window opening (or the preview reloading) must not make the notices of this one double
+/// or come back after they were closed. The preview is a page of somebody else's and is told nothing.
+fn emit_startup(app: &AppHandle, label: &str) {
+    if label == preview::LABEL {
+        return;
     }
-    let _ = app.emit("tray-state", tray_state(&st));
-    if st.first_new_chat.swap(false, Ordering::Relaxed) {
-        let _ = app.emit("focus-input", ());
+    let Some(st) = app.try_state::<App>() else { return };
+    // copied out: the emits below must not run under the lock
+    let lines: Vec<(String, Value)> = lk(&st.startup).clone();
+    for (name, payload) in &lines {
+        let _ = app.emit_to(label, name, payload);
+    }
+    let _ = app.emit_to(label, "tray-state", tray_state(&st));
+    if label == "main" && st.first_new_chat.swap(false, Ordering::Relaxed) {
+        let _ = app.emit_to(label, "focus-input", ());
     }
 }
 
@@ -1202,10 +1237,10 @@ fn main() {
         .setup(|app| build_app(app))
         .on_page_load(|webview, payload| {
             if matches!(payload.event(), tauri::webview::PageLoadEvent::Finished) {
-                let app = webview.app_handle().clone();
+                let (app, label) = (webview.app_handle().clone(), webview.label().to_string());
                 std::thread::spawn(move || {
                     std::thread::sleep(Duration::from_millis(1200));
-                    emit_startup(&app);
+                    emit_startup(&app, &label);
                 });
             }
         })
@@ -1221,6 +1256,11 @@ fn main() {
                 let _ = app.emit("windows-changed", ());
             }
             tauri::WindowEvent::CloseRequested { api, .. } if w.label() == "main" => {
+                // the state file could not be read: there is no tray, no menu and no "Quit" anywhere, so closing the window ends the app
+                if w.app_handle().try_state::<App>().is_some_and(|s| s.unreadable.is_some()) {
+                    w.app_handle().exit(0);
+                    return;
+                }
                 api.prevent_close();
                 // a hidden page stops parsing output; detached, the sessions run on into their buffer (story 301)
                 if let Some(p) = w.app_handle().try_state::<ptycmds::Pty>() {
@@ -1272,6 +1312,8 @@ fn main() {
             data_state, open_data_folder, start_fresh,
             ptycmds::term_open, ptycmds::term_write, ptycmds::term_resize, ptycmds::term_close, ptycmds::term_attach,
             ptycmds::term_detach, ptycmds::term_ack, ptycmds::term_list,
+            agentcmds::agent_worktree, agentcmds::agent_worktree_remove, agentcmds::agent_changes, agentcmds::agent_file_diff,
+            agentcmds::agent_revert_file, agentcmds::agent_merge, agentcmds::term_usage, agentcmds::notify_agent,
             windows::window_detach, windows::window_tab, windows::window_return,
             // v4 skeletons (tasks 19-25)
             market::market_search, market::market_item, market::market_plan, market::market_apply, market::market_installed,
@@ -1286,11 +1328,11 @@ fn main() {
         ])
         .build(tauri::generate_context!())
         .expect("error while building Nightshift");
-    app.run(|_, ev| {
+    app.run(|app, ev| match ev {
         // the window only hides; the process ends via tray "Quit"
-        if let tauri::RunEvent::ExitRequested { code: None, api, .. } = ev {
-            api.prevent_exit();
-        }
+        tauri::RunEvent::ExitRequested { code: None, api, .. } => api.prevent_exit(),
+        tauri::RunEvent::Exit => shut_down(app),
+        _ => {}
     });
 }
 

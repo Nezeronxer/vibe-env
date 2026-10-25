@@ -14,6 +14,7 @@
 //   details   - block in task "Детали" { id, order?, render(task, ctx) -> Node | null }
 //   paneKind  - pane kind        { kind, labelKey, icon?, mount(el, pane, ctx) -> { update?, focus?, destroy?, title?() } , create?(ctx) -> pane fields }
 //   tabsCorner- the corner right of the tabs (Clawd) { id, mount(el, ctx) -> { update?, destroy? } | void }  (the last registered wins)
+//   paletteSource - v7 rows of ⌘K made on open { id, items?(ctx) -> command rows, search?(query) -> rows under the ranked ones }
 (function (root) {
   const NS = (root.NS = root.NS || {});
   const screens = new Map();
@@ -22,7 +23,7 @@
     if (old && !old.placeholder && def.placeholder) return;   // a real screen is never replaced by a placeholder
     screens.set(def.id, def);
   }
-  const POINTS = ['command', 'settings', 'bar', 'paneHeader', 'details', 'paneKind', 'tabsCorner'];
+  const POINTS = ['command', 'settings', 'bar', 'paneHeader', 'details', 'paneKind', 'tabsCorner', 'paletteSource'];
   const ext = new Map(POINTS.map((p) => [p, []]));
   const keyOf = (point, def) => (point === 'paneKind' ? def.kind : def.id);
   const listeners = [];

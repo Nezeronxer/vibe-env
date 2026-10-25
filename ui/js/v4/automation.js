@@ -255,7 +255,7 @@
   // ---------- entrances: the bar button with the count, the palette ----------
   NS.registry.register({ id: 'automation', layout: 'full', scroll: true, mount });
   NS.registry.extend('command', { id: 'auto.open', labelKey: 'auto.cmd', group: 'mk.group', order: 74, run: () => NS.nav('automation', {}) });
-  // the entrance next to "Фабрика" and "Настройки" (tabs.js draws it): a bolt, the word and the count of suggestions
+  // the entrance between ⌘K and "Настройки" in the foot of the agents column (tabs.js draws it): a bolt and the count of suggestions
   function navButton() {
     start();
     const n = h('b', { class: 'bn' });

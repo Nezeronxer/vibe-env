@@ -211,8 +211,10 @@ impl Engine {
         // one write: a note given right now from another thread is not lost between a read and a clear
         self.update_state(&t.id, |s| {
             let notes: Vec<_> = std::mem::take(&mut s.notes).into_iter().filter(|n| !n.delivered).collect();
+            let images = std::mem::take(&mut s.attachments);
             *s = Default::default();
             s.notes = notes;
+            s.attachments = images;
         })?;
         if t.outcome.error.as_deref().is_some_and(|e| e.starts_with("waiting_") || e.starts_with("env_unavailable") || e.starts_with("dependency_blocked")) {
             t.outcome.error = None;

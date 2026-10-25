@@ -98,7 +98,7 @@ body[data-layout="bare"] .screen { background: var(--canvas); }
 .barmenu .bn { font: 600 11px var(--mono); color: var(--on-human); background: var(--human); border-radius: 3px; padding: 0 4px; }
 body[data-preset="minimal"] .mod-branch, body[data-preset="minimal"] .mod-clock { display: none; }
 
-.toast { border: 1px solid color-mix(in srgb, var(--btn) 60%, var(--brass)); position: fixed; left: 50%; bottom: 52px; transform: translateX(-50%); z-index: 50; background: var(--btn); color: var(--on-btn); padding: 8px 14px; border-radius: var(--radius-sm); max-width: 60ch; box-shadow: var(--shadow); }
+.toast { border: 1px solid color-mix(in srgb, var(--btn) 60%, var(--brass)); position: fixed; left: 50%; bottom: 52px; transform: translateX(-50%); z-index: 70; background: var(--btn); color: var(--on-btn); padding: 8px 14px; border-radius: var(--radius-sm); max-width: 60ch; box-shadow: var(--shadow); }
 .toast.bad { background: var(--bad); color: var(--knob); }
 .placeholder { margin: auto; max-width: 46ch; padding: 24px; color: var(--ink2); text-align: center; }
 .placeholder h2 { color: var(--ink); font-size: 18px; margin-bottom: 6px; }

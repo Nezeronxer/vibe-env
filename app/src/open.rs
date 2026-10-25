@@ -60,6 +60,17 @@ pub fn check_dir(target: &str, roots: &[PathBuf]) -> Res<PathBuf> {
     }
 }
 
+/// Starts `c` and lets a thread wait for it, so that when it ends it does not stay a zombie until the app ends (`open`,
+/// `xdg-open` and a closed terminal are never waited for otherwise). Returns the pid.
+pub fn spawn_reaped(c: &mut Command) -> std::io::Result<u32> {
+    let mut child = c.spawn()?;
+    let pid = child.id();
+    std::thread::spawn(move || {
+        let _ = child.wait();
+    });
+    Ok(pid)
+}
+
 pub fn opener(target: &Target) -> Res<()> {
     let bin = if cfg!(target_os = "macos") { "open" } else { "xdg-open" };
     let mut c = Command::new(bin);
@@ -72,7 +83,7 @@ pub fn opener(target: &Target) -> Res<()> {
         // no "select this file" on a plain xdg-open: its folder is shown
         Target::Reveal(p) => c.arg(p.parent().unwrap_or(p)),
     };
-    c.spawn().map(|_| ()).map_err(|e| format!("{bin}: {e}"))
+    spawn_reaped(&mut c).map(|_| ()).map_err(|e| format!("{bin}: {e}"))
 }
 
 impl Hub {
@@ -91,7 +102,7 @@ impl Hub {
     pub fn open_editor(&self, path: &str) -> Res<()> {
         let dir = check_dir(path, &self.open_roots())?;
         let path = dir.to_string_lossy().to_string();
-        let spawn = |bin: String, args: Vec<String>| Command::new(bin).args(args).arg(&path).spawn().map(|_| ()).map_err(|e| e.to_string());
+        let spawn = |bin: String, args: Vec<String>| spawn_reaped(Command::new(bin).args(args).arg(&path)).map(|_| ()).map_err(|e| e.to_string());
         if let Some(mut parts) = gui_editor() {
             let bin = parts.remove(0);
             return spawn(bin, parts);
@@ -128,6 +139,23 @@ pub fn gui_editor() -> Option<Vec<String>> {
 
 #[cfg(test)]
 mod tests {
+    #[cfg(unix)]
+    #[test]
+    fn a_process_started_for_the_person_is_waited_for_and_does_not_stay_a_zombie() {
+        let state = |pid: u32| String::from_utf8_lossy(&Command::new("ps").args(["-o", "stat=", "-p", &pid.to_string()]).output().unwrap().stdout).trim().to_string();
+        let wait_gone = |pid: u32| (0..50).any(|_| { std::thread::sleep(std::time::Duration::from_millis(40)); !state(pid).starts_with('Z') });
+        // the cause: a child that is dropped without `wait` stays a zombie after it ended
+        let lost = Command::new("true").spawn().unwrap();
+        let lost_pid = lost.id();
+        drop(lost);
+        std::thread::sleep(std::time::Duration::from_millis(300));
+        assert!(state(lost_pid).starts_with('Z'), "the reproduction: {:?}", state(lost_pid));
+        // the helper reaps it
+        let pid = spawn_reaped(&mut Command::new("true")).unwrap();
+        assert!(wait_gone(pid), "still {:?}", state(pid));
+        assert!(spawn_reaped(&mut Command::new("/nonexistent/program")).is_err());
+    }
+
     use super::*;
 
     fn scratch(name: &str) -> PathBuf {

@@ -74,8 +74,9 @@
 .pane-sub:empty { flex: 1; }
 .pane-slots { display: flex; align-items: center; gap: 6px; flex: none; }
 .pane-slots:empty { display: none; }
-.pane-tools { display: none; align-items: center; gap: 2px; flex: none; }
-.pane:hover .pane-tools, .pane-tools:focus-within { display: flex; }
+/* the tools keep their room when hidden: a hover must not slide «Изменения» and «Чат» under the cursor */
+.pane-tools { display: flex; align-items: center; gap: 2px; flex: none; opacity: 0; pointer-events: none; }
+.pane:hover .pane-tools, .pane-tools:focus-within { opacity: 1; pointer-events: auto; }
 .pt { width: 22px; height: 22px; border: 0; background: none; color: var(--ink3); border-radius: 5px; display: grid; place-items: center; padding: 0; }
 .pt:hover { color: var(--ink); background: var(--raised2); }
 .pg { width: 12px; height: 10px; border: 1.4px solid currentColor; border-radius: 2px; position: relative; display: block; }

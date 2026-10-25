@@ -346,6 +346,37 @@ fn a_failed_answer_shows_the_reason_and_retry_repeats_it() {
     assert_eq!(m.iter().filter(|x| x.who == Who::Human).count(), 1, "retry does not add the message again");
     assert_eq!(m.iter().find(|x| x.who == Who::Model).unwrap().text, "Now it works.");
     assert!(r.chats.retry(&id, "no-such-message").is_err());
+    // the old "not answered" line is still on the screen: a click there does not pay for a second answer
+    assert_eq!(r.chats.retry(&id, "m1").unwrap_err(), "already_answered");
+    assert_eq!(r.fa.calls().len(), 2);
+}
+
+#[test]
+fn deleting_a_chat_while_it_answers_stops_the_answer_and_leaves_no_file_behind() {
+    let r = rig(vec![vec![FakeStep::Sleep(1500), done("Too late.")]]);
+    let id = r.chats.send(new_target(&r.p), "m1", "A long question").unwrap();
+    until("the chat is answering", || r.e.store().lock().unwrap().chat(&id).unwrap().answering.is_some());
+    let file = r.env.d.path().join("data").join("chats").join(format!("{id}.jsonl"));
+    r.chats.remove(&id).unwrap();
+    std::thread::sleep(Duration::from_millis(2200));
+    assert!(r.e.store().lock().unwrap().chat(&id).is_none());
+    assert!(!file.exists(), "the answer that ended later wrote the feed file again: {file:?}");
+    assert!(r.chats.list("fake").is_empty());
+}
+
+#[test]
+fn a_double_click_on_retry_queues_one_answer() {
+    let r = rig(vec![vec![FakeStep::Fail], vec![FakeStep::Sleep(500), done("Once.")], vec![done("Twice.")]]);
+    let id = r.chats.send(new_target(&r.p), "m1", "Why is the build red?").unwrap();
+    wait_feed(&r, &id, "not answered", |m| m.iter().any(|x| x.text.starts_with("not_answered: ")));
+    r.chats.retry(&id, "m1").unwrap();
+    r.chats.retry(&id, "m1").unwrap();
+    r.chats.retry(&id, "m1").unwrap();
+    let m = wait_feed(&r, &id, "the answer", |m| m.iter().any(|x| x.who == Who::Model));
+    std::thread::sleep(Duration::from_millis(300));
+    assert_eq!(r.fa.calls().len(), 2, "the first run and one retry");
+    assert_eq!(feed(&r, &id).iter().filter(|x| x.who == Who::Model).count(), m.iter().filter(|x| x.who == Who::Model).count());
+    assert_eq!(m.iter().find(|x| x.who == Who::Model).unwrap().text, "Once.");
 }
 
 #[test]
@@ -408,6 +439,60 @@ fn a_message_on_a_question_of_the_task_is_the_answer() {
         assert!(start.elapsed() < Duration::from_secs(30), "the worker never got the answer");
         std::thread::sleep(Duration::from_millis(20));
     }
+}
+
+/// The smallest PNG there is.
+const PNG: &[u8] = &[
+    0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x00, 0x00, 0x0D, 0x49, 0x48, 0x44, 0x52, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x08, 0x06, 0x00, 0x00, 0x00, 0x1F, 0x15,
+    0xC4, 0x89,
+];
+
+fn worker_calls(r: &Rig, at_least: usize) -> Vec<Run> {
+    let start = Instant::now();
+    loop {
+        let w: Vec<Run> = r.fa.calls().into_iter().filter(|c| c.role == RoleKind::Worker).collect();
+        if w.len() >= at_least {
+            return w;
+        }
+        assert!(start.elapsed() < Duration::from_secs(30), "the worker was started {} times, wanted {at_least}", w.len());
+        std::thread::sleep(Duration::from_millis(20));
+    }
+}
+
+#[test]
+fn images_of_a_command_message_go_with_the_task_and_those_of_a_note_join_them() {
+    let fake = FakeAdapter::new(vec![]).with_images(true).with_role(RoleKind::Worker, vec![vec![write("f.txt", "x"), done("done")]]);
+    let r = rig_fake(fake, hold_tasks);
+    let first = r.chats.attach(None, PNG).unwrap().path;
+    let id = r.chats.send_with(new_target(&r.p), "c1", "Add a footer like on the screenshot", &[first]).unwrap();
+    let task_id = task_line(&feed(&r, &id)).unwrap().task_id.clone().unwrap();
+    let second = r.chats.attach(Some(&id), PNG).unwrap().path;
+    r.chats.send_with(ChatTarget::Existing(id.clone()), "c2", "and the logo as here", &[second]).unwrap();
+    let kept: Vec<_> = ["c1", "c2"].iter().flat_map(|m| feed(&r, &id).into_iter().find(|x| x.id == *m).unwrap().attachments).collect();
+    assert_eq!(kept.len(), 2);
+
+    r.e.start_now(&task_id).unwrap();
+    let run = worker_calls(&r, 1).remove(0);
+    assert_eq!(run.attachments, kept, "the executor is given both pictures, as paths it may read");
+    assert!(nightshift_core::agent::with_attachments(&run.prompt, &run.attachments).contains(kept[1].to_str().unwrap()));
+}
+
+#[test]
+fn an_image_sent_as_the_answer_to_a_question_of_the_task_reaches_the_resumed_run() {
+    let fake = FakeAdapter::new(vec![]).with_images(true).with_role(RoleKind::Worker, vec![vec![done("NEEDS_HUMAN: Which color?")], vec![write("f.txt", "blue"), done("done")]]);
+    let r = rig_fake(fake, |s| {
+        s.quality.on = false;
+    });
+    let id = r.chats.send(new_target(&r.p), "c1", "Add a button").unwrap();
+    let task_id = task_line(&feed(&r, &id)).unwrap().task_id.clone().unwrap();
+    wait_status(&r.e, &task_id, Status::NeedsHuman);
+    let pic = r.chats.attach(Some(&id), PNG).unwrap().path;
+    r.chats.send_with(ChatTarget::Existing(id.clone()), "c2", "this one", &[pic]).unwrap();
+    let kept = feed(&r, &id).into_iter().find(|x| x.id == "c2").unwrap().attachments;
+    assert_eq!(kept.len(), 1);
+    let runs = worker_calls(&r, 2);
+    assert!(runs[0].attachments.is_empty());
+    assert_eq!(runs[1].attachments, kept);
 }
 
 #[test]
@@ -596,6 +681,8 @@ fn a_chat_of_one_env_never_calls_the_adapter_of_another() {
     assert_eq!(m.iter().find(|x| x.who == Who::Model).unwrap().text, "from B");
     // a task made in the chat of B belongs to B, and a later question there goes to B again
     chats.send(ChatTarget::Existing(in_b.clone()), "b2", "Add a license file").unwrap();
+    // the task is made by the chat's own thread, a moment after `send` returns
+    until("the task of the chat", || !e.store().lock().unwrap().tasks().is_empty());
     let t = e.store().lock().unwrap().tasks();
     assert_eq!((t.len(), t[0].agent.as_str(), t[0].chat_id.as_deref()), (1, "other", Some(in_b.as_str())));
     assert!(a.calls().is_empty(), "the adapter of env A was never touched by a chat of env B");

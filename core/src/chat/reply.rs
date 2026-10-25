@@ -104,6 +104,14 @@ impl Chats {
     // ---- the answer ----
 
     fn fail(&self, chat: &str, msg_id: &str, why: &str) {
+        // the message is not being answered any more before the line that says so can be seen: a click on "Повторить" right
+        // under it must not meet the old answer still marked as going on
+        self.update_chat(chat, |c| {
+            if c.answering.as_deref() == Some(msg_id) {
+                c.answering = None;
+            }
+        });
+        lk(&self.retrying).remove(&format!("{chat}/{msg_id}"));
         if why == reason::STOPPED {
             return self.line(chat, keys::STOPPED, "", Some(ChatKind::Warn), Some(msg_id), None);
         }
@@ -123,6 +131,7 @@ impl Chats {
         lk(&self.stops).insert(chat.to_string(), flag.clone());
         self.answer_with(chat, job, &flag);
         lk(&self.stops).remove(chat);
+        lk(&self.retrying).remove(&format!("{chat}/{}", job.msg.id));
         if !self.stop.load(Ordering::SeqCst) {
             self.update_chat(chat, |c| {
                 if c.answering.as_deref() == Some(job.msg.id.as_str()) {
@@ -253,7 +262,7 @@ impl Chats {
         let copy = self.ensure_copy(&c, &p).map_err(|e| format!("{}: {e}", reason::COPY_FAILED))?;
         let env_set = self.settings().envs.get(&c.env).cloned().unwrap_or_default();
         let model = self.choose_model(&c.env, &*a, &env_set);
-        let body = format!("{}\nQuestion of the person (answer it; do not change any file):\n{}", prompt::fenced("CONTEXT", &self.side_context(&c, &p.base_branch)), prompt::fenced("MESSAGE", q));
+        let body = format!("{}\n{}\n{}", prompt::fenced("CONTEXT", &self.side_context(&c, &p.base_branch)), OWN_PROMPT_MARKS[1], prompt::fenced("MESSAGE", q));
         let mut run = Run::new(copy, body, format!("{}\n\n{CHAT_RULE}\n{SIDE_RULE}", prompt::system_for(model.vendor, RoleKind::Chat)), RoleKind::Chat);
         run.model = model.cli_arg.clone();
         run.read_only = true;

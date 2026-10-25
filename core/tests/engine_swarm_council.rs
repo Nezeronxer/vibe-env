@@ -91,3 +91,45 @@ fn a_tie_of_the_proposals_and_a_tie_on_the_review_are_decided_by_the_reviewer() 
     assert_eq!(c.review_votes.iter().map(|v| v.for_.as_str()).collect::<Vec<_>>(), ["approve", "changes"]);
     assert_eq!(env.main_file("feature.txt"), "built");
 }
+
+#[test]
+fn a_member_whose_throwaway_copy_fails_does_not_read_in_the_real_folder() {
+    let env = Env::new();
+    let p = env.project(|p| p.agent = "fa".into());
+    let w = Arc::new(
+        FakeAdapter::new(vec![])
+            .with_id("fa")
+            .with_variant(RoleKind::Council, "m1", vec![propose("A"), vote("A"), verdict(true)])
+            .with_variant(RoleKind::Council, "m2", vec![propose("B"), vote("A"), verdict(true)])
+            .with_role(RoleKind::Worker, vec![vec![write("feature.txt", "built\n"), done("Built it")]]),
+    );
+    let e = env.engine(env.store(&p, env_for(2)), vec![w.clone()], Arc::new(RecordingNotifier::default()), None);
+    // the folder of the throwaway copies cannot be made (a file stands in its place); the task's own copy is elsewhere
+    let wts = env.d.path().join("wts");
+    std::fs::create_dir_all(&wts).unwrap();
+    std::fs::write(wts.join(".ro"), "in the way").unwrap();
+    let id = run(&e, &p, 2);
+    wait(&e, &id, "the task ends", |t| !matches!(t.status, Status::Queued | Status::Preparing | Status::Working | Status::Checking | Status::Reviewing | Status::Merging));
+    std::thread::sleep(std::time::Duration::from_millis(300));
+    assert!(w.calls().iter().all(|r| r.cwd != env.repo), "no run in the person's folder: {:?}", w.calls().iter().map(|r| (&r.role, &r.cwd)).collect::<Vec<_>>());
+    assert!(has_log(&e, &id, "copy_failed") || task(&e, &id).outcome.error.as_deref().is_some_and(|x| x.contains("copy_failed")), "the reason is told: {:?}", task(&e, &id).outcome.error);
+}
+
+#[test]
+fn a_throwaway_folder_that_cannot_be_removed_at_start_is_told_and_does_not_hang_the_engine() {
+    let env = Env::new();
+    let p = env.project(|_| {});
+    std::fs::create_dir_all(env.d.path().join("wts")).unwrap();
+    std::fs::write(env.d.path().join("wts").join(".ro"), "in the way").unwrap();
+    let (tx, rx) = std::sync::mpsc::channel();
+    let store = env.store(&p, |_| {});
+    let wts = env.d.path().join("wts");
+    std::thread::spawn(move || {
+        let e = nightshift_core::engine::Engine::new(store, vec![], Arc::new(RecordingNotifier::default()), wts);
+        e.start();
+        let _ = tx.send(e);
+    });
+    // the sweep logged the failure for each project while it held the lock of the store that the log wants itself
+    let e = rx.recv_timeout(std::time::Duration::from_secs(20)).expect("the engine did not start");
+    assert!(has_log(&e, &p.id, "copy_not_removed"));
+}

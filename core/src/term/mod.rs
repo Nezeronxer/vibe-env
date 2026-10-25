@@ -59,6 +59,10 @@ pub struct TermInfo {
 /// A terminal as it is restored after a restart: folder and text, no process (story 253).
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct TermSaved {
+    /// The id the session had when it was saved (the window keeps what belongs to it, such as the chat or the agent, by it).
+    /// A file of an older version has none: empty.
+    #[serde(default)]
+    pub id: TermId,
     pub title: String,
     pub cwd: String,
     pub text: String,
@@ -337,7 +341,7 @@ impl Terms {
             .map(|s| {
                 let g = lk(&s.shared);
                 let (a, b) = g.ring.as_slices();
-                TermSaved { title: s.title.clone(), cwd: s.cwd.display().to_string(), text: String::from_utf8_lossy(&[a, b].concat()).into_owned() }
+                TermSaved { id: s.id.clone(), title: s.title.clone(), cwd: s.cwd.display().to_string(), text: String::from_utf8_lossy(&[a, b].concat()).into_owned() }
             })
             .collect()
     }

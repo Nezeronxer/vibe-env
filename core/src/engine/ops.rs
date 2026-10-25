@@ -102,12 +102,13 @@ impl Engine {
     /// answer; otherwise it waits for the next run of `to` (the executor by default) and the feed
     /// notes when it was delivered. A task that has landed cannot take it.
     pub fn note(&self, id: &str, to: Option<String>, text: &str) -> Result<NoteResult, String> {
-        self.note_tracked(id, to, text).map(|r| r.0)
+        self.note_tracked(id, to, text, &[]).map(|r| r.0)
     }
 
     /// `note` and the id of the note kept (None when it was not kept: an answer, or a task that cannot take it).
     /// The "note delivered" line of the task's log carries the same id (`LogEvent.note_id`).
-    pub(crate) fn note_tracked(&self, id: &str, to: Option<String>, text: &str) -> Result<(NoteResult, Option<String>), String> {
+    /// `images` (files the chat kept) join the task's own: the runs that follow get them.
+    pub(crate) fn note_tracked(&self, id: &str, to: Option<String>, text: &str, images: &[PathBuf]) -> Result<(NoteResult, Option<String>), String> {
         let t = self.task(id).ok_or("task_not_found")?;
         // in a swarm "A".."E" is a variant (G11.4); no addressee = everyone
         let swarm = t.swarm.is_some();
@@ -129,6 +130,9 @@ impl Engine {
         let text = text.trim();
         if text.is_empty() {
             return Err("empty_note".into());
+        }
+        if !images.is_empty() {
+            self.update_state(id, |s| s.attachments.extend(images.iter().filter(|i| !s.attachments.contains(i)).cloned().collect::<Vec<_>>()))?;
         }
         let asks = t.status == Status::NeedsHuman
             && t.question.as_ref().is_some_and(|q| q.kind == QuestionKind::Agent)

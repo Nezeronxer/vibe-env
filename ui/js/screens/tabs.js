@@ -47,9 +47,10 @@
   }
   function setState(next) {
     if (next === state) return;
+    const switched = next.active !== state.active;
     state = next;
     persist();
-    if (ws) ws.draw();
+    if (ws) { ws.draw(); if (switched && ws.switched) ws.switched(); }
     syncRoute();
   }
   const activeTab = () => P.tabOf(state);
@@ -68,6 +69,11 @@
     restore();
     const mountWs = () => { if (!ws) NS.shell.mountScreen('tabs', {}); };
     if (chat === undefined && state.tabs.length && !ws) { mountWs(); syncRoute(); return; }      // the start of the window: restored tabs
+    // v7: the first agent is a terminal - unless the window opens on a chat (?chat=, a notification) or a check asks ?first=chat
+    if (chat === undefined && !state.tabs.length && !/[?&](first=chat|chat=)/.test(location.search)) {
+      const p0 = freshPane();
+      if (p0) { state = P.wsOpen(state, uid('tab-'), p0); persist(); mountWs(); if (ws) ws.draw(); syncRoute(); return; }
+    }
     if (chat === undefined || chat === null) {
       const f = focused();
       if (f && f.kind === 'agent' && f.env === env) { mountWs(); ws && ws.draw(); syncRoute(); return; }
@@ -98,12 +104,16 @@
   const curEnv = () => { const f = focused(); return (f && f.env) || S().lastEnv || ((S().envs.find((e) => e.state === 'ok') || {}).id); };
   // a fresh pane: of the given kind (task 23: 'term'), or an agent session of the env in focus
   function freshPane(kind) {
+    if (kind === 'chat') { const env = curEnv(); return env ? agentPane(env, 'new') : null; }
     if (kind && kind !== 'agent') {
       const def = NS.registry.points('paneKind').find((d) => d.kind === kind);
       return Object.assign({ id: uid('p-'), kind }, def && def.create ? def.create(NS.shell.ctxFor({})) : {});
     }
     const env = curEnv();
-    return env ? agentPane(env, 'new') : null;
+    if (!env) return null;
+    // v7: an agent is a terminal running the env's CLI; the chat stays one click away ("+" → Чат, ⌘K)
+    const e = NS.store.env(env), f = e && e.state !== 'missing' && NS.term && NS.term.envFields ? NS.term.envFields(env) : null;
+    return f ? Object.assign({ id: uid('p-'), kind: 'term' }, f) : agentPane(env, 'new');
   }
   function newTab(kind) {
     const p = freshPane(kind);
@@ -174,6 +184,8 @@
     if (e.target && e.target.closest && e.target.closest('.keyfield')) return;      // the hotkey field in the settings records keys
     const mac = platform() === 'mac', mod = mac ? e.metaKey : e.ctrlKey;
     const code = e.code || '';
+    // Linux: Ctrl+W/T/D inside a terminal belong to the shell (delete word, transpose, EOF); the app answers to Ctrl+Shift+… there
+    if (!mac && !e.shiftKey && code !== 'Tab' && !/^Digit/.test(code) && e.target && e.target.classList && e.target.classList.contains('xterm-helper-textarea')) return;
     let a = null;
     if (mod && e.shiftKey && !e.altKey && (code === 'Enter' || e.key === 'Enter')) a = { type: 'zoom' };
     else if (mod && e.altKey && !e.shiftKey && /^Arrow(Up|Down|Left|Right)$/.test(code || e.key)) a = { type: 'focus', dir: (code || e.key).slice(5).toLowerCase() };
@@ -226,12 +238,16 @@
   // ---------- the screen ----------
   function mount(root) {
     restore();
-    const strip = h('div', { class: 'tabstrip', role: 'tablist', 'aria-label': t('tabs.label') });
+    // v7: the agents are a column on the left (tabs as cards: what each terminal says, its state, its project); panes on the right
+    const strip = h('div', { class: 'tabstrip rail7-list', role: 'tablist', 'aria-orientation': 'vertical', 'aria-label': t('agents.rail') });
     const corner = h('div', { class: 'tabs-corner' });
-    const nav = h('nav', { class: 'ws-nav', 'aria-label': t('nav.label') });
-    const top = h('div', { class: 'ws-top' }, strip, nav, corner);
+    const nav = h('nav', { class: 'ws-nav rail7-foot', 'aria-label': t('nav.label') });
+    const newBtn = h('button', { type: 'button', class: 'rail7-new', 'aria-haspopup': 'dialog', title: t('agents.new_d') + ' · ' + (platform() === 'mac' ? '⌘T' : 'Ctrl+T'),
+      onclick: (e) => { e.stopPropagation(); if (NS.agents) NS.agents.launcher(e.currentTarget); else openPlus(e.currentTarget); } }, ic('i-plus'), h('span', { text: t('agents.new') }));
+    const head = h('div', { class: 'rail7-h' }, h('span', { class: 'rail7-brand', text: 'Nightshift' }), corner);
+    const rail = h('aside', { class: 'rail7' }, head, newBtn, strip, nav);
     const area = h('div', { class: 'panes' });
-    const wsEl = h('section', { class: 'ws' }, top, area);
+    const wsEl = h('section', { class: 'ws ws7' }, rail, h('div', { class: 'ws7-main' }, area));
     root.append(wsEl);
     const mounted = new Map();       // pane id -> {el, body, inst, sig, used, slots}
     let menu = null, dragId = null;
@@ -253,7 +269,11 @@
       const item = (label, fn, disabled) => h('button', { type: 'button', role: 'menuitem', text: label, disabled: !!disabled, onclick: () => { closeMenu(); fn(); } });
       menu = h('div', { class: 'menu tabmenu', role: 'menu', 'aria-label': t('tabs.menu') },
         item(t('tabs.close'), () => closeTab(tb.id)),
-        state.tabs.length > 1 ? item(t('tabs.close_others'), () => { let st = state; for (const x of state.tabs) if (x.id !== tb.id) st = P.wsClose(st, x.id); setState(P.wsActivate(st, tb.id)); }) : null);
+        state.tabs.length > 1 ? item(t('tabs.close_others'), async () => {
+          const others = state.tabs.filter((x) => x.id !== tb.id);
+          if (!(await mayClose(others.flatMap((x) => P.leaves(x.root))))) return;
+          let st = state; for (const x of others) st = P.wsClose(st, x.id); setState(P.wsActivate(st, tb.id));
+        }) : null);
       const r = anchor.getBoundingClientRect(), rr = wsEl.getBoundingClientRect();
       setVars(menu, { '--x': Math.max(0, Math.min(r.left - rr.left, rr.width - 220)) + 'px', '--y': (r.bottom - rr.top + 4) + 'px' });
       wsEl.append(menu);
@@ -269,7 +289,7 @@
         onclick: () => { if (off) return; closeMenu(); anchor.focus(); fn(); }, onkeydown: (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.currentTarget.click(); } } },
         h('span', { class: 'plus-ic', 'aria-hidden': 'true' }, icon), h('span', { class: 'mn', text: label }), key ? h('kbd', { text: key }) : null);
       const rows = [
-        row(env ? envIcon(env.custom ? 'custom' : env.id) : ic('i-chat'), t('plus.chat'), t('plus.chat_d'), K('Cmd+T'), () => newTab()),
+        row(env ? envIcon(env.custom ? 'custom' : env.id) : ic('i-chat'), t('plus.chat'), t('plus.chat_d'), '', () => newTab('chat')),
         cli ? row(h('span', { class: 't-glyph', text: '>_' }), t('plus.term_cli', { env: cli.name }), t('plus.term_cli_d', { env: cli.name }), '', () => NS.term.envTerm(cli.id)) : null,
         row(h('span', { class: 't-glyph', text: '>_' }), t('plus.term_shell'), t('plus.term_shell_d'), K('Shift+Cmd+T'), () => (NS.term && NS.term.open ? NS.term.open() : null), !(NS.term && NS.term.open))];
       menu = h('div', { class: 'menu plusmenu', role: 'menu', 'aria-label': t('plus.label'),
@@ -289,11 +309,12 @@
       const mac = platform() === 'mac';
       const nb = (cls, icon, label, desc, fn) => h('button', { type: 'button', class: 'navb ' + cls, title: desc, 'aria-label': label, onclick: fn }, icon, h('span', { class: 'nav-l', text: label }));
       const env = () => S().lastEnv;
+      // v7: the factory, the swarm and the automation live in ⌘K and in "Новый агент"; the screen keeps the palette and the settings
       NS.append(clear(nav),
-        [nb('nb-fact', ic('i-fact'), t('nav.factory'), t('nav.factory_d'), () => NS.shell.nav('factory', { env: env() })),
+        [NS.agents ? NS.agents.waitButton() : null,     // drawn first, shown as its own row on top (CSS order)
+          nb('nb-pal', h('kbd', { text: mac ? '⌘K' : 'Ctrl+K' }), t('agents.search'), t('nav.palette_d'), () => NS.palette.open()),
           NS.auto ? NS.auto.navButton() : null,
-          nb('nb-set', ic('i-gear'), t('nav.settings'), t('nav.settings_d') + ' ' + (mac ? '⌘,' : 'Ctrl+,'), () => NS.shell.nav('settings', { env: env(), section: 'basic' })),
-          nb('nb-pal', h('kbd', { text: mac ? '⌘K' : 'Ctrl+K' }), t('nav.palette'), t('nav.palette_d'), () => NS.palette.open())]);
+          nb('nb-set', ic('i-gear'), t('nav.settings'), t('nav.settings_d') + ' ' + (mac ? '⌘,' : 'Ctrl+,'), () => NS.shell.nav('settings', { env: env(), section: 'basic' }))]);
     }
     function tabEl(tb, i) {
       const on = tb.id === state.active;
@@ -312,16 +333,27 @@
         ondragover: (e) => { if (dragId && dragId !== tb.id) { e.preventDefault(); el.classList.add('over'); } },
         ondragleave: () => el.classList.remove('over'),
         ondrop: (e) => { e.preventDefault(); el.classList.remove('over'); if (dragId && dragId !== tb.id) setState(P.wsMove(state, dragId, state.tabs.findIndex((x) => x.id === tb.id))); } },
-      h('span', { class: 'tab-ic' + (p.kind === 'term' ? ' is-term' : '') }, p.kind === 'term' ? h('span', { class: 't-glyph', 'aria-hidden': 'true', text: '>_' }) : p.env ? envIcon(env && env.custom ? 'custom' : p.env) : ic('i-dash')),
+      h('span', { class: 'tab-ic' + (p.kind === 'term' ? ' is-term' : '') }, p.kind === 'term' && !p.env ? h('span', { class: 't-glyph', 'aria-hidden': 'true', text: '>_' }) : p.env ? envIcon(env && env.custom ? 'custom' : p.env) : ic('i-dash')),
       h('span', { class: 'tab-t' }, h('span', { class: 'tab-l', text: short(title) })),
       n > 1 ? h('small', { class: 'tab-n', text: String(n), title: n + ' · ' + t('tabs.label') }) : null,
       h('i', { class: 'tdot ' + kind + (stamped(p, kind) ? ' stamp' : ''), 'aria-hidden': 'true' }), h('span', { class: 'sr-only', text: t(word) }),
-      h('button', { type: 'button', class: 'tab-x', 'aria-label': t('tabs.close'), text: '×', onclick: (e) => { e.stopPropagation(); closeTab(tb.id); } }));
+      h('button', { type: 'button', class: 'tab-x', 'aria-label': t('tabs.close'), text: '×', onclick: (e) => { e.stopPropagation(); closeTab(tb.id); } }),
+      // v7: the card - the last lines of the terminal (term.js fills them), who and how long, the spend (agents7.js)
+      h('div', { class: 'tab-pv', 'aria-hidden': 'true' }),
+      h('div', { class: 'tab-meta' }, h('span', { text: env ? env.name : t(p.kind === 'term' ? 'term.kind' : 'pane.kind.agent') }),
+        p.branch ? h('span', { class: 'tab-br', text: p.branch }) : null, h('span', { class: 'tab-use', text: NS.agents ? NS.agents.useOf(p.id) : '' }), i < 9 ? h('kbd', { class: 'tab-k', text: (platform() === 'mac' ? '⌘' : '^') + (i + 1) }) : null));
+      el.dataset.state = kind;
+      if (p.env) el.dataset.env = String(p.env).startsWith('custom') ? 'custom' : p.env;
       return el;
     }
     function drawStrip() {
-      const list = state.tabs.slice(0, STRIP_MAX).map(tabEl);
-      const rest = state.tabs.slice(STRIP_MAX);
+      // v7: cards grouped by project (the order of the groups = where each first appears); ⌘1…9 follow what is on screen
+      const G = NS.agents ? NS.agents.groups(state.tabs, (tb) => P.findPane(tb.root, tb.focus) || P.leaves(tb.root)[0]) : null;
+      if (G && G.order.join() !== state.tabs.map((x) => x.id).join()) { state = Object.assign({}, state, { tabs: G.order.map((id) => state.tabs.find((x) => x.id === id)) }); persist(); }
+      let at = 0;
+      const list = G ? G.groups.flatMap((g) => [G.groups.length > 1 || g.key ? NS.agents.groupHead(g) : null].concat(g.tabs.map((tb) => tabEl(tb, at++)))).filter(Boolean)
+        : state.tabs.slice(0, STRIP_MAX).map(tabEl);
+      const rest = G ? [] : state.tabs.slice(STRIP_MAX);
       const more = rest.length ? h('button', { type: 'button', class: 'tab-more', text: t('tabs.more', { n: rest.length }), onclick: (e) => {
         e.stopPropagation(); closeMenu();
         menu = h('div', { class: 'menu tabmenu', role: 'menu' }, rest.map((tb) => h('button', { type: 'button', role: 'menuitem', text: short(paneTitle(P.findPane(tb.root, tb.focus))), onclick: () => { closeMenu(); setState(P.wsActivate(state, tb.id)); } })));
@@ -329,11 +361,26 @@
         setVars(menu, { '--x': Math.max(0, r.right - rr.left - 220) + 'px', '--y': (r.bottom - rr.top + 4) + 'px' });
         wsEl.append(menu); setTimeout(() => document.addEventListener('click', onDocMenu), 0);
       } }) : null;
-      NS.append(clear(strip), [h('div', { class: 'tabs-scroll' }, list), more,
-        h('button', { type: 'button', class: 'tab-plus', 'aria-label': t('tabs.new'), 'aria-haspopup': 'menu', title: t('tabs.new'), onclick: (e) => { e.stopPropagation(); openPlus(e.currentTarget); } }, ic('i-plus'))]);
+      for (const c of [...strip.children]) if (c !== sel) c.remove();          // the highlight stays the same element: it glides
+      if (!sel.isConnected) strip.prepend(sel);
+      const sc = h('div', { class: 'tabs-scroll' }, list);
+      NS.append(strip, [sc, more]);
+      selRO.disconnect(); selRO.observe(sc);                    // a card grows when its preview arrives: the highlight follows
       const a = strip.querySelector('.tab.on');
       if (a && a.scrollIntoView) a.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+      placeSel();
     }
+    // v7: the highlight under the card in focus moves to it (transform + height, a spring), in the colour of its env
+    const sel = h('div', { class: 'rail7-sel', 'aria-hidden': 'true' });
+    function placeSel() {
+      const a = strip.querySelector('.tab.on');
+      if (!a) { setVars(sel, { '--o': '0' }); return; }
+      const cs = getComputedStyle(a).getPropertyValue('--env');
+      const r = a.getBoundingClientRect(), sr = strip.getBoundingClientRect();
+      setVars(sel, { '--y': (r.top - sr.top + strip.scrollTop) + 'px', '--h': r.height + 'px', '--o': '1', '--sel-env': cs ? cs.trim() : 'var(--amber)' });
+    }
+    const selRO = new ResizeObserver(() => placeSel());
+    new ResizeObserver(() => placeSel()).observe(strip);
 
     // the header of a pane: the kind's own (chat.js draws .pane-h) or a plain one; slots of the registry and the hover tools
     function tools(p) {
@@ -439,7 +486,13 @@
       if (m.inst && m.inst.focus) m.inst.focus();
       else if (m.inst && m.inst.update) m.inst.update('focus-input');
     };
-    ws = { draw, focus };
+    let swT = 0;
+    const switched = () => { area.classList.remove('switch7'); void area.offsetWidth; area.classList.add('switch7'); clearTimeout(swT); swT = setTimeout(() => area.classList.remove('switch7'), 320); };
+    ws = { draw, focus, openPlus, switched };
+    // v7: a card dropped on the terminals opens beside the one in focus (left half → left/right split, lower third → down)
+    area.addEventListener('dragover', (e) => { if (dragId && dragId !== state.active) { e.preventDefault(); area.classList.add('drop7'); } });
+    area.addEventListener('dragleave', (e) => { if (!area.contains(e.relatedTarget)) area.classList.remove('drop7'); });
+    area.addEventListener('drop', (e) => { area.classList.remove('drop7'); if (!dragId || dragId === state.active) return; e.preventDefault(); const r = area.getBoundingClientRect(); besidePane(dragId, e.clientY - r.top > r.height * 0.66 ? 'v' : 'h'); });
     const offExt = NS.registry.onExtend((point) => { if (point === 'tabsCorner') drawCorner(); if (point === 'paneHeader' || point === 'paneKind') { for (const id of [...mounted.keys()]) destroyPane(id); drawPanes(); } });
     drawCorner(); drawNav();
     draw();
@@ -471,6 +524,22 @@
 
   NS.registry.register({ id: 'tabs', layout: 'chats', mount });
   function focusPane(paneId) { setState(P.wsFocusPane(state, paneId)); focusActive(); }
-  NS.tabs = { show, setChat, dropChat, focusPane, newTab, closeTab, closePane, placeOf, putBack, split, zoom, focusDir, equalize,
+  // v7: a pane of one tab goes beside the focused pane of the active tab (a card dropped on the terminal area)
+  function besidePane(tabId, dir) {
+    const from = P.tabOf(state, tabId), to = activeTab();
+    if (!from || !to || from.id === to.id) return;
+    if (P.count(to.root) >= P.MAX_PANES) { NS.shell.toast(t('pane.max')); return; }
+    const p = P.findPane(from.root, from.focus);
+    if (!p) return;
+    p.moved = true;                                    // the terminal keeps running while its pane changes place
+    let st = P.wsClosePane(P.wsActivate(state, from.id), p.id);
+    st = P.wsActivate(st, to.id);
+    st = P.wsSplit(st, dir === 'v' ? 'v' : 'h', p);
+    setState(st);
+    setTimeout(() => { delete p.moved; }, 0);
+    focusActive();
+  }
+  NS.tabs = { show, setChat, dropChat, focusPane, newTab, closeTab, closePane, placeOf, putBack, split, zoom, focusDir, equalize, besidePane, save: persist, freshPane,
+    openPlus: (a) => ws && ws.openPlus && ws.openPlus(a),
     get state() { return state; }, get active() { return focused(); }, get activeTab() { return activeTab(); } };
 })();

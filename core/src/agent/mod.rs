@@ -11,6 +11,9 @@ pub use inventory::{InvItem, Inventory};
 use crate::model::{LimitWindow, ModelFamily, RoleKind, Settings};
 use chrono::{DateTime, Local};
 use std::io::{BufRead, BufReader, Read};
+
+/// The most one "line" of a process's output is read in one piece (a line without an end goes on in the next piece).
+const LINE_CHUNK_MAX: u64 = 64 << 20;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -390,7 +393,8 @@ pub fn run_lines_with(
         let mut buf = Vec::new();
         loop {
             buf.clear();
-            if !matches!(r.read_until(b'\n', &mut buf), Ok(n) if n > 0) {
+            // a "line" without an end is passed on in pieces of this size, so it cannot grow without a limit
+            if !matches!((&mut r).take(LINE_CHUNK_MAX).read_until(b'\n', &mut buf), Ok(n) if n > 0) {
                 break;
             }
             if buf.ends_with(b"\n") {

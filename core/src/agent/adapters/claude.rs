@@ -258,7 +258,9 @@ fn rate_limit_events(info: &serde_json::Value, now: chrono::DateTime<Local>) -> 
     let at = |v: &serde_json::Value| v.as_i64().and_then(|t| Local.timestamp_opt(t, 0).single());
     let status = info["status"].as_str().unwrap_or("allowed");
     // unverified: "allowed_warning" is a warning, not a stop (only the plain "allowed" is documented in the brief)
-    let blocked = !status.starts_with("allowed");
+    // "rejected" while the extra usage (overage) is allowed: the run goes on, paid; it is no stop (Claude Code's own `isUsingOverage`)
+    let overage = info["isUsingOverage"] == true || info["overageStatus"].as_str().is_some_and(|s| s.starts_with("allowed"));
+    let blocked = !status.starts_with("allowed") && !overage;
     let hit = info["rateLimitType"].as_str();
     let mut windows = vec![];
     for name in ["five_hour", "seven_day"] {
@@ -270,7 +272,7 @@ fn rate_limit_events(info: &serde_json::Value, now: chrono::DateTime<Local>) -> 
             used_pct: Some((used * 100.0) as f32),
             remaining: None,
             resets_at: at(&w["resetsAt"]),
-            exhausted: used >= 1.0 || (blocked && hit == Some(name)),
+            exhausted: !overage && (used >= 1.0 || (blocked && hit == Some(name))),
             source: "rate_limit_event".into(),
             seen_at: now,
         });

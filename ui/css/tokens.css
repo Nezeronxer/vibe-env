@@ -1,68 +1,71 @@
 /* Nightshift tokens. The theme table lives in js/v4/theme.js (one source: CSS variables and the xterm theme); these are
    the same values for the first paint, before the script runs - selftest (scripts/ui-selftest.js) checks they never drift.
-   No screen keeps a colour of its own. Amber (--human) has one meaning only: "нужен ты"; the needle amber (--amber) is the one live accent. */
+   No screen keeps a colour of its own. Amber-ish --human has one meaning only: "ждёт тебя"; --amber is the live accent (the env in focus). */
 :root {
   color-scheme: dark;
-  --canvas: #1f160e; --bg: #0f0b08; --panel: #130e09; --raised: #261c13; --raised2: #32261a; --line: #392d1f; --line2: #5a4830; --ink: #f3eadb;
-  --ink2: #d6c9b0; --ink3: #ad9e82; --accent: #f2a33a; --cursor: #f3eadb; --sel: #4d3a1c; --human: #f6b445; --human-bg: #2d2110; --human-line: #6e5120;
-  --on-human: #1d1405; --ok: #86cb98; --ok-bg: #14241a; --bad: #f26a55; --bad-bg: #301814; --btn: #efe3c8; --on-btn: #2a1e12; --amber: #f2a33a;
-  --on-amber: #231703; --cream: #efe3c8; --cream-deep: #d6c49b; --cream-ink: #2d2114; --brass: #b8935a; --needle: #c4620d; --onair: #ff5d48;
-  --side: #38230f; --side2: #27180a; --plan: #8aaedb; --crit: #ee7866; --test: #72c2a2; --exec: #62bcc2; --gate: #b5c668; --rev: #dc94b9;
-  --integ: #ada594; --coord: #e8decb; --watch: #d3ab6c; --queue: #ada594; --ansi-0: #241c14; --ansi-1: #e5675d; --ansi-2: #86c48e; --ansi-3: #e0b765;
-  --ansi-4: #78a6dd; --ansi-5: #c691bd; --ansi-6: #69bdb7; --ansi-7: #d5cab4; --ansi-8: #5a4e3c; --ansi-9: #f08a80; --ansi-10: #a2d6a8;
-  --ansi-11: #efcf8f; --ansi-12: #9bbff0; --ansi-13: #dcaedc; --ansi-14: #8bd3cf; --ansi-15: #f6efde;
+    --canvas: #0b0c0f; --bg: #08090b; --panel: #111216; --raised: #17181d; --raised2: #1e2026; --line: #24262d; --line2: #343741; --ink: #eceef3;
+    --ink2: #b9bdc8; --ink3: #8a8f9c; --accent: #8e95ff; --cursor: #eceef3; --sel: #2a3150; --human: #f5b14c; --human-bg: #2a2112;
+    --human-line: #5e4720; --on-human: #14100a; --ok: #5fd38d; --ok-bg: #11221a; --bad: #f2706a; --bad-bg: #2b1517; --btn: #eceef3; --on-btn: #111216;
+    --amber: #8e95ff; --on-amber: #0b0c0f; --cream: #eceef3; --cream-deep: #c9ccd4; --cream-ink: #111216; --brass: #3a3d47; --needle: #8e95ff;
+    --onair: #ff6b5e; --side: #0e0f12; --side2: #0b0c0f; --env-claude: #e8865f; --env-codex: #4cc38a; --env-gemini: #5b9cff; --env-qwen: #9b8cff;
+    --env-opencode: #f0b35a; --env-cursor: #d6d9e0; --plan: #8aaedb; --crit: #ee7866; --test: #72c2a2; --exec: #62bcc2; --gate: #b5c668;
+    --rev: #dc94b9; --integ: #a3a7b3; --coord: #e1e3ea; --watch: #d3ab6c; --queue: #a3a7b3; --ansi-0: #1b1d23; --ansi-1: #f2706a; --ansi-2: #5fd38d;
+    --ansi-3: #e8c06a; --ansi-4: #7aa7f5; --ansi-5: #c792ea; --ansi-6: #5cc8c8; --ansi-7: #d3d6de; --ansi-8: #4a4e5a; --ansi-9: #ff8f87;
+    --ansi-10: #86e0a8; --ansi-11: #f2d48f; --ansi-12: #9cc0ff; --ansi-13: #d9b0f2; --ansi-14: #86dcdc; --ansi-15: #f4f5f8;
   --pane-bg: var(--panel);
   --radius-pane: 12px; --radius-sm: 8px; --r: var(--radius-sm); --gap: 6px; --fs: 13px;
   --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, "DejaVu Sans Mono", monospace;
   --sans: system-ui, -apple-system, "Segoe UI", "Noto Sans", "Helvetica Neue", sans-serif;
   --knob: #ffffff;
-  --ease: cubic-bezier(.2, .7, .2, 1); --t: 140ms;
+  --ease: cubic-bezier(.2, .7, .2, 1); --spring: cubic-bezier(.34, 1.4, .64, 1); --t: 140ms; --t2: 240ms;
   --feed-w: 760px; --chat-fs: 14.5px; --chat-lh: 1.55; --bubble-r: 14px; --field-r: 16px;   /* F9: the chat column and its type */
-  --shadow: 0 14px 34px rgba(0, 0, 0, .5), 0 2px 6px rgba(0, 0, 0, .35); --shadow-sm: 0 3px 10px rgba(0, 0, 0, .4); --scrim: rgba(8, 5, 2, .62); --lamp-a: 40%; --lamp-b: 18%;
+  --shadow: 0 18px 40px rgba(0, 0, 0, .55), 0 2px 6px rgba(0, 0, 0, .4); --shadow-sm: 0 4px 12px rgba(0, 0, 0, .45); --scrim: rgba(4, 5, 8, .66); --lamp-a: 9%; --lamp-b: 5%;
 }
 @media (prefers-color-scheme: light) {
   :root:not([data-theme="dark"]) {
     color-scheme: light;
-    --canvas: #e4d7bb; --bg: #faf3e3; --panel: #f5ecd8; --raised: #fdf8ec; --raised2: #ebdfc4; --line: #d9caa6; --line2: #bca97c; --ink: #2b1f14;
-    --ink2: #54432e; --ink3: #68563d; --accent: #8f5200; --cursor: #2b1f14; --sel: #f1d79f; --human: #8a4f00; --human-bg: #fbeccb; --human-line: #d9a54a;
-    --on-human: #ffffff; --ok: #17693f; --ok-bg: #dfeedd; --bad: #b02a1a; --bad-bg: #f8e0d8; --btn: #2b1f14; --on-btn: #f5ecd8; --amber: #f2a33a;
-    --on-amber: #231703; --cream: #f8efd8; --cream-deep: #e6d6b0; --cream-ink: #2b1f14; --brass: #9a7430; --needle: #b4580a; --onair: #c4311f;
-    --side: #e8dbbd; --side2: #dfd0ad; --plan: #1f5cb3; --crit: #b02a1a; --test: #0f6e4e; --exec: #0a6c76; --gate: #52690f; --rev: #a63b70;
-    --integ: #4f5d70; --coord: #2b1f14; --watch: #80591a; --queue: #4f5d70; --ansi-0: #2b1f14; --ansi-1: #b02a1a; --ansi-2: #2d7d46; --ansi-3: #946a00;
-    --ansi-4: #2f6db0; --ansi-5: #9a4a9c; --ansi-6: #16808a; --ansi-7: #d8cdb5; --ansi-8: #68563d; --ansi-9: #c8402f; --ansi-10: #3b9a59;
-    --ansi-11: #b07f00; --ansi-12: #4a86c6; --ansi-13: #b465b6; --ansi-14: #2a9aa4; --ansi-15: #f8f1e0;
-    --shadow: 0 14px 34px rgba(70, 48, 18, .22), 0 2px 6px rgba(70, 48, 18, .12); --shadow-sm: 0 3px 10px rgba(70, 48, 18, .18); --scrim: rgba(43, 31, 20, .38); --lamp-a: 30%; --lamp-b: 14%;
+      --canvas: #eceef2; --bg: #f6f7f9; --panel: #ffffff; --raised: #f7f8fa; --raised2: #eef0f3; --line: #e2e4e9; --line2: #cfd2d9; --ink: #15161a;
+      --ink2: #3e424b; --ink3: #5a5f6a; --accent: #4f56d8; --cursor: #15161a; --sel: #d9ddff; --human: #9a5b00; --human-bg: #fdf1dc;
+      --human-line: #e7b765; --on-human: #ffffff; --ok: #147a43; --ok-bg: #e3f4ea; --bad: #c0362c; --bad-bg: #fbe6e4; --btn: #15161a; --on-btn: #ffffff;
+      --amber: #4f56d8; --on-amber: #ffffff; --cream: #ffffff; --cream-deep: #eceef2; --cream-ink: #15161a; --brass: #d5d8de; --needle: #4f56d8;
+      --onair: #d93a2e; --side: #f3f4f7; --side2: #eceef2; --env-claude: #b8532c; --env-codex: #0f7a4a; --env-gemini: #2259cc; --env-qwen: #5e43d6;
+      --env-opencode: #975a06; --env-cursor: #3e424b; --plan: #1f5cb3; --crit: #b02a1a; --test: #0f6e4e; --exec: #0a6c76; --gate: #52690f;
+      --rev: #a63b70; --integ: #4f5d70; --coord: #15161a; --watch: #80591a; --queue: #4f5d70; --ansi-0: #15161a; --ansi-1: #c0362c; --ansi-2: #2a7a45;
+      --ansi-3: #8f6400; --ansi-4: #2f62c0; --ansi-5: #8f45a0; --ansi-6: #127580; --ansi-7: #d8dbe1; --ansi-8: #5a5f6a; --ansi-9: #cf4436;
+      --ansi-10: #33904f; --ansi-11: #a87500; --ansi-12: #3d76d6; --ansi-13: #a456b6; --ansi-14: #1a8a96; --ansi-15: #f6f7f9;
+    --shadow: 0 18px 40px rgba(20, 24, 40, .14), 0 2px 6px rgba(20, 24, 40, .08); --shadow-sm: 0 4px 12px rgba(20, 24, 40, .1); --scrim: rgba(20, 22, 30, .32); --lamp-a: 7%; --lamp-b: 4%;
   }
 }
 :root[data-theme="light"] {
   color-scheme: light;
-  --canvas: #e4d7bb; --bg: #faf3e3; --panel: #f5ecd8; --raised: #fdf8ec; --raised2: #ebdfc4; --line: #d9caa6; --line2: #bca97c; --ink: #2b1f14;
-  --ink2: #54432e; --ink3: #68563d; --accent: #8f5200; --cursor: #2b1f14; --sel: #f1d79f; --human: #8a4f00; --human-bg: #fbeccb; --human-line: #d9a54a;
-  --on-human: #ffffff; --ok: #17693f; --ok-bg: #dfeedd; --bad: #b02a1a; --bad-bg: #f8e0d8; --btn: #2b1f14; --on-btn: #f5ecd8; --amber: #f2a33a;
-  --on-amber: #231703; --cream: #f8efd8; --cream-deep: #e6d6b0; --cream-ink: #2b1f14; --brass: #9a7430; --needle: #b4580a; --onair: #c4311f;
-  --side: #e8dbbd; --side2: #dfd0ad; --plan: #1f5cb3; --crit: #b02a1a; --test: #0f6e4e; --exec: #0a6c76; --gate: #52690f; --rev: #a63b70;
-  --integ: #4f5d70; --coord: #2b1f14; --watch: #80591a; --queue: #4f5d70; --ansi-0: #2b1f14; --ansi-1: #b02a1a; --ansi-2: #2d7d46; --ansi-3: #946a00;
-  --ansi-4: #2f6db0; --ansi-5: #9a4a9c; --ansi-6: #16808a; --ansi-7: #d8cdb5; --ansi-8: #68563d; --ansi-9: #c8402f; --ansi-10: #3b9a59;
-  --ansi-11: #b07f00; --ansi-12: #4a86c6; --ansi-13: #b465b6; --ansi-14: #2a9aa4; --ansi-15: #f8f1e0;
-  --shadow: 0 14px 34px rgba(70, 48, 18, .22), 0 2px 6px rgba(70, 48, 18, .12); --shadow-sm: 0 3px 10px rgba(70, 48, 18, .18); --scrim: rgba(43, 31, 20, .38); --lamp-a: 30%; --lamp-b: 14%;
+    --canvas: #eceef2; --bg: #f6f7f9; --panel: #ffffff; --raised: #f7f8fa; --raised2: #eef0f3; --line: #e2e4e9; --line2: #cfd2d9; --ink: #15161a;
+    --ink2: #3e424b; --ink3: #5a5f6a; --accent: #4f56d8; --cursor: #15161a; --sel: #d9ddff; --human: #9a5b00; --human-bg: #fdf1dc;
+    --human-line: #e7b765; --on-human: #ffffff; --ok: #147a43; --ok-bg: #e3f4ea; --bad: #c0362c; --bad-bg: #fbe6e4; --btn: #15161a; --on-btn: #ffffff;
+    --amber: #4f56d8; --on-amber: #ffffff; --cream: #ffffff; --cream-deep: #eceef2; --cream-ink: #15161a; --brass: #d5d8de; --needle: #4f56d8;
+    --onair: #d93a2e; --side: #f3f4f7; --side2: #eceef2; --env-claude: #b8532c; --env-codex: #0f7a4a; --env-gemini: #2259cc; --env-qwen: #5e43d6;
+    --env-opencode: #975a06; --env-cursor: #3e424b; --plan: #1f5cb3; --crit: #b02a1a; --test: #0f6e4e; --exec: #0a6c76; --gate: #52690f;
+    --rev: #a63b70; --integ: #4f5d70; --coord: #15161a; --watch: #80591a; --queue: #4f5d70; --ansi-0: #15161a; --ansi-1: #c0362c; --ansi-2: #2a7a45;
+    --ansi-3: #8f6400; --ansi-4: #2f62c0; --ansi-5: #8f45a0; --ansi-6: #127580; --ansi-7: #d8dbe1; --ansi-8: #5a5f6a; --ansi-9: #cf4436;
+    --ansi-10: #33904f; --ansi-11: #a87500; --ansi-12: #3d76d6; --ansi-13: #a456b6; --ansi-14: #1a8a96; --ansi-15: #f6f7f9;
+  --shadow: 0 18px 40px rgba(20, 24, 40, .14), 0 2px 6px rgba(20, 24, 40, .08); --shadow-sm: 0 4px 12px rgba(20, 24, 40, .1); --scrim: rgba(20, 22, 30, .32); --lamp-a: 7%; --lamp-b: 4%;
 }
-:root[data-theme="dark"] { color-scheme: dark; --shadow: 0 14px 34px rgba(0, 0, 0, .5), 0 2px 6px rgba(0, 0, 0, .35); --shadow-sm: 0 3px 10px rgba(0, 0, 0, .4); --scrim: rgba(8, 5, 2, .62); --lamp-a: 40%; --lamp-b: 18%; }
-/* materials made of the tokens above: they follow whatever theme the table (or the person's terminal theme) sets */
+:root[data-theme="dark"] { color-scheme: dark; --shadow: 0 18px 40px rgba(0, 0, 0, .55), 0 2px 6px rgba(0, 0, 0, .4); --shadow-sm: 0 4px 12px rgba(0, 0, 0, .45); --scrim: rgba(4, 5, 8, .66); --lamp-a: 9%; --lamp-b: 5%; }
+/* materials made of the tokens above: they follow whatever theme the table (or the person's terminal theme) sets.
+   v7: no grain, no lamp - a faint wash of the live accent from the top and flat surfaces with hairlines */
 :root {
-  --grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n' x='0' y='0'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' seed='7' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 .5 0 0 0 0 .42 0 0 0 0 .3 0 0 0 .55 0'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)' opacity='.5'/%3E%3C/svg%3E");
+  --grain: none;
   --glow: color-mix(in srgb, var(--amber) 55%, transparent);
   --glow-onair: color-mix(in srgb, var(--onair) 60%, transparent);
   --glow-ok: color-mix(in srgb, var(--ok) 45%, transparent);
-  /* the window: warm felt lit by a lamp from the top left, a brass reflection from the bottom right */
-  --window-fx: var(--grain), radial-gradient(1700px 1000px at 6% -10%, color-mix(in srgb, var(--amber) var(--lamp-a), transparent), transparent 64%),
-    radial-gradient(900px 620px at 104% 112%, color-mix(in srgb, var(--brass) var(--lamp-b), transparent), transparent 62%);
-  --pane-fx: linear-gradient(180deg, color-mix(in srgb, var(--cream) 18%, transparent), color-mix(in srgb, var(--cream) 7%, transparent) 120px, transparent 260px), radial-gradient(110% 62% at 14% -8%, color-mix(in srgb, var(--amber) 22%, transparent), transparent 76%), radial-gradient(60% 40% at 100% 100%, color-mix(in srgb, var(--brass) 7%, transparent), transparent 70%);
-  --side-fx: var(--grain), linear-gradient(180deg, var(--side), var(--side2));
-  --card-fx: linear-gradient(180deg, color-mix(in srgb, var(--cream) 7%, var(--raised)), var(--raised));
+  --window-fx: radial-gradient(1200px 520px at 50% -18%, color-mix(in srgb, var(--amber) var(--lamp-a), transparent), transparent 70%),
+    radial-gradient(800px 600px at 110% 110%, color-mix(in srgb, var(--amber) var(--lamp-b), transparent), transparent 70%);
+  --pane-fx: linear-gradient(180deg, color-mix(in srgb, var(--ink) 3%, transparent), transparent 140px);
+  --side-fx: linear-gradient(180deg, color-mix(in srgb, var(--ink) 2%, var(--side)), var(--side2));
+  --card-fx: linear-gradient(180deg, color-mix(in srgb, var(--ink) 3%, var(--raised)), var(--raised));
   --face-fx2: linear-gradient(180deg, var(--cream), var(--cream-deep));
-  --rim: linear-gradient(145deg, color-mix(in srgb, var(--cream) 70%, var(--brass)), var(--brass) 45%, color-mix(in srgb, var(--brass) 35%, var(--line)));
-  --amber-fx: linear-gradient(180deg, color-mix(in srgb, var(--amber) 82%, white), var(--amber) 55%, color-mix(in srgb, var(--amber) 88%, black));
-  --cream-fx: linear-gradient(180deg, color-mix(in srgb, var(--btn) 88%, white), var(--btn));
+  --rim: linear-gradient(145deg, var(--line2), var(--line));
+  --amber-fx: linear-gradient(180deg, color-mix(in srgb, var(--amber) 88%, white), var(--amber));
+  --cream-fx: linear-gradient(180deg, color-mix(in srgb, var(--btn) 92%, white), var(--btn));
 }
 
 @media (prefers-reduced-motion: reduce) { :root { --t: 0ms; } }

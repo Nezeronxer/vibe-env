@@ -6,37 +6,41 @@
   const THEMES = {
     dark: {
       name: 'Nightshift Dark', scheme: 'dark',
-      canvas: '#1f160e', panel: '#130e09', raised: '#261c13', raised2: '#32261a', line: '#392d1f', line2: '#5a4830', bg: '#0f0b08',
-      ink: '#f3eadb', ink2: '#d6c9b0', ink3: '#ad9e82', accent: '#f2a33a', cursor: '#f3eadb', selection: '#4d3a1c',
-      human: '#f6b445', humanBg: '#2d2110', humanLine: '#6e5120', onHuman: '#1d1405',
-      ok: '#86cb98', okBg: '#14241a', bad: '#f26a55', badBg: '#301814', btn: '#efe3c8', onBtn: '#2a1e12',
-      // the studio: the amber needle, the cream meter face, brass hairlines, the ON AIR red, walnut for the side list
-      studio: { amber: '#f2a33a', onAmber: '#231703', cream: '#efe3c8', creamDeep: '#d6c49b', creamInk: '#2d2114', brass: '#b8935a', needle: '#c4620d', onair: '#ff5d48', side: '#38230f', side2: '#27180a' },
-      roles: { plan: '#8aaedb', crit: '#ee7866', test: '#72c2a2', exec: '#62bcc2', gate: '#b5c668', rev: '#dc94b9', integ: '#ada594', coord: '#e8decb', watch: '#d3ab6c', queue: '#ada594' },
-      ansi: ['#241c14', '#e5675d', '#86c48e', '#e0b765', '#78a6dd', '#c691bd', '#69bdb7', '#d5cab4',
-        '#5a4e3c', '#f08a80', '#a2d6a8', '#efcf8f', '#9bbff0', '#dcaedc', '#8bd3cf', '#f6efde'],
-      // the terminal's own look (F7, F10): warm coal off the panel, cream text, muted amber / red / green (text 14:1, colours 1-6 >= 6.7:1)
-      term: { background: '#1b150f', foreground: '#ece1ca', cursor: '#f2a33a', selection: 0.3,
-        ansi: ['#2d251b', '#e47e70', '#98c78f', '#e2b668', '#82aadb', '#cc96bd', '#72c0b6', '#d8ceb8',
-          '#8f836b', '#f09d90', '#b2d9a8', '#f1cd8e', '#a7c4ea', '#deb4d3', '#96d4cb', '#f6efde'] },
+      // v7: graphite, a hair of blue, hairlines instead of shadows; the one live colour is the env of the agent in focus
+      canvas: '#0b0c0f', panel: '#111216', raised: '#17181d', raised2: '#1e2026', line: '#24262d', line2: '#343741', bg: '#08090b',
+      ink: '#eceef3', ink2: '#b9bdc8', ink3: '#8a8f9c', accent: '#8e95ff', cursor: '#eceef3', selection: '#2a3150',
+      human: '#f5b14c', humanBg: '#2a2112', humanLine: '#5e4720', onHuman: '#14100a',
+      ok: '#5fd38d', okBg: '#11221a', bad: '#f2706a', badBg: '#2b1517', btn: '#eceef3', onBtn: '#111216',
+      // materials (the names stayed from v5): amber = the live accent (vars() puts the env colour here), cream = a light face
+      studio: { amber: '#8e95ff', onAmber: '#0b0c0f', cream: '#eceef3', creamDeep: '#c9ccd4', creamInk: '#111216', brass: '#3a3d47', needle: '#8e95ff', onair: '#ff6b5e', side: '#0e0f12', side2: '#0b0c0f' },
+      roles: { plan: '#8aaedb', crit: '#ee7866', test: '#72c2a2', exec: '#62bcc2', gate: '#b5c668', rev: '#dc94b9', integ: '#a3a7b3', coord: '#e1e3ea', watch: '#d3ab6c', queue: '#a3a7b3' },
+      ansi: ['#1b1d23', '#f2706a', '#5fd38d', '#e8c06a', '#7aa7f5', '#c792ea', '#5cc8c8', '#d3d6de',
+        '#4a4e5a', '#ff8f87', '#86e0a8', '#f2d48f', '#9cc0ff', '#d9b0f2', '#86dcdc', '#f4f5f8'],
+      // the terminal: a step under the panel, soft white text, colours 1-6 >= 6:1
+      term: { background: '#0d0e11', foreground: '#e4e6eb', cursor: '#e4e6eb', selection: 0.3,
+        ansi: ['#1f2128', '#f07a72', '#6fd39a', '#e9c46a', '#7fb0ff', '#d09af0', '#66cccc', '#d6d9e0',
+          '#5c6170', '#ff958d', '#8fe2b0', '#f3d68e', '#a3c6ff', '#ddb6f5', '#8fe0e0', '#f5f6f8'] },
     },
     light: {
       name: 'Nightshift Light', scheme: 'light',
-      canvas: '#e4d7bb', panel: '#f5ecd8', raised: '#fdf8ec', raised2: '#ebdfc4', line: '#d9caa6', line2: '#bca97c', bg: '#faf3e3',
-      ink: '#2b1f14', ink2: '#54432e', ink3: '#68563d', accent: '#8f5200', cursor: '#2b1f14', selection: '#f1d79f',
-      human: '#8a4f00', humanBg: '#fbeccb', humanLine: '#d9a54a', onHuman: '#ffffff',
-      ok: '#17693f', okBg: '#dfeedd', bad: '#b02a1a', badBg: '#f8e0d8', btn: '#2b1f14', onBtn: '#f5ecd8',
-      studio: { amber: '#f2a33a', onAmber: '#231703', cream: '#f8efd8', creamDeep: '#e6d6b0', creamInk: '#2b1f14', brass: '#9a7430', needle: '#b4580a', onair: '#c4311f', side: '#e8dbbd', side2: '#dfd0ad' },
-      roles: { plan: '#1f5cb3', crit: '#b02a1a', test: '#0f6e4e', exec: '#0a6c76', gate: '#52690f', rev: '#a63b70', integ: '#4f5d70', coord: '#2b1f14', watch: '#80591a', queue: '#4f5d70' },
-      ansi: ['#2b1f14', '#b02a1a', '#2d7d46', '#946a00', '#2f6db0', '#9a4a9c', '#16808a', '#d8cdb5',
-        '#68563d', '#c8402f', '#3b9a59', '#b07f00', '#4a86c6', '#b465b6', '#2a9aa4', '#f8f1e0'],
-      term: { background: '#fbf4e2', foreground: '#2b2015', cursor: '#8f5200', selection: 0.22,
-        ansi: ['#2b2015', '#b0301f', '#2a703c', '#8a5d00', '#2a62a8', '#8f4392', '#126f78', '#6b6050',
-          '#574c3b', '#bc3a28', '#2a7c46', '#8f6000', '#2f6db5', '#9a4c9d', '#137a84', '#2b2015'] },
+      canvas: '#eceef2', panel: '#ffffff', raised: '#f7f8fa', raised2: '#eef0f3', line: '#e2e4e9', line2: '#cfd2d9', bg: '#f6f7f9',
+      ink: '#15161a', ink2: '#3e424b', ink3: '#5a5f6a', accent: '#4f56d8', cursor: '#15161a', selection: '#d9ddff',
+      human: '#9a5b00', humanBg: '#fdf1dc', humanLine: '#e7b765', onHuman: '#ffffff',
+      ok: '#147a43', okBg: '#e3f4ea', bad: '#c0362c', badBg: '#fbe6e4', btn: '#15161a', onBtn: '#ffffff',
+      studio: { amber: '#4f56d8', onAmber: '#ffffff', cream: '#ffffff', creamDeep: '#eceef2', creamInk: '#15161a', brass: '#d5d8de', needle: '#4f56d8', onair: '#d93a2e', side: '#f3f4f7', side2: '#eceef2' },
+      roles: { plan: '#1f5cb3', crit: '#b02a1a', test: '#0f6e4e', exec: '#0a6c76', gate: '#52690f', rev: '#a63b70', integ: '#4f5d70', coord: '#15161a', watch: '#80591a', queue: '#4f5d70' },
+      ansi: ['#15161a', '#c0362c', '#2a7a45', '#8f6400', '#2f62c0', '#8f45a0', '#127580', '#d8dbe1',
+        '#5a5f6a', '#cf4436', '#33904f', '#a87500', '#3d76d6', '#a456b6', '#1a8a96', '#f6f7f9'],
+      term: { background: '#fbfbfc', foreground: '#1d1f24', cursor: '#1d1f24', selection: 0.22,
+        ansi: ['#1d1f24', '#b8322a', '#26703f', '#875c00', '#2a5db8', '#8a409a', '#116d77', '#5f6470',
+          '#4f5460', '#c23d30', '#2b7c48', '#8f6200', '#2f66c4', '#9348a3', '#137783', '#1d1f24'] },
     },
   };
-  // the focused pane takes the colour of its env (story 247): from the vendor marks in icons/; mono marks follow the theme accent
-  const ENV_ACCENT = { gemini: '#3186ff' };   // claude takes the theme's amber: one live accent
+  // the focused agent paints the window with its env (story 247, v7): per theme, so the accent reads on both grounds
+  const ENV_ACCENT = {
+    dark: { claude: '#e8865f', codex: '#4cc38a', gemini: '#5b9cff', qwen: '#9b8cff', opencode: '#f0b35a', cursor: '#d6d9e0' },
+    light: { claude: '#b8532c', codex: '#0f7a4a', gemini: '#2259cc', qwen: '#5e43d6', opencode: '#975a06', cursor: '#3e424b' },
+  };
   const RADIUS = { sharp: [4, 3], soft: [12, 8], round: [18, 12] };
   const FONTS = {
     system: 'ui-monospace, SFMono-Regular, Menlo, Consolas, "DejaVu Sans Mono", monospace',
@@ -75,7 +79,7 @@
   // -> { '--name': value } for one resolved theme; env = the env id of the focused pane (accent 'env')
   function vars(name, lk, env) {
     const T = THEMES[name] || THEMES.dark, L = look(lk);
-    const accent = L.accent !== 'env' ? L.accent : ENV_ACCENT[env] || T.accent;
+    const accent = L.accent !== 'env' ? L.accent : (ENV_ACCENT[T.scheme] || {})[env] || T.accent;
     const [rp, rs] = RADIUS[L.radius];
     const v = {
       '--canvas': T.canvas, '--bg': T.bg, '--panel': T.panel, '--raised': T.raised, '--raised2': T.raised2, '--line': T.line, '--line2': T.line2,
@@ -87,6 +91,8 @@
       '--mono': FONTS[L.font], '--sans': SANS, '--fs': L.font_px + 'px',
     };
     for (const [k, c] of Object.entries(T.studio)) v['--' + k.replace(/[A-Z]/g, (m) => '-' + m.toLowerCase())] = c;
+    v['--amber'] = accent; v['--needle'] = accent;      // v7: the live accent follows the env in focus
+    for (const [k, c] of Object.entries(ENV_ACCENT[T.scheme] || {})) v['--env-' + k] = c;   // v7: every agent card wears its env
     for (const [k, c] of Object.entries(T.roles)) v['--' + k] = c;
     T.ansi.forEach((c, i) => { v['--ansi-' + i] = c; });
     return v;

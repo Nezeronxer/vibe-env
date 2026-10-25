@@ -420,11 +420,14 @@ pub(crate) struct Tracker {
     started: HashMap<String, ToolAction>,
     /// Streamed text held back because it may be the start of a secret.
     carry: String,
+    /// The same for the pieces of a thought, and the thought so far (cleaned, held-back end included).
+    think_carry: String,
+    think_seen: String,
 }
 
 impl Tracker {
     pub(crate) fn new(scrub: Scrub, paths: Paths, structured: bool) -> Tracker {
-        Tracker { scrub, paths, structured, hidden: Default::default(), started: HashMap::new(), carry: String::new() }
+        Tracker { scrub, paths, structured, hidden: Default::default(), started: HashMap::new(), carry: String::new(), think_carry: String::new(), think_seen: String::new() }
     }
 
     fn finish(&self, a: &mut ToolAction) {
@@ -432,7 +435,45 @@ impl Tracker {
         finish_action(a, &self.scrub);
     }
 
+    /// One piece of a thought: like `TextDelta`, a secret cut in two pieces is held until it is whole. Claude then sends the
+    /// whole thought once more; it is told by being the thought so far, and the held end goes out just before it.
+    fn thinking(&mut self, t: String) -> Vec<AgentEvent> {
+        if self.scrub.is_empty() {
+            return vec![AgentEvent::Thinking(t)];
+        }
+        let whole = self.scrub.text(&t);
+        if !self.think_seen.is_empty() && whole.trim() == self.think_seen.trim() {
+            let mut out: Vec<AgentEvent> = self.end_thought().into_iter().collect();
+            out.push(AgentEvent::Thinking(whole));
+            return out;
+        }
+        let held = std::mem::take(&mut self.think_carry);
+        let all = self.scrub.text(&format!("{held}{t}"));
+        let keep = self.scrub.open_tail(&all);
+        let (out, rest) = all.split_at(all.len() - keep);
+        let sent = self.think_seen.strip_suffix(held.as_str()).unwrap_or(&self.think_seen).to_string();
+        self.think_seen = format!("{sent}{all}");
+        self.think_carry = rest.to_string();
+        if out.is_empty() { vec![] } else { vec![AgentEvent::Thinking(out.to_string())] }
+    }
+
+    /// Any other event ends the thought: what was held back goes out first (it is not the start of a secret any more).
+    fn end_thought(&mut self) -> Option<AgentEvent> {
+        self.think_seen.clear();
+        let rest = std::mem::take(&mut self.think_carry);
+        (!rest.is_empty()).then_some(AgentEvent::Thinking(rest))
+    }
+
     pub(crate) fn pass(&mut self, e: AgentEvent) -> Vec<AgentEvent> {
+        if let AgentEvent::Thinking(t) = e {
+            return self.thinking(t);
+        }
+        let mut out: Vec<AgentEvent> = self.end_thought().into_iter().collect();
+        out.extend(self.pass_other(e));
+        out
+    }
+
+    fn pass_other(&mut self, e: AgentEvent) -> Vec<AgentEvent> {
         let sc = |t: &str| self.scrub.text(t);
         match e {
             AgentEvent::Action(mut a) => {
@@ -497,8 +538,56 @@ impl Tracker {
             AgentEvent::Done { session, text, is_error } => vec![AgentEvent::Done { session, text: sc(&text), is_error }],
             AgentEvent::ModelRejected(m) => vec![AgentEvent::ModelRejected(sc(&m))],
             AgentEvent::AuthRequired(m) => vec![AgentEvent::AuthRequired(sc(&m))],
-            AgentEvent::Thinking(t) => vec![AgentEvent::Thinking(sc(&t))],
             other => vec![other],
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn tracker(secret: &str) -> Tracker {
+        Tracker::new(Scrub::new([("API_TOKEN".to_string(), secret.to_string())]), Paths::new(std::path::Path::new("/nowhere")), false)
+    }
+
+    fn thoughts(evs: &[AgentEvent]) -> Vec<String> {
+        evs.iter().filter_map(|e| if let AgentEvent::Thinking(t) = e { Some(t.clone()) } else { None }).collect()
+    }
+
+    #[test]
+    fn a_secret_cut_between_two_thinking_pieces_never_reaches_the_window() {
+        let mut tr = tracker("sk-SECRET-1234567890");
+        let mut out = vec![];
+        for piece in ["the key is sk-SECRET-12", "34567890 ok"] {
+            out.extend(tr.pass(AgentEvent::Thinking(piece.into())));
+        }
+        out.extend(tr.pass(AgentEvent::Text("done".into())));
+        let all = thoughts(&out).concat();
+        assert!(!all.contains("SECRET"), "{all:?}");
+        assert!(all.starts_with("the key is ") && all.ends_with(" ok"), "{all:?}");
+    }
+
+    #[test]
+    fn the_whole_thought_that_follows_its_pieces_comes_once_and_equal_to_them() {
+        let mut tr = tracker("sk-SECRET-1234567890");
+        let mut out = vec![];
+        for piece in ["the key is sk-SECRET-12", "34567890 ok", "the key is sk-SECRET-1234567890 ok"] {
+            out.extend(tr.pass(AgentEvent::Thinking(piece.into())));
+        }
+        let t = thoughts(&out);
+        assert!(!t.concat().contains("SECRET"), "{t:?}");
+        // the chat drops the last event because it equals what the pieces made (reply.rs); the pieces are whole by then
+        let (last, pieces) = t.split_last().unwrap();
+        assert_eq!(pieces.concat().trim(), last.trim(), "{t:?}");
+        // the next thought starts afresh
+        let next = tr.pass(AgentEvent::Thinking("another".into()));
+        assert_eq!(thoughts(&next), vec!["another".to_string()]);
+    }
+
+    #[test]
+    fn thinking_without_secrets_passes_as_it_comes() {
+        let mut tr = Tracker::new(Scrub::default(), Paths::new(std::path::Path::new("/nowhere")), false);
+        assert_eq!(tr.pass(AgentEvent::Thinking("a".into())), vec![AgentEvent::Thinking("a".into())]);
     }
 }

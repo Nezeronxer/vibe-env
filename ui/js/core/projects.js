@@ -117,7 +117,7 @@
       for (const p of S.projects) {
         const repo = S.repos.get(p.id);
         list.append(row({ on: p.id === cur, title: p.name, sub: p.path, tip: p.path, small: repo ? repo.current_branch || p.base_branch : p.base_branch, run: () => pick(p) }));
-        if (!repo) st.loadRepo(p.id).then(() => { if (!pop.hidden) draw(); }).catch(() => {});
+        if (!S.repos.has(p.id)) st.loadRepo(p.id).then(() => { if (!pop.hidden) draw(); }).catch(() => {});
       }
       const foot = h('div', { class: 'mm-foot', role: 'group' },
         row({ title: t('pj.open'), run: async () => { close(); const p = await addByDialog(); if (p) pick(p); } }),
@@ -133,9 +133,10 @@
       const rs = rows(), at = rs.indexOf(document.activeElement), n = e.key === 'ArrowDown' ? at + 1 : at - 1;
       if (rs[n]) rs[n].focus();
     });
-    document.addEventListener('click', (e) => { if (!el.isConnected) return; if (!el.contains(e.target)) close(); });
+    const onDoc = (e) => { if (!el.isConnected) return; if (!el.contains(e.target)) close(); };
+    document.addEventListener('click', onDoc);
     label();
-    return { el, open, close, label };
+    return { el, open, close, label, destroy: () => document.removeEventListener('click', onDoc) };   // 19: the pane that made it removes it
   }
 
   NS.projects = { addByPath, addByDialog, pickFolder, confirm, current, choose, createDialog, picker };

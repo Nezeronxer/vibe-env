@@ -10,6 +10,7 @@
 mod convoy;
 mod council;
 mod crew;
+mod desk;
 mod edits;
 mod flow;
 mod handoff;
@@ -88,6 +89,8 @@ pub struct NewTask {
     pub start: Option<StartWhen>,
     /// The executor's model; the env's default by default.
     pub model: Option<ModelChoice>,
+    /// Images the person attached to the words (files of the app's data); every run of the task gets them.
+    pub attachments: Vec<PathBuf>,
 }
 
 /// The longest task text `submit` takes (R04.1), in characters.
@@ -402,6 +405,9 @@ impl Engine {
         task.quality = quality;
         self.note_v1_settings(&p);
         self.save(&task)?;
+        if !t.attachments.is_empty() {
+            self.update_state(&id, |s| s.attachments = t.attachments.clone())?;
+        }
         self.hold_back_if_limited(&task);
         Ok(id)
     }
@@ -640,7 +646,8 @@ impl Engine {
                 || (t.status == Status::NeedsHuman && t.question.as_ref().is_some_and(|q| q.text.starts_with(roles::AUTH_REQUIRED)))
         };
         // continuing tasks first, then the queue in submit order
-        let ready = tasks.iter().filter(|t| continuing(t)).chain(tasks.iter().filter(|t| t.status == Status::Queued));
+        // a task whose branch the person took into the project folder waits for "Отдать агенту": its copy is detached
+        let ready = tasks.iter().filter(|t| continuing(t) && t.taken_from.is_none()).chain(tasks.iter().filter(|t| t.status == Status::Queued && t.taken_from.is_none()));
         // a project whose folder is gone holds its tasks: nothing starts or goes on until it is found again (R11.10)
         let projects = lk(&self.store).projects();
         let gone = |t: &Task| projects.iter().find(|p| p.id == t.project_id).filter(|p| !p.path.is_dir());

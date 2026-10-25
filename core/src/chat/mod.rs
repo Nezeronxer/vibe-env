@@ -205,6 +205,10 @@ pub struct Chats {
     /// msg id -> chat made for it (a New target sent twice).
     first_msgs: Mutex<HashMap<String, ChatId>>,
     queues: Mutex<HashMap<ChatId, VecDeque<Job>>>,
+    /// "chat/message" of the retries that are queued or being answered (a job leaves the queue a moment before it is `answering`).
+    retrying: Mutex<std::collections::HashSet<String>>,
+    /// Chats deleted in this run: an answer that ends after the delete writes nothing (it would make the feed file again).
+    removed: Mutex<std::collections::HashSet<ChatId>>,
     waiting: Mutex<Vec<Held>>,
     /// chat -> the stop switch of its answer being written (`stop_answer`).
     stops: Mutex<HashMap<ChatId, Arc<AtomicBool>>>,
@@ -264,6 +268,8 @@ impl Chats {
             send_lock: Mutex::new(()),
             first_msgs: Mutex::new(HashMap::new()),
             queues: Mutex::new(HashMap::new()),
+            retrying: Mutex::new(Default::default()),
+            removed: Mutex::new(Default::default()),
             waiting: Mutex::new(vec![]),
             stops: Mutex::new(HashMap::new()),
             notes: Mutex::new(NoteBook::default()),
@@ -367,6 +373,13 @@ impl Chats {
         }
     }
 
+    /// The message `id` is among the newest of the chat. A repeated send comes at once after the first, so the last page is
+    /// where it is; `find_msg` for an id that is not there would read the whole history, a page at a time, each page a
+    /// full read of the file, under the lock of the store that the engine also needs.
+    fn in_recent_feed(&self, chat: &str, id: &str) -> bool {
+        lk(self.engine.store()).read_chat(chat, None, PAGE).iter().any(|m| m.id == id)
+    }
+
     /// The last `n` messages of the person and of the model before `before`, oldest first (system lines do not count).
     pub(crate) fn recent_talk(&self, chat: &str, before: DateTime<Local>, n: usize) -> Vec<ChatMsg> {
         let mut out: Vec<ChatMsg> = vec![];
@@ -388,6 +401,9 @@ impl Chats {
     /// Adds a message to the feed. `at` is never earlier than the last message of the chat, so a page
     /// cut at `before` never splits two messages written in the same instant.
     pub(crate) fn push(&self, mut m: ChatMsg) -> Option<ChatMsg> {
+        if lk(&self.removed).contains(&m.chat_id) {
+            return None;
+        }
         {
             let _g = lk(&self.push_lock);
             let mut st = lk(self.engine.store());
@@ -501,7 +517,7 @@ impl Chats {
         };
         let attachments = self.move_attachments(&chat.id, own)?;
         // G62: the model is answering or waits for a limit: the message waits its turn in the queue on disk
-        if self.answer_busy(&chat) && self.find_msg(&chat.id, |m| m.id == msg_id).is_none() {
+        if self.answer_busy(&chat) && !self.in_recent_feed(&chat.id, msg_id) {
             self.push_queued(&chat.id, QueuedMsg { id: msg_id.to_string(), text: text.to_string(), attachments, at: self.now() }, false);
             return Ok(chat.id);
         }
@@ -600,7 +616,7 @@ impl Chats {
         {
             let _g = lk(&self.send_lock);
             let c = self.chat(chat).ok_or("chat_not_found")?;
-            if c.queue.iter().any(|q| q.id == msg_id) || self.find_msg(chat, |m| m.id == msg_id).is_some() {
+            if c.queue.iter().any(|q| q.id == msg_id) || self.in_recent_feed(chat, msg_id) {
                 return Ok(());
             }
             let own = self.check_attachments(&c.env, attachments)?;
@@ -705,7 +721,7 @@ impl Chats {
         let asks = |t: &&Task| t.status == Status::NeedsHuman && t.question.as_ref().is_some_and(|q| q.kind == QuestionKind::Agent);
         let Some(t) = open.iter().rev().find(asks).or(open.last()).cloned() else { return false };
         let line = |key: &str, details: &str, kind: Option<ChatKind>| self.line(&chat.id, key, details, kind, Some(&msg.id), Some(&t.id));
-        match self.engine.note_tracked(&t.id, None, &msg.text) {
+        match self.engine.note_tracked(&t.id, None, &msg.text, &msg.attachments) {
             Ok((NoteResult::Queued, note_id)) => {
                 line(keys::NOTE_QUEUED, &t.title, None);
                 if let Some(nid) = note_id {
@@ -754,6 +770,7 @@ impl Chats {
         let r = self.engine.submit(NewTask {
             project_id: chat.project_id.clone(),
             prompt: msg.text.clone(),
+            attachments: msg.attachments.clone(),
             agent: Some(chat.env.clone()),
             chat_id: Some(chat.id.clone()),
             quality: env.last_quality,
@@ -798,11 +815,23 @@ impl Chats {
         Ok(())
     }
 
-    /// Repeats the answer to a message that got "not answered".
+    /// Repeats the answer to a message that got "not answered". Once only: while the message is queued or being answered
+    /// (a second click) nothing more is queued; one that has its answer (an old "not answered" line) is refused with
+    /// `already_answered`.
     pub fn retry(self: &Arc<Self>, chat: &str, msg_id: &str) -> Result<(), String> {
         self.running()?;
-        self.chat(chat).ok_or("chat_not_found")?;
+        let c = self.chat(chat).ok_or("chat_not_found")?;
         let msg = self.find_msg(chat, |m| m.id == msg_id).filter(|m| m.who == Who::Human).ok_or("message_not_found")?;
+        if c.answering.as_deref() == Some(msg_id) || c.wait.as_ref().is_some_and(|w| w.msg_id == msg_id) || lk(&self.queues).get(chat).is_some_and(|q| q.iter().any(|j| j.msg.id == msg_id)) {
+            return Ok(());
+        }
+        let answered = |m: &ChatMsg| m.reply_to.as_deref() == Some(msg_id) && ((m.who == Who::Model && m.action.is_none()) || m.kind == Some(ChatKind::Task));
+        if self.find_msg(chat, answered).is_some() {
+            return Err("already_answered".into());
+        }
+        if !lk(&self.retrying).insert(format!("{chat}/{msg_id}")) {
+            return Ok(());
+        }
         self.enqueue(chat, Job { msg, no_task: false });
         Ok(())
     }
@@ -884,6 +913,13 @@ impl Chats {
         if self.chat_tasks(id).iter().any(|t| is_open(&t.status)) {
             return Err("cancel_task_first".into());
         }
+        // an answer being written stops (its CLI would go on in the deleted folder, paid for), nothing waits in the queue,
+        // and what ends after this writes no line
+        lk(&self.removed).insert(id.to_string());
+        if let Some(f) = lk(&self.stops).get(id) {
+            f.store(true, Ordering::SeqCst);
+        }
+        lk(&self.queues).remove(id);
         let project = lk(self.engine.store()).project(&c.project_id);
         let dir = self.copy_dir(id);
         if dir.exists() {
@@ -918,6 +954,10 @@ impl Chats {
     pub(crate) fn ensure_copy(&self, c: &Chat, p: &Project) -> Result<PathBuf, String> {
         let dir = self.copy_dir(&c.id);
         if dir.exists() {
+            // a terminal works in the copy (the CLI, its edits, its installed packages): it is not wiped under it
+            if self.chat(&c.id).is_some_and(|x| x.terminal.is_some()) {
+                return Ok(dir);
+            }
             if self.engine.with_git(&dir, || git::refresh_readonly_copy(&dir, &p.base_branch)).is_ok() {
                 return Ok(dir);
             }
@@ -1177,6 +1217,10 @@ pub(crate) fn action_msg(id: String, chat: &str, at: DateTime<Local>, who: Who, 
     }
 }
 
+/// The lines that open the prompts of the chat's own runs (a message, a side question). The chat's runs write them into
+/// the session file of the CLI too, so the talk read back from a terminal tells them by these and leaves them out.
+pub(crate) const OWN_PROMPT_MARKS: [&str; 2] = ["Message of the person (answer it; do not change any file):", "Question of the person (answer it; do not change any file):"];
+
 /// The text the model gets for the message (data in a fenced block, G14.4).
 pub(crate) fn message_prompt(text: &str, recap: Option<&str>) -> String {
     let mut p = String::new();
@@ -1185,7 +1229,8 @@ pub(crate) fn message_prompt(text: &str, recap: Option<&str>) -> String {
         p.push_str(&prompt::fenced("HISTORY", r));
         p.push_str("\n\n");
     }
-    p.push_str("Message of the person (answer it; do not change any file):\n");
+    p.push_str(OWN_PROMPT_MARKS[0]);
+    p.push('\n');
     p.push_str(&prompt::fenced("MESSAGE", text));
     p
 }

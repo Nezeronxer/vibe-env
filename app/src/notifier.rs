@@ -85,7 +85,7 @@ pub fn how_to_enable(ru: bool) -> String {
 }
 
 /// The sound name the system plays for the person's choice.
-fn sound_name(choice: &str) -> Option<String> {
+pub(crate) fn sound_name(choice: &str) -> Option<String> {
     let mac = cfg!(target_os = "macos");
     match choice {
         "none" => None,

@@ -86,7 +86,26 @@ pub fn mac_script(cwd: Option<&Path>, argv: &[String]) -> String {
 }
 
 /// The terminals tried on Linux after `$TERMINAL`.
-pub const LINUX_TERMINALS: [&str; 6] = ["x-terminal-emulator", "kitty", "gnome-terminal", "konsole", "xterm", "alacritty"];
+pub const LINUX_TERMINALS: [&str; 9] = ["x-terminal-emulator", "kitty", "gnome-terminal", "konsole", "xterm", "alacritty", "foot", "wezterm", "ghostty"];
+
+/// Is there a terminal `open` can start? macOS always; Linux: `$TERMINAL` or one of `LINUX_TERMINALS` on the PATH. Asked
+/// before anything of a hand-off is changed: a task given to the person with no terminal to continue it in is lost work.
+pub fn available() -> Res<()> {
+    available_in(std::env::var("TERMINAL").ok().as_deref(), &std::env::var("PATH").unwrap_or_default(), cfg!(target_os = "macos"))
+}
+
+fn available_in(terminal_env: Option<&str>, path: &str, mac: bool) -> Res<()> {
+    let on_path = |bin: &str| {
+        let p = Path::new(bin);
+        if p.is_absolute() { p.is_file() } else { path.split(':').any(|d| !d.is_empty() && Path::new(d).join(bin).is_file()) }
+    };
+    let own = terminal_env.filter(|t| !t.is_empty());
+    if mac || own.into_iter().chain(LINUX_TERMINALS).any(on_path) {
+        Ok(())
+    } else {
+        Err("no_terminal: set $TERMINAL".into())
+    }
+}
 
 /// The program and arguments that open `term` on Linux with `argv` (the working folder of kitty, gnome-terminal and
 /// konsole is a flag; the others take it from the process).
@@ -102,6 +121,15 @@ pub fn linux_invocation(term: &str, cwd: Option<&Path>, argv: &[String]) -> (Str
         "gnome-terminal" => {
             if let Some(d) = &dir {
                 a.push(format!("--working-directory={d}"));
+            }
+            if !argv.is_empty() {
+                a.push("--".into());
+            }
+        }
+        "wezterm" => {
+            a.push("start".into());
+            if let Some(d) = &dir {
+                a.extend(["--cwd".to_string(), d.clone()]);
             }
             if !argv.is_empty() {
                 a.push("--".into());
@@ -134,7 +162,7 @@ pub fn open(l: &Launch, scratch: &Path) -> Res<()> {
     // just a terminal in a folder: macOS opens one natively, no script needed
     if cfg!(target_os = "macos") && argv.is_empty() {
         if let Some(dir) = &l.cwd {
-            return Command::new("open").arg("-a").arg("Terminal").arg(dir).spawn().map(|_| ()).map_err(|e| format!("open: {e}"));
+            return crate::open::spawn_reaped(Command::new("open").arg("-a").arg("Terminal").arg(dir)).map(|_| ()).map_err(|e| format!("open: {e}"));
         }
     }
     if cfg!(target_os = "macos") {
@@ -151,7 +179,7 @@ pub fn open(l: &Launch, scratch: &Path) -> Res<()> {
         let file = scratch.join(format!("terminal-{}-{}.command", std::process::id(), now_nanos()));
         std::fs::write(&file, mac_script(l.cwd.as_deref(), &argv)).map_err(|e| e.to_string())?;
         std::fs::set_permissions(&file, std::fs::Permissions::from_mode(0o700)).map_err(|e| e.to_string())?;
-        return Command::new("open").arg("-a").arg("Terminal").arg(&file).spawn().map(|_| ()).map_err(|e| format!("open: {e}"));
+        return crate::open::spawn_reaped(Command::new("open").arg("-a").arg("Terminal").arg(&file)).map(|_| ()).map_err(|e| format!("open: {e}"));
     }
     let env_term = std::env::var("TERMINAL").ok().filter(|t| !t.is_empty());
     for t in env_term.iter().map(String::as_str).chain(LINUX_TERMINALS) {
@@ -161,7 +189,7 @@ pub fn open(l: &Launch, scratch: &Path) -> Res<()> {
         if let Some(d) = &l.cwd {
             c.current_dir(d);
         }
-        if c.spawn().is_ok() {
+        if crate::open::spawn_reaped(&mut c).is_ok() {
             return Ok(());
         }
     }
@@ -184,6 +212,29 @@ pub fn hint_words(hint: &str) -> Option<Vec<String>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_hand_off_needs_a_terminal_to_open_and_foot_wezterm_ghostty_count() {
+        let d = std::env::temp_dir().join(format!("ns-terms-{}", std::process::id()));
+        std::fs::create_dir_all(&d).unwrap();
+        let path = d.to_string_lossy().into_owned();
+        assert_eq!(available_in(None, &path, false).unwrap_err(), "no_terminal: set $TERMINAL");
+        assert!(available_in(None, "", true).is_ok(), "macOS has its own");
+        for t in ["foot", "wezterm", "ghostty"] {
+            std::fs::write(d.join(t), "").unwrap();
+            assert!(available_in(None, &path, false).is_ok(), "{t}");
+            std::fs::remove_file(d.join(t)).unwrap();
+        }
+        // $TERMINAL: by name on the PATH, or by a full path
+        std::fs::write(d.join("my-term"), "").unwrap();
+        assert!(available_in(Some("my-term"), &path, false).is_ok());
+        assert!(available_in(Some(d.join("my-term").to_str().unwrap()), "", false).is_ok());
+        assert!(available_in(Some("gone-term"), &path, false).is_err());
+        let _ = std::fs::remove_dir_all(&d);
+        // wezterm is started with `start --cwd <dir> -- <command>`
+        let (prog, args) = linux_invocation("wezterm", Some(Path::new("/w")), &["claude".to_string()]);
+        assert_eq!((prog.as_str(), args), ("wezterm", ["start", "--cwd", "/w", "--", "claude"].map(String::from).to_vec()));
+    }
 
     #[test]
     fn only_plain_session_ids_are_taken() {

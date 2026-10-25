@@ -55,8 +55,11 @@
   function commands(ctx) {
     return NS.registry.points('command').filter((c) => !c.when || c.when(ctx))
       .map((c) => ({ id: c.id, label: c.label || t(c.labelKey), keywords: [c.group ? t(c.group) : '', c.keywordsKey ? t(c.keywordsKey) : ''].join(' '), group: c.group, keys: typeof c.keys === 'function' ? c.keys() : c.keys, badge: null, def: c }))
-      .concat(modelCommands(ctx));
+      .concat(modelCommands(ctx))
+      .concat(NS.registry.points('paletteSource').flatMap((src) => { try { return src.items ? src.items(ctx) : []; } catch (e) { return []; } }));   // v7: the agents
   }
+  // v7: rows that depend on the words typed (the output of the terminals), under the ranked commands
+  const searchRows = (q) => NS.registry.points('paletteSource').flatMap((src) => { try { return src.search ? src.search(q) : []; } catch (e) { return []; } }).map((c) => ({ cmd: c, found: true }));
   // one row per model of the env in focus; choosing saves the model for that env (F7)
   function modelCommands() {
     const e = NS.store.env(NS.store.s.route.env) || NS.store.env(NS.store.s.lastEnv) || NS.store.s.envs[0];
@@ -75,16 +78,16 @@
     const all = commands(ctx);
     function run(r) {
       if (!r) return;
-      NS.storage.set(KEY, JSON.stringify(pushRecent(readRecent(), r.cmd.id)));
+      if (!r.found) NS.storage.set(KEY, JSON.stringify(pushRecent(readRecent(), r.cmd.id)));
       close();
       try { r.cmd.def.run(ctx); } catch (e) { NS.shell.toast(String(e && e.message || e), true); }
     }
     function draw() {
-      rows = rank(all, input.value, readRecent());
+      rows = rank(all, input.value, readRecent()).concat(searchRows(input.value));
       sel = Math.max(0, Math.min(sel, rows.length - 1));
       clear(list);
       if (!rows.length) list.append(h('li', { class: 'pal-none', text: t('pal.none') }));
-      rows.forEach((r, i) => list.append(h('li', { role: 'option', id: 'pal-o' + i, class: 'pal-o' + (i === sel ? ' on' : ''), 'aria-selected': String(i === sel),
+      rows.forEach((r, i) => list.append(h('li', { role: 'option', id: 'pal-o' + i, class: 'pal-o' + (i === sel ? ' on' : '') + (r.found ? ' pal-found' : ''), 'aria-selected': String(i === sel),
         onmousemove: () => { if (sel !== i) { sel = i; mark(); } }, onclick: () => run(r) },
       h('span', { class: 'pal-t', text: r.cmd.label }), r.recent && !input.value.trim() ? h('small', { class: 'pal-r', text: t('pal.recent') }) : r.cmd.badge ? h('small', { class: 'pal-r', text: r.cmd.badge }) : null,
       r.cmd.keys ? h('kbd', { text: keyText(r.cmd.keys) }) : null)));

@@ -3,6 +3,8 @@
 (function () {
   const NS = (window.NS = window.NS || {});
   const COMMANDS = new Set([
+    // v7: terminal agents - own copy, changes, spend, the call of a waiting agent
+    'agent_worktree', 'agent_worktree_remove', 'agent_changes', 'agent_file_diff', 'agent_revert_file', 'agent_merge', 'term_usage', 'notify_agent',
     // v1
     'list_projects', 'add_project', 'create_project', 'update_project', 'remove_project', 'init_repo', 'repo_info', 'list_tasks', 'get_log', 'submit_task',
     'answer', 'approve_outward', 'cancel', 'retry', 'remove_task', 'undo', 'push_base', 'pull_base', 'pause_all', 'list_agents',
@@ -31,7 +33,7 @@
     // v6 (task 29): the menu "/" and what the env can do, images of a message, the chat's session in a terminal tab
     'chat_shell', 'chat_attach', 'chat_attach_path', 'chat_detach', 'chat_terminal',
   ]);
-  const EVENTS = new Set(['task-changed', 'task-log', 'task-removed', 'project-changed', 'chat-msg', 'limits-changed', 'catalog-changed', 'frozen',
+  const EVENTS = new Set(['agent-notify-click', 'term-taken', 'task-changed', 'task-log', 'task-removed', 'project-changed', 'chat-msg', 'limits-changed', 'catalog-changed', 'frozen',
     'focus-input', 'open-task', 'tauri://drag-enter', 'tauri://drag-leave', 'tauri://drag-drop',
     // app -> window notices named in task 13 without a fixed name: settings file replaced (G16.4), system notifications blocked (R15i.7),
     // tray host missing (R10.2), kit install rolled back at start (G25.9). Names chosen by task 15, see its report.

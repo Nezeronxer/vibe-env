@@ -16,12 +16,17 @@ use tauri::{AppHandle, Manager, State};
 /// How often the app looks whether a chat's terminal has ended.
 const WATCH_EVERY: Duration = Duration::from_millis(700);
 
+/// Where the menu looks for the files of a project: its folder, or, with no project, a folder that is not there, so that
+/// only the person's own (`~/.claude` and the like) are read.
+fn inventory_dir(project: Option<PathBuf>) -> PathBuf {
+    project.unwrap_or_else(|| PathBuf::from("/nonexistent/nightshift-no-project"))
+}
+
 /// The menu "/" of an env for a project (the person's folders only, when there is no project), and what the env can do.
 #[tauri::command]
 pub async fn chat_shell(s: State<'_, App>, env: String, project_id: Option<String>) -> Res<Value> {
     let a = s.hub.adapter(&env).ok_or_else(|| format!("agent_not_found: {env}"))?;
-    let cwd = project_id.and_then(|id| s.hub.project(&id).ok()).map(|p| p.path).unwrap_or_default();
-    let inv = if cwd.as_os_str().is_empty() { nightshift_core::agent::Inventory::default() } else { a.inventory(&cwd) };
+    let inv = a.inventory(&inventory_dir(project_id.and_then(|id| s.hub.project(&id).ok()).map(|p| p.path)));
     let resume = a.resume_argv("probe-session", Path::new("/")).is_some();
     Ok(json!({ "inventory": inv, "images": a.supports_images(), "resume": resume, "checked": a.resume_checked() }))
 }
@@ -70,6 +75,22 @@ fn to_base64(b: &[u8]) -> String {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn with_no_project_the_menu_still_reads_the_persons_own_folders() {
+        let scratch = crate::testkit::Scratch::new("menu-home");
+        let home = scratch.0.clone();
+        std::fs::create_dir_all(home.join(".claude/skills/review")).unwrap();
+        std::fs::write(home.join(".claude/skills/review/SKILL.md"), "---\ndescription: Reviews the diff\n---\n").unwrap();
+        std::fs::create_dir_all(home.join(".claude/commands")).unwrap();
+        std::fs::write(home.join(".claude/commands/deploy.md"), "Ship it").unwrap();
+        let inv = nightshift_core::agent::inventory::scan("claude", &home, &super::inventory_dir(None));
+        assert_eq!((inv.skills.len(), inv.commands.len()), (1, 1), "{inv:?}");
+        assert_eq!(inv.skills[0].name, "review");
+        // with a project its folder is read as before
+        let proj = std::path::PathBuf::from("/some/project");
+        assert_eq!(super::inventory_dir(Some(proj.clone())), proj);
+    }
+
     #[test]
     fn base64_round_trips_through_the_cores_reader() {
         for s in [&b""[..], b"h", b"hi", b"hey", b"hello world"] {

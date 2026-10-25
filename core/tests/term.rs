@@ -81,6 +81,12 @@ fn attach_after_output_returns_the_buffer_and_the_snapshot_keeps_text_and_folder
     let snap = t.snapshot();
     assert_eq!(snap.len(), 1);
     assert_eq!((snap[0].title.as_str(), std::path::Path::new(&snap[0].cwd)), ("probe", dir.path()));
+    assert_eq!(snap[0].id, id, "the snapshot says which session it was");
+    // a file written before the id existed still reads, with an empty one
+    let old: nightshift_core::term::TermSaved = serde_json::from_str(r#"{"title":"t","cwd":"/x","text":"hi"}"#).unwrap();
+    assert_eq!((old.id.as_str(), old.title.as_str()), ("", "t"));
+    let round: nightshift_core::term::TermSaved = serde_json::from_str(&serde_json::to_string(&snap[0]).unwrap()).unwrap();
+    assert_eq!(round, snap[0]);
     t.close(&id).unwrap();
     assert!(t.list().is_empty());
 }

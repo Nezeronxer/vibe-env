@@ -22,6 +22,22 @@ impl Pty {
         self.terms.list().iter().filter(|t| t.running).count()
     }
 
+    /// `label` attaches to `id`. The window that had it before, if another one, comes back: it must be told it lost the
+    /// session (`term-taken`), or its pane shows a frozen terminal that it still thinks is attached.
+    fn take(&self, id: &str, label: &str) -> Option<String> {
+        lk(&self.owners).insert(id.to_string(), label.to_string()).filter(|old| old != label)
+    }
+
+    /// `label` lets go of `id`. False = the session is another window's now, and stays attached to it.
+    fn release(&self, id: &str, label: &str) -> bool {
+        let mut o = lk(&self.owners);
+        if o.get(id).is_some_and(|l| l != label) {
+            return false;
+        }
+        o.remove(id);
+        true
+    }
+
     /// A window is gone: its sessions keep running, detached.
     pub fn window_gone(&self, label: &str) {
         let mut o = lk(&self.owners);
@@ -83,9 +99,16 @@ pub async fn term_open(app: AppHandle, p: State<'_, Pty>, spec: TermSpec) -> Res
     Ok(id)
 }
 
+/// What the window typed: `data` is text (written as UTF-8), `bytes` are raw bytes (xterm's `onBinary`: a mouse report of
+/// the old X10 form is one byte per column, and from the 95th column on that byte is above 127, which UTF-8 would make two).
+/// When both come, `bytes` win.
+fn typed(data: Option<String>, bytes: Option<Vec<u8>>) -> Vec<u8> {
+    bytes.unwrap_or_else(|| data.unwrap_or_default().into_bytes())
+}
+
 #[tauri::command]
-pub async fn term_write(p: State<'_, Pty>, id: String, data: String) -> Res<()> {
-    p.terms.write(&id, data.as_bytes()).map_err(e2s)
+pub async fn term_write(p: State<'_, Pty>, id: String, data: Option<String>, bytes: Option<Vec<u8>>) -> Res<()> {
+    p.terms.write(&id, &typed(data, bytes)).map_err(e2s)
 }
 
 #[tauri::command]
@@ -117,7 +140,9 @@ pub async fn term_attach(app: AppHandle, window: Window, p: State<'_, Pty>, id: 
             }),
         )
         .map_err(e2s)?;
-    lk(&p.owners).insert(id.clone(), window.label().to_string());
+    if let Some(old) = p.take(&id, window.label()) {
+        let _ = app.emit_to(old.as_str(), "term-taken", json!({ "id": id }));
+    }
     let mut h = lk(&held);
     let _ = channel.send(InvokeResponseBody::Raw(buf));
     for c in h.take().unwrap_or_default() {
@@ -127,8 +152,11 @@ pub async fn term_attach(app: AppHandle, window: Window, p: State<'_, Pty>, id: 
 }
 
 #[tauri::command]
-pub async fn term_detach(p: State<'_, Pty>, id: String) -> Res<()> {
-    lk(&p.owners).remove(&id);
+pub async fn term_detach(window: Window, p: State<'_, Pty>, id: String) -> Res<()> {
+    // a window that lost the session to another one (or hid after that) must not cut the new window off
+    if !p.release(&id, window.label()) {
+        return Ok(());
+    }
     p.terms.detach(&id).map_err(e2s)
 }
 
@@ -146,6 +174,27 @@ pub async fn term_list(p: State<'_, Pty>) -> Res<Vec<TermInfo>> {
 mod tests {
     use super::*;
     use std::os::unix::fs::PermissionsExt;
+
+    #[test]
+    fn raw_bytes_go_to_the_terminal_as_they_are_and_text_as_utf8() {
+        assert_eq!(typed(Some("é".into()), None), vec![0xC3, 0xA9], "text is UTF-8");
+        // an X10 mouse report at column 100: ESC [ M, button, column + 33, row + 33; 133 is above 127
+        let report = vec![0x1B, b'[', b'M', 32, 133, 34];
+        assert_eq!(typed(None, Some(report.clone())), report);
+        assert_eq!(typed(Some("ignored".into()), Some(report.clone())), report, "bytes win over text");
+        assert!(typed(None, None).is_empty());
+    }
+
+    #[test]
+    fn a_session_taken_by_another_window_tells_the_old_one_and_is_not_detached_by_it() {
+        let p = Pty::default();
+        assert_eq!(p.take("t1", "main"), None, "nobody had it");
+        assert_eq!(p.take("t1", "main"), None, "the same window again is no news");
+        assert_eq!(p.take("t1", "w-1").as_deref(), Some("main"), "the old window is told");
+        assert!(!p.release("t1", "main"), "the old window's detach changes nothing");
+        assert!(p.release("t1", "w-1"));
+        assert!(p.release("t1", "main"), "nobody has it: nothing to keep");
+    }
 
     /// Audit v4: the snapshot holds terminal output, so only the owner reads it, and it does not outlive the start.
     #[test]

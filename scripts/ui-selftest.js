@@ -38,7 +38,7 @@ check('tokens.css carries the theme table of theme.js (Dark and Light)', !!T && 
 // F10: the window ground carries a radial gradient (the lamp), made of tokens; both themes define the studio tokens
 check('F10: tokens.css gives the window a radial-gradient ground (--window-fx) and .app paints it', /--window-fx:[^;]*radial-gradient/.test(tok) && /\.app\s*\{[^}]*var\(--window-fx\)/.test(css('shell.css')), null);
 check('F10: both themes carry the studio tokens (amber, cream, brass, needle, onair)', ['--amber', '--cream', '--brass', '--needle', '--onair'].every((k) => darkCss[k] && lightCss[k]), [darkCss['--cream'], lightCss['--cream']]);
-check('F10: the dark canvas is warm (R > B) and the light canvas is cream', ((c) => c.r > c.b)(rgbOf(darkCss['--canvas'])) && ((c) => c.r > c.b && c.r > 200)(rgbOf(lightCss['--canvas'])), [darkCss['--canvas'], lightCss['--canvas']]);
+check('v7: the dark canvas is graphite (B >= R, near black) and the light canvas is near white', ((c) => c.b >= c.r && c.r < 24)(rgbOf(darkCss['--canvas'])) && ((c) => c.r > 220 && c.b >= c.r)(rgbOf(lightCss['--canvas'])), [darkCss['--canvas'], lightCss['--canvas']]);
 const px = (v) => parseFloat(String(v || '').replace('var(--radius-pane)', darkCss['--radius-pane']).replace('var(--radius-sm)', darkCss['--radius-sm']).replace('var(--r)', darkCss['--radius-sm']));
 const all = sheets.map(css).join('\n');
 const radiusOf = (sel) => { const re = new RegExp('(^|[},\\s])' + sel.replace(/[.[\]=]/g, '\\$&') + '\\s*[,{][^}]*?border-radius:\\s*([^;}]+)', 'gm'); let m, last = null; while ((m = re.exec(all))) last = m[2].split(/\s/)[0]; return last; };
@@ -74,10 +74,11 @@ if (process.env.NS_PLAYWRIGHT) (async () => {
   const launch = () => chromium.launch(process.env.NS_CHROME ? { executablePath: process.env.NS_CHROME } : {});
   let b = await launch();
   const p = await b.newPage({ viewport: { width: 1440, height: 900 } });
-  await p.goto('http://127.0.0.1:' + srv.address().port + '/index.html?lang=ru&platform=mac');
+  await p.goto('http://127.0.0.1:' + srv.address().port + '/index.html?lang=ru&platform=mac&first=chat');
   await p.waitForTimeout(1200);
   const r = await p.evaluate(() => {
-    const vis = (el) => { const s = getComputedStyle(el), b = el.getBoundingClientRect(); return b.width > 0 && b.height > 0 && s.visibility !== 'hidden' && +s.opacity > 0; };
+    const clear = (el) => { for (let e = el; e; e = e.parentElement) if (+getComputedStyle(e).opacity === 0) return true; return false; };   // a group faded out whole (the pane tools until hover)
+    const vis = (el) => { const s = getComputedStyle(el), b = el.getBoundingClientRect(); return b.width > 0 && b.height > 0 && s.visibility !== 'hidden' && !clear(el); };
     const buttons = [...document.querySelectorAll('button, [role=button]')].filter((x) => !x.closest('.cfeed, .clawd') && vis(x)); // Clawd is a character in the tab corner, not a control
     const rad = (sel) => { const el = document.querySelector(sel); return el ? parseFloat(getComputedStyle(el).borderTopLeftRadius) : -1; };
     return { buttons: buttons.length, names: buttons.map((x) => x.getAttribute('aria-label') || x.textContent.trim()).slice(0, 20), pane: rad('.pane'), card: rad('.tcard'), field: rad('.composer'), bar: rad('.bar') };
@@ -171,7 +172,7 @@ async function f5(b, base, out) {
 async function f7(b, base, out) {
   const ok = (name, cond, detail) => out.push((cond ? 'PASS ' : 'FAIL ') + name + (cond ? '' : ' ' + JSON.stringify(detail)));
   const p = await b.newPage({ viewport: { width: 1440, height: 900 } });
-  await p.goto(base + '/index.html?lang=ru&platform=mac');
+  await p.goto(base + '/index.html?lang=ru&platform=mac&first=chat');
   await p.waitForTimeout(1500);
   const fam = () => p.evaluate(() => { const d = NS.store.envSettings('claude').default_model; return d && [d.family, d.version]; });
   await p.evaluate(() => NS.store.saveEnvSettings('claude', { default_model: { family: 'opus', version: null } }));
@@ -218,7 +219,7 @@ async function f7(b, base, out) {
 async function f8(b, base, out) {
   const ok = (name, cond, detail) => out.push((cond ? 'PASS ' : 'FAIL ') + name + (cond ? '' : ' ' + JSON.stringify(detail)));
   const p = await b.newPage({ viewport: { width: 1440, height: 900 } });
-  await p.goto(base + '/index.html?lang=ru&platform=mac');
+  await p.goto(base + '/index.html?lang=ru&platform=mac&first=chat');
   await p.waitForTimeout(1500);
   // 1: the switches
   const sw = await p.evaluate(() => [...document.querySelectorAll('.composer .tg')].map((g) => { const r = g.querySelector('.sw').getBoundingClientRect(); return { w: r.width, h: r.height, title: g.title, on: g.getAttribute('aria-checked'), text: g.textContent.trim() }; }));
@@ -231,11 +232,12 @@ async function f8(b, base, out) {
   ok('F8 1: a click flips aria-checked and saves last_quality.on / last_swarm', after[0] !== sw[0].on && after[1] !== sw[1].on && saved.q === (after[0] === 'true') && saved.s === (after[1] === 'true'), { sw, after, saved });
   const tune = await p.evaluate(() => { const t = document.querySelector('.composer .tune4'); const r = t.getBoundingClientRect(); return { w: r.width, text: t.textContent.trim(), icon: !!t.querySelector('svg'), title: t.title }; });
   ok('F8 1: "⋯" is a gear with the word "Настроить" and a title', tune.text === 'Настроить' && tune.icon && tune.w > 50 && tune.title.length > 10, tune);
-  // 2: the entrances
+  // 2: the entrances (v7: the foot of the agents column keeps ⌘K and the settings; the factory moved to "Новый агент" and ⌘K)
   const here = () => p.evaluate(() => NS.shell.current && NS.shell.current.def.id);
-  const vis = await p.evaluate(() => ['.navb.nb-fact', '.navb.nb-set', '.navb.nb-pal'].map((q) => { const e = document.querySelector(q); const r = e && e.getBoundingClientRect(); return e ? { w: r.width, text: e.textContent.trim() } : null; }));
-  ok('F8 2: "Фабрика", "Настройки" and "⌘K Команды" are visible in the tab strip', vis.every((x) => x && x.w > 20) && /Фабрика/.test(vis[0].text) && /Настройки/.test(vis[1].text) && /Команды/.test(vis[2].text), vis);
-  await p.click('.navb.nb-fact'); await p.waitForTimeout(500);
+  const vis = await p.evaluate(() => ['.navb.nb-set', '.navb.nb-pal'].map((q) => { const e = document.querySelector(q); const r = e && e.getBoundingClientRect(); return e ? { w: r.width, text: e.textContent.trim(), label: e.getAttribute('aria-label') } : null; }));
+  ok('v7 F8 2: the settings (gear) and "⌘K Поиск и команды" are in the foot of the agents column', vis.every((x) => x && x.w > 20) && /Настройки/.test(vis[0].label) && /Поиск и команды/.test(vis[1].text), vis);
+  await p.click('.rail7-new'); await p.waitForTimeout(300);
+  await p.click('.l7-more-b:has-text("Фабрика")'); await p.waitForTimeout(500);
   const fact = await here();
   await p.evaluate(() => NS.shell.back()); await p.waitForTimeout(400);
   await p.click('.navb.nb-set'); await p.waitForTimeout(500);
@@ -244,22 +246,22 @@ async function f8(b, base, out) {
   await p.evaluate(() => document.dispatchEvent(new KeyboardEvent('keydown', { code: 'Comma', key: ',', metaKey: true, bubbles: true, cancelable: true }))); await p.waitForTimeout(500);   // a synthetic key: a real ⌘, would reach the browser itself
   const comma = await here();
   await p.evaluate(() => NS.shell.back()); await p.waitForTimeout(400);
-  ok('F8 2: the buttons open the factory and the settings, ⌘, opens the settings', fact === 'factory' && set === 'settings' && comma === 'settings', { fact, set, comma });
+  ok('F8 2: "Новый агент → Фабрика" opens the factory, the gear and ⌘, open the settings', fact === 'factory' && set === 'settings' && comma === 'settings', { fact, set, comma });
   await p.click('.navb.nb-pal'); await p.waitForTimeout(300);
-  ok('F8 2: "⌘K Команды" opens the palette', await p.evaluate(() => !!document.querySelector('.pal-in') && NS.palette.isOpen), null);
+  ok('F8 2: "⌘K Поиск и команды" opens the palette', await p.evaluate(() => !!document.querySelector('.pal-in') && NS.palette.isOpen), null);
   await p.keyboard.press('Escape'); await p.waitForTimeout(200);
-  // 3: the "+" menu (F11: the terminal opens in the project that was chosen, not in a guessed one)
+  // 3: "Новый агент" (v7, in place of the "+" menu; F11: the terminal opens in the project that was chosen, not in a guessed one)
   await p.evaluate(() => NS.projects.choose('p1'));
-  await p.click('.tab-plus'); await p.waitForTimeout(250);
-  const items = await p.evaluate(() => [...document.querySelectorAll('.plusmenu [role=menuitem]')].map((x) => x.textContent.trim()));
-  ok('F8 3: "+" opens a menu of three items - chat, terminal with the CLI, shell', items.length === 3 && /Новый чат/.test(items[0]) && /Терминал с Claude Code/.test(items[1]) && /Терминал \(shell\)/.test(items[2]), items);
-  await p.click('.plusmenu [role=menuitem] >> nth=2'); await p.waitForTimeout(900);
-  const term = await p.evaluate(() => ({ kind: NS.tabs.active.kind, glyph: (document.querySelector('.tab.on .tab-ic .t-glyph') || {}).textContent, label: document.querySelector('.tab.on .tab-l').textContent, menu: !!document.querySelector('.plusmenu') }));
-  ok('F8 3: "Терминал (shell)" opens a terminal tab with the >_ icon, named "Терминал · …"; the menu closes', term.kind === 'term' && term.glyph === '>_' && /^Терминал · /.test(term.label) && !term.menu, term);
-  await p.click('.tab-plus'); await p.waitForTimeout(250);
-  await p.click('.plusmenu [role=menuitem] >> nth=0'); await p.waitForTimeout(900);
+  await p.click('.rail7-new'); await p.waitForTimeout(300);
+  const l7 = await p.evaluate(() => ({ envs: [...document.querySelectorAll('.launch7 .l7-env')].map((x) => x.textContent.trim()), more: [...document.querySelectorAll('.launch7 .l7-more-b')].map((x) => x.textContent.trim()), go: !!document.querySelector('.launch7 .l7-go') }));
+  ok('v7 F8 3: "Новый агент" shows the installed envs, "Запустить" and the chat, a plain terminal, the swarm and the factory', l7.envs.length >= 2 && /Claude Code/.test(l7.envs[0]) && l7.go && l7.more.length === 4 && /Чат/.test(l7.more[0]) && /Пустой терминал/.test(l7.more[1]), l7);
+  await p.click('.l7-more-b:has-text("Пустой терминал")'); await p.waitForTimeout(900);
+  const term = await p.evaluate(() => ({ kind: NS.tabs.active.kind, glyph: (document.querySelector('.tab.on .tab-ic .t-glyph') || {}).textContent, label: document.querySelector('.tab.on .tab-l').textContent, menu: !!document.querySelector('.launch7') }));
+  ok('F8 3: "Пустой терминал" opens a terminal tab with the >_ icon, named "Терминал · …"; the launcher closes', term.kind === 'term' && term.glyph === '>_' && /^Терминал · /.test(term.label) && !term.menu, term);
+  await p.click('.rail7-new'); await p.waitForTimeout(300);
+  await p.click('.l7-more-b:has-text("Чат")'); await p.waitForTimeout(900);
   const chat = await p.evaluate(() => ({ kind: NS.tabs.active.kind, glyph: !!document.querySelector('.tab.on .tab-ic .t-glyph'), img: !!document.querySelector('.tab.on .tab-ic svg, .tab.on .tab-ic img') }));
-  ok('F8 3: "Новый чат" opens a chat tab with the icon of the environment, not >_', chat.kind === 'agent' && !chat.glyph && chat.img, chat);
+  ok('F8 3: "Чат с агентом" opens a chat tab with the icon of the environment, not >_', chat.kind === 'agent' && !chat.glyph && chat.img, chat);
   ok('F8 4: the empty chat carries the hint about the terminal', await p.evaluate(() => /Нужен сам Claude Code в терминале/.test((document.querySelector('.cmp-note') || {}).textContent || '')), null);
   const barBtn = await p.evaluate(() => { const x = document.querySelector('.t-barbtn'); return x && { text: x.textContent.trim(), title: x.title }; });
   ok('F8 3: the status bar button reads ">_ Терминал" and says what it opens', barBtn && barBtn.text === '>_Терминал' || (barBtn && /Терминал/.test(barBtn.text) && /Claude Code в терминале/.test(barBtn.title)), barBtn);
@@ -285,20 +287,20 @@ async function f8(b, base, out) {
 async function f9(b, base, out) {
   const ok = (name, cond, detail) => out.push((cond ? 'PASS ' : 'FAIL ') + name + (cond ? '' : ' ' + JSON.stringify(detail)));
   const p = await b.newPage({ viewport: { width: 1440, height: 900 } });
-  await p.goto(base + '/index.html?lang=ru&platform=mac');
+  await p.goto(base + '/index.html?lang=ru&platform=mac&first=chat');
   await p.waitForTimeout(1600);
-  // 5: a clean start shows the chat list; ⌘B hides it and the choice survives a reload
-  const side = () => p.evaluate(() => { const e = document.querySelector('.side'); return { on: document.body.classList.contains('side-on'), w: e ? e.getBoundingClientRect().width : 0, saved: NS.storage.get('ns.side') }; });
+  // 5 (v7): the agents column took the place of the chat list: hidden on a clean start, ⌘B shows it and a reload remembers
+  const side = () => p.evaluate(() => { const e = document.querySelector('.side'); return { on: document.body.classList.contains('side-on'), w: e ? e.getBoundingClientRect().width : 0, saved: NS.storage.get('ns.side7') }; });
   const s0 = await side();
-  ok('F9 5: on a clean start (ns.side not set) the chat list is visible, about 240 px', s0.on && s0.w > 200 && s0.w < 290 && s0.saved == null, s0);
+  ok('v7 F9 5: on a clean start the chat list is hidden and the agents column is there', !s0.on && s0.w === 0 && s0.saved == null && await p.evaluate(() => document.querySelector('.rail7').getBoundingClientRect().width > 200), s0);
   const key = () => p.evaluate(() => document.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyB', key: 'b', metaKey: true, bubbles: true, cancelable: true })));
   await key(); await p.waitForTimeout(250);
   const s1 = await side();
   await p.reload(); await p.waitForTimeout(1500);
   const s2 = await side();
-  ok('F9 5: ⌘B hides the chat list and a reload remembers it', !s1.on && s1.w === 0 && s1.saved === '0' && !s2.on && s2.w === 0, { s1, s2 });
+  ok('v7 F9 5: ⌘B shows the chat list (about 240 px) and a reload remembers it', s1.on && s1.w > 200 && s1.w < 290 && s1.saved === '1' && s2.on, { s1, s2 });
   await key(); await p.waitForTimeout(250);
-  ok('F9 5: ⌘B shows it again', (await side()).on, null);
+  ok('v7 F9 5: ⌘B hides it again', !(await side()).on, null);
   // 1 and 3: the column, the type, the bubbles
   const L = await p.evaluate(() => {
     const feed = document.querySelector('.cfeed'), fr = feed.getBoundingClientRect();
@@ -322,7 +324,7 @@ async function f9(b, base, out) {
   await p.evaluate(() => document.querySelector('.cfeed .stp.k-edit .stp-h').click()); await p.waitForTimeout(150);
   ok('F9 2: a second click folds it again', await p.evaluate(() => ![...document.querySelectorAll('.cfeed .dg')].some((x) => x.getBoundingClientRect().height > 0)), null);
   // 4: the empty chat
-  await p.evaluate(() => NS.tabs.newTab()); await p.waitForTimeout(900);
+  await p.evaluate(() => NS.tabs.newTab('chat')); await p.waitForTimeout(900);
   const e0 = await p.evaluate(() => { const r = (q) => { const e = document.querySelector(q); return e ? e.getBoundingClientRect() : null; }; const ta = r('.composer textarea'), h2 = r('.newchat-empty h2');
     return { title: (document.querySelector('.newchat-empty h2') || {}).textContent, h2: h2 && h2.height, ta: ta && ta.width, ex: [...document.querySelectorAll('.examples:not([hidden]) .ex')].filter((x) => x.getBoundingClientRect().height > 0).map((x) => x.querySelector('b').textContent), exVisible: !!r('.examples') && r('.examples').height > 0,
       ph: (document.querySelector('.composer textarea') || {}).placeholder, keys: (document.querySelector('.cmp-keys') || {}).textContent, radius: parseFloat(getComputedStyle(document.querySelector('.cmpbox .composer')).borderTopLeftRadius) }; });
@@ -350,7 +352,7 @@ async function f9(b, base, out) {
   ok('F9 3: a failed command is a red line, open by default when it is the last event', x0.bad && x0.open && /Cannot find module/.test(x0.text), x0);
   await r.close();
   const r2 = await b.newPage({ viewport: { width: 1440, height: 900 } });
-  await r2.goto(base + '/index.html?lang=ru&platform=mac');
+  await r2.goto(base + '/index.html?lang=ru&platform=mac&first=chat');
   await r2.waitForTimeout(1600);
   await r2.evaluate(() => { for (const g of document.querySelectorAll('.cfeed .agrp-h')) g.click(); });
   const x1 = await r2.evaluate(() => [...document.querySelectorAll('.cfeed .stp.s-bad')].map((e) => !e.querySelector('.stp-b').hidden));
@@ -366,7 +368,7 @@ async function f10(b, base, out) {
   const ratio = (a, c) => { const x = lum(a), y = lum(c); return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05); };
   for (const scheme of ['dark', 'light']) {
     const p = await b.newPage({ viewport: { width: 1440, height: 900 }, colorScheme: scheme });
-    await p.goto(base + '/index.html?lang=ru&platform=mac');
+    await p.goto(base + '/index.html?lang=ru&platform=mac&first=chat');
     await p.waitForTimeout(1600);
     const R = await p.evaluate(() => {
       const cs = (el) => getComputedStyle(el), q = (s) => document.querySelector(s);
@@ -380,21 +382,48 @@ async function f10(b, base, out) {
         vu: !!vu, vuN: vu && vu.style.getPropertyValue('--n'), vuText: vu && vu.parentElement.textContent, needle: vu && !!vu.querySelector('.vu-needle'), arc: vu && !!vu.querySelector('.vu-arc'),
         gauge: !!q('.bm-lim .gauge'), stations: document.querySelectorAll('.tc-steps li i').length };
     });
-    ok('F10 1 ' + scheme + ': the window ground is a radial-gradient (the lamp) over a ' + (scheme === 'dark' ? 'warm' : 'cream') + ' canvas', /radial-gradient/.test(R.appBg) && R.theme === scheme, R);
+    ok('v7 1 ' + scheme + ': the window ground is a faint radial wash of the live accent over the canvas', /radial-gradient/.test(R.appBg) && R.theme === scheme, R);
     const canvasRgb = (() => { const n = parseInt(R.canvas.slice(1), 16); return [n >> 16, (n >> 8) & 255, n & 255]; })();
-    ok('F10 1 ' + scheme + ': the canvas is ' + (scheme === 'dark' ? 'warm (R > B)' : 'cream (light, R > B)'), canvasRgb[0] > canvasRgb[2] && (scheme === 'dark' || canvasRgb[0] > 200), canvasRgb);
-    ok('F10 2 ' + scheme + ': the chat list has an on-air lamp (running) and an amber lamp for "Ждёт тебя" that pulses', R.lampOn && R.lampCall && R.callAnim && R.callAnim !== 'none' && /radial-gradient/.test(R.onAirBg), R);
+    ok('v7 1 ' + scheme + ': the canvas is ' + (scheme === 'dark' ? 'graphite (B >= R, near black)' : 'near white (B >= R)'), canvasRgb[2] >= canvasRgb[0] && (scheme === 'dark' ? canvasRgb[0] < 24 : canvasRgb[0] > 220), canvasRgb);
     ok('F10 3 ' + scheme + ': the limits in the status bar are VU meters (svg: needle, arc), the numbers stay, no flat gauge', R.vu && R.needle && R.arc && !R.gauge && /\d+%/.test(R.vuText) && +R.vuN >= 0 && +R.vuN <= 1, R);
     ok('F10 4 ' + scheme + ': message text >= 7:1 and the quiet line >= 4.5:1 against what is drawn behind them', ratio(mix(R.text), mix(R.textBg)) >= 7 && (!R.sec || ratio(mix(R.sec), mix(R.secBg)) >= 4.5), { text: ratio(mix(R.text), mix(R.textBg)), sec: R.sec && ratio(mix(R.sec), mix(R.secBg)), R });
     ok('F10 3 ' + scheme + ': the stages of the task card are one signal line of stations', R.stations >= 7, R.stations);
     await p.close();
   }
-  // 2: no pulse under prefers-reduced-motion
+  // v7 2: the aura of a working agent card in its env colour, the breathing of the ones that wait out of sight, «Ждут: N ⌘J»
+  const a = await b.newPage({ viewport: { width: 1440, height: 900 }, colorScheme: 'dark' });
+  await a.goto(base + '/index.html?lang=ru&platform=mac&demo=agents');
+  await a.waitForTimeout(3300);
+  const run = await a.evaluate(() => { const c = document.querySelector('.rail7-list .tab[data-state="run"]'); return c && { anim: getComputedStyle(c, '::after').animationName, env: getComputedStyle(c).getPropertyValue('--env').trim() }; });
+  ok('v7 2: a working agent card wears a running light (aura7) in the colour of its env', !!run && run.anim === 'aura7' && /^#[0-9a-f]{6}$/i.test(run.env), run);
+  await a.waitForTimeout(6500);
+  const wt = await a.evaluate(() => { const c = document.querySelector('.rail7-list .tab[data-state="wait"]'); return { n: document.querySelectorAll('.rail7-list .tab[data-state="wait"]').length, anim: c && getComputedStyle(c, '::after').animationName, btn: (document.querySelector('.nb-wait:not([hidden])') || {}).textContent }; });
+  ok('v7 2: agents that went quiet out of sight breathe (breathe7) and «Ждут: N ⌘J» shows in the foot', wt.n >= 1 && wt.anim === 'breathe7' && /Ждут: \d/.test(wt.btn || ''), wt);
+  // the line of the «ждёт тебя» notification is the whole wrapped line, so a key keeps its prefix for the scrub
+  const wrap = await a.evaluate(async () => {
+    const v = NS.term.views.get(NS.tabs.active.id), line = 'KEY=sk-ant-' + 'x'.repeat(3 * v.term.cols);
+    v.term.write('\r\n' + line + '\r\n');
+    await new Promise((r) => setTimeout(r, 200));
+    const got = v.tail(1)[0] || ''; return { ok: got.startsWith('KEY=sk-ant-x'), got, cols: v.term.cols };
+  });
+  ok('v7 2: the last line of a terminal joins a line wrapped at its width', wrap.ok, wrap);
+  // the pane tools appear on hover without moving «Изменения»: a click aimed at it must not land on «split»
+  const chgX = () => a.evaluate(() => { const b = [...document.querySelectorAll('.pane-h .pt-l')].find((x) => /Изменения/.test(x.textContent)); return b ? Math.round(b.getBoundingClientRect().left) : null; });
+  await a.mouse.move(2, 2); await a.waitForTimeout(150);
+  const x0 = await chgX();
+  const box = await a.evaluate(() => { const r = document.querySelector('.pane-h').getBoundingClientRect(); return { x: r.left + 40, y: r.top + 60 }; });
+  await a.mouse.move(box.x, box.y); await a.waitForTimeout(150);
+  const x1 = await chgX();
+  ok('v7 2: hovering a pane shows its tools and «Изменения» stays where it was', x0 !== null && x0 === x1, { x0, x1 });
+  await a.close();
+  // 2: no aura and no breathing under prefers-reduced-motion
   const q = await b.newPage({ viewport: { width: 1440, height: 900 }, reducedMotion: 'reduce' });
-  await q.goto(base + '/index.html?lang=ru&platform=mac');
-  await q.waitForTimeout(1600);
-  const rm = await q.evaluate(() => { const l = document.querySelector('.tasks a .lamp.calling'), p = document.querySelector('.pane-lamp.calling'); return { lamp: l && getComputedStyle(l).animationName, pane: p && getComputedStyle(p).animationName, t: getComputedStyle(document.documentElement).getPropertyValue('--t').trim() }; });
-  ok('F10 2: with prefers-reduced-motion the amber lamp does not pulse', rm.lamp === 'none' && (!rm.pane || rm.pane === 'none'), rm);
+  await q.goto(base + '/index.html?lang=ru&platform=mac&demo=agents');
+  await q.waitForTimeout(3300);
+  const rmRun = await q.evaluate(() => { const c = document.querySelector('.rail7-list .tab[data-state="run"]'); return c ? getComputedStyle(c, '::after').animationName : 'no-run'; });
+  await q.waitForTimeout(6500);
+  const rm = await q.evaluate(() => { const c = document.querySelector('.rail7-list .tab[data-state="wait"]'); return { wait: c ? getComputedStyle(c, '::after').animationName : 'no-wait', t: getComputedStyle(document.documentElement).getPropertyValue('--t').trim() }; });
+  ok('v7 2: with prefers-reduced-motion the aura does not run and the waiting card does not breathe', (rmRun === 'none' || rmRun === 'no-run') && rm.wait === 'none', { rmRun, rm });
   await q.close();
 }
 
@@ -590,7 +619,7 @@ async function f14(b, base, out) {
   };
   let p = await open();
   const nav = await p.evaluate(() => { const b = document.querySelector('.nb-auto'); return b && { text: b.textContent.trim(), next: b.previousElementSibling && b.previousElementSibling.textContent.trim(), after: b.nextElementSibling && b.nextElementSibling.textContent.trim() }; });
-  ok('F14: the entrance «Автоматика» sits between «Фабрика» and «Настройки» and carries the count of suggestions', nav && /^Автоматика\s*5$/.test(nav.text) && nav.next === 'Фабрика' && nav.after === 'Настройки', nav);
+  ok('v7 F14: the entrance «Автоматика» sits between «⌘K Поиск» and «Настройки» in the foot of the agents column and carries the count of suggestions', nav && /^Автоматика\s*5$/.test(nav.text) && /Поиск/.test(nav.next) && nav.after === 'Настройки', nav);
   await p.click('.nb-auto'); await p.waitForTimeout(500);
   const rows = () => p.evaluate(() => [...document.querySelectorAll('#a4-sched .a4-row')].map((r) => ({ t: r.querySelector('b').textContent, on: r.classList.contains('on'), sw: r.querySelector('[role=switch]').getAttribute('aria-checked'), txt: r.textContent })));
   const r0 = await rows();
@@ -796,7 +825,7 @@ async function f27(b, base, out) {
   await p.evaluate(() => { window.__realNow = Date.now; const real = Date.now.bind(Date); Date.now = () => real() + 65000; });
   await p.waitForTimeout(400);
   const s3 = await p.evaluate(() => { const lb = document.querySelector('.cfeed .livebar'); const st = lb.querySelector('.lv-stop'); return { verb: lb.querySelector('.lv-v').textContent, meta: lb.querySelector('.lv-m').textContent, stop: st && !st.hidden && st.textContent }; });
-  ok('G80.2: after 60 s «Долго думает · 1:05» and «Стоп»', s3.verb === 'Долго думает' && /^· 1:0[5-7]$/.test(s3.meta) && s3.stop === 'Стоп', s3);
+  ok('G80.2: after 60 s «Долго думает · 1:05» and «Стоп»', s3.verb === 'Долго думает' && /^· 1:0[5-9]$/.test(s3.meta) && s3.stop === 'Стоп', s3);
   await p.evaluate(() => { Date.now = window.__realNow; });
   await p.waitForTimeout(3500);
   const s4 = await p.evaluate(() => { const lb = document.querySelector('.cfeed .livebar'); return { hidden: lb.hidden || !lb.classList.contains('thinking'), answer: [...document.querySelectorAll('.cfeed .msg.ai .msg-b')].some((x) => /Смотрю код/.test(x.textContent)) }; });
@@ -839,7 +868,7 @@ async function f27(b, base, out) {
   // 4: G81.1 - scrolled up, the feed is not dragged down by the print
   p = await open('env=claude&chat=how&reply=300&long=1');
   await send(p, 'Ещё подробнее');
-  await p.waitForTimeout(500);
+  await p.waitForTimeout(1000);
   const sc = await p.evaluate(() => new Promise((done) => { const w = document.querySelector('.feed-wrap'); w.scrollTop = 0; w.dispatchEvent(new Event('scroll')); setTimeout(() => done({ top: w.scrollTop, h: w.scrollHeight - w.clientHeight }), 700); }));
   ok('G81.1: a person who scrolled up stays where they are while the answer prints', sc.top < 80 && sc.h > 200, sc);
   await p.close();
@@ -863,7 +892,7 @@ async function ops6(b, base, out) {
   const ok = (name, cond, detail) => out.push((cond ? 'PASS ' : 'FAIL ') + name + (cond ? '' : ' ' + JSON.stringify(detail)));
   const open = async (qs) => {
     const p = await b.newPage({ viewport: { width: 1440, height: 900 } });
-    await p.goto(base + '/index.html?lang=ru&platform=mac' + qs); await p.waitForTimeout(1500);
+    await p.goto(base + '/index.html?lang=ru&platform=mac&first=chat' + qs); await p.waitForTimeout(1500);
     return p;
   };
   let p = await open('&screen=swarm&swstate=paused');

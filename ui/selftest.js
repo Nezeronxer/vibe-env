@@ -563,7 +563,7 @@ eq('the label of the extra window is a word in ru and en', [NSI18n.dicts.ru['ter
 
 // --- registry: extension points for tasks 23-25 ---
 const R = NS.registry;
-eq('registry: the seven extension points', R.POINTS, ['command', 'settings', 'bar', 'paneHeader', 'details', 'paneKind', 'tabsCorner']);
+eq('registry: the eight extension points (v7: paletteSource)', R.POINTS, ['command', 'settings', 'bar', 'paneHeader', 'details', 'paneKind', 'tabsCorner', 'paletteSource']);
 R.extend('bar', { id: 'zz-late', side: 'right', order: 300 }); R.extend('bar', { id: 'zz-early', side: 'right', order: 1 }); R.extend('bar', { id: 'zz-late', side: 'left', order: 300 });
 eq('registry: sorted by order, the same id replaces the old one', R.points('bar').filter((x) => /^zz-/.test(x.id)).map((x) => x.id + ':' + x.side), ['zz-early:right', 'zz-late:left']);
 R.extend('paneKind', { kind: 'zz-term' });
@@ -578,16 +578,17 @@ eq('palette: the recent list keeps 8, the newest first, no repeats', NSPalette.p
 
 // --- theme: one table -> CSS variables and xterm ---
 const TV = NSTheme.vars('dark', {}, 'claude');
-eq('theme: Nightshift Dark - near-black canvas (not #000), panes one step lighter, the focused pane takes the Claude colour #D97757',
-  [TV['--canvas'] !== '#000000' && TV['--canvas'] !== TV['--panel'], TV['--accent'], TV['--radius-pane'], TV['--radius-sm'], TV['--gap']], [true, '#f2a33a', '12px', '8px', '6px']);
+eq('theme: Nightshift Dark - near-black canvas (not #000), panes one step lighter, the focused Claude pane paints the accent and the live --amber terracotta',
+  [TV['--canvas'] !== '#000000' && TV['--canvas'] !== TV['--panel'], TV['--accent'], TV['--amber'], TV['--radius-pane'], TV['--radius-sm'], TV['--gap']], [true, '#e8865f', '#e8865f', '12px', '8px', '6px']);
 eq('theme: 16 ANSI colours, cursor and selection in the variables', [Object.keys(TV).filter((k) => /^--ansi-\d+$/.test(k)).length, !!TV['--cursor'], !!TV['--sel']], [16, true, true]);
 eq('theme: the person\'s accent, radius "round", gap and opacity win', ((v) => [v['--accent'], v['--radius-pane'], v['--gap'], v['--pane-bg']])(NSTheme.vars('light', { accent: '#2f6db0', radius: 'round', gap: 10, opacity: 90 }, 'claude')),
-  ['#2f6db0', '18px', '10px', 'rgba(245, 236, 216, 0.9)']);
+  ['#2f6db0', '18px', '10px', 'rgba(255, 255, 255, 0.9)']);
 const XT = NSTheme.xterm('dark', {});
 eq('theme: xterm gets the terminal table (warm ground off the panel, soft text, 16 colours by name)', [XT.background, XT.foreground, XT.brightWhite, Object.keys(XT).length, XT.background !== NSTheme.THEMES.dark.panel], [NSTheme.THEMES.dark.term.background, NSTheme.THEMES.dark.term.foreground, NSTheme.THEMES.dark.term.ansi[15], 21, true]);
 // F7: contrast of the default terminal palette, WCAG: text >= 7:1, colours 1-6 >= 4.5:1 to the ground, both themes
 const lumOf = (hex) => { const n = parseInt(hex.slice(1), 16); return [n >> 16, (n >> 8) & 255, n & 255].map((v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); }).reduce((a, v, i) => a + v * [0.2126, 0.7152, 0.0722][i], 0); };
 const ratio = (a, b) => { const x = lumOf(a), y = lumOf(b); return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05); };
+eq('v7 theme: each env has its own accent in both themes, readable on the panel (>= 4.5:1); no env -> the theme accent', ['claude', 'codex', 'gemini', 'qwen', 'opencode', 'cursor'].every((e) => ['dark', 'light'].every((nm) => { const v = NSTheme.vars(nm, {}, e); return v['--accent'] !== NSTheme.THEMES[nm].accent && ratio(v['--accent'], NSTheme.THEMES[nm].panel) >= 4.5; })), true);
 for (const nm of ['dark', 'light']) { const X = NSTheme.THEMES[nm].term; eq('F7 terminal palette ' + nm + ': text >= 7:1, colours 1-6 >= 4.5:1', [ratio(X.foreground, X.background) >= 7, X.ansi.slice(1, 7).every((c) => ratio(c, X.background) >= 4.5)], [true, true]); }
 // F10: the studio look - text >= 7:1 and quiet text >= 4.5:1 on every surface of both themes; the dark ground is warm, the light one cream
 for (const nm of ['dark', 'light']) {
@@ -595,8 +596,8 @@ for (const nm of ['dark', 'light']) {
   eq('F10 ' + nm + ': ink >= 7:1 and ink2/ink3 >= 4.5:1 on canvas, panel, raised, raised2', [grounds.every((g) => ratio(T.ink, g) >= 7), grounds.every((g) => ratio(T.ink2, g) >= 4.5 && ratio(T.ink3, g) >= 4.5)], [true, true]);
   eq('F10 ' + nm + ': the status words (ok, bad, calling amber) read >= 4.5:1 on the panel', [T.ok, T.bad, T.human, T.accent].every((c) => ratio(c, T.panel) >= 4.5), true);
 }
-const warm = (hex) => { const n = parseInt(hex.slice(1), 16); return (n >> 16) > (n & 255); };
-eq('F10 dark ground is warm (R > B) on canvas, panel and raised; the light ground is cream (R > B, light)', [['canvas', 'panel', 'raised'].every((k) => warm(NSTheme.THEMES.dark[k])), warm(NSTheme.THEMES.light.canvas), lumOf(NSTheme.THEMES.light.panel) > 0.8, lumOf(NSTheme.THEMES.dark.canvas) < 0.03], [true, true, true, true]);
+const coolOrNeutral = (hex) => { const n = parseInt(hex.slice(1), 16); return (n & 255) >= (n >> 16); };
+eq('v7 dark ground is graphite (B >= R, near black) on canvas, panel and raised; the light ground is near white', [['canvas', 'panel', 'raised'].every((k) => coolOrNeutral(NSTheme.THEMES.dark[k])), lumOf(NSTheme.THEMES.light.panel) > 0.9, lumOf(NSTheme.THEMES.dark.canvas) < 0.01], [true, true, true]);
 eq('theme: system follows the OS; out-of-range choices fall back', [NSTheme.resolve('system', true), NSTheme.resolve('system', false), NSTheme.resolve('light', true), ((l) => [l.gap, l.font_px, l.radius, l.accent])(NSTheme.look({ gap: 99, font_px: 'x', radius: 'blob', accent: 'red' }))],
   ['dark', 'light', 'light', [16, 13, 'soft', 'env']]);
 
@@ -654,6 +655,8 @@ eq('file refs: path:line:col, a relative path, an absolute one, file:// URL',
   [refs('src/app.rs:42:7: error[E0308]'), refs('  at /Users/dev/a.js:10 (x)'), refs('see file:///tmp/x.py for it')],
   [[['src/app.rs', 42, 7, 'src/app.rs:42:7']], [['/Users/dev/a.js', 10, null, '/Users/dev/a.js:10']], [['/tmp/x.py', null, null, 'file:///tmp/x.py']]]);
 eq('file refs: not times, not URLs with ports, not bare words', [refs('at 12:30:01 ok'), refs('http://localhost:8080/a'), refs('error: line 4')], [[], [], []]);
+eq('v7 file refs: a Cyrillic folder is part of the path; a file:// URL is decoded', [refs('/Users/n/Моя папка/x')[0], refs('see /Users/n/Проекты/app/src/a.ts:12:3 here')[0].slice(0, 3), refs('file:///Users/x/%D0%9C/a.txt')[0][0]],
+  [undefined, ['/Users/n/Проекты/app/src/a.ts', 12, 3], '/Users/x/М/a.txt']);
 eq('file refs: a relative path is joined to the folder of the terminal', [TM.resolvePath('src/a.rs', '/p/proj'), TM.resolvePath('./b.js', '/p/proj/'), TM.resolvePath('/abs/c', '/p')], ['/p/proj/src/a.rs', '/p/proj/b.js', '/abs/c']);
 
 // --- ack schedule: one ack per ~100 KB written, with the exact byte count ---
@@ -785,6 +788,29 @@ if (typeof NSMockLimits !== 'undefined') {
   eq('dev-mock limits: Claude Code shows windows with percentages', [view('claude'), NSLogic.limitsView(ml.claude).windows.every((w) => typeof w.used_pct === 'number')], ['known', true]);
   eq('dev-mock limits: the "no data" text exists in ru and en', ['ru', 'en'].map((l) => !!NSI18n.dicts[l]['lim.no_data']), [true, true]);
 } else eq('dev-mock limits script is loaded', 'missing', 'loaded');
+
+// ================= v7: agents as terminals (agents7.js, term.js) =================
+if (typeof NSAgents !== 'undefined') {
+  const A = NSAgents, TT = NSTerm;
+  const tb = (id, k) => ({ id, k });
+  eq('v7 groups: by project in the order each first appears, tabs keep their order inside; the order is what ⌘1…9 follow',
+    ((g) => [g.groups.map((x) => [x.key, x.tabs.map((y) => y.id)]), g.order])(A.groupTabs([tb('a', 'p1'), tb('b', 'p2'), tb('c', 'p1'), tb('d', '')], (x) => x.k)),
+    [[['p1', ['a', 'c']], ['p2', ['b']], ['', ['d']]], ['a', 'c', 'b', 'd']]);
+  const PR = [{ id: 'p1', path: '/u/code/app' }, { id: 'p2', path: '/u/code/app/sub' }, { id: 'p3', path: '/u/code/apple' }];
+  eq('v7 project of a folder: the longest project that holds it; a name that only starts the same is not it; none -> ""',
+    ['/u/code/app', '/u/code/app/src/x', '/u/code/app/sub/y', '/u/code/apple/', '/u/code/ap', ''].map((c) => A.projectOfPath(c, PR)), ['p1', 'p1', 'p2', 'p3', '', '']);
+  eq('v7 spend on a card: tokens in+out short, $ only when the CLI gave it, nothing when there is no data',
+    [A.useText({ tokens_in: 48210, tokens_out: 6120, usd: null }, (k, p) => p.n + ' tok'), A.useText({ tokens_in: 900, tokens_out: 50, usd: 0.4 }, (k, p) => p.n + ' tok'), A.useText({ tokens_in: null, tokens_out: null, usd: null }, () => 'x'), A.useText(null, () => 'x'), A.fmtTok(2500000)],
+    ['54.3k tok', '950 tok · $0.40', '', '', '2.5M']);
+  eq('v7 ⌘J: the next waiting one after the focused, wrapping; nobody -> null; focus unknown -> the first waiting in order',
+    [A.nextWaiting(['a', 'b', 'c', 'd'], ['a', 'c'], 'c'), A.nextWaiting(['a', 'b', 'c', 'd'], ['a', 'c'], 'a'), A.nextWaiting(['a', 'b'], [], 'a'), A.nextWaiting(['a', 'b', 'c'], ['c', 'b'], null)], ['a', 'c', null, 'b']);
+  eq('v7 diff lines: hunk, meta, add, del, context (the window draws them as text)', A.diffLines('diff --git a/x b/x\n--- a/x\n+++ b/x\n@@ -1 +1 @@\n-old\n+new\n same').map((l) => l.kind), ['meta', 'meta', 'meta', 'hunk', 'del', 'add', 'ctx']);
+  eq('v7 resume after a restart: claude gets --continue after the binary, codex `resume --last`, twice is once, an env without the word -> null',
+    [TT.resumeArgv(['claude', '--model', 'opus'], 'claude'), TT.resumeArgv(['codex', '-m', 'o4'], 'codex'), TT.resumeArgv(['claude', '--continue'], 'claude'), TT.resumeArgv(['gemini'], 'gemini'), TT.resumeArgv([], 'claude')],
+    [['claude', '--continue', '--model', 'opus'], ['codex', 'resume', '--last', '-m', 'o4'], ['claude', '--continue'], null, null]);
+  eq('v7 card preview: frames, rules, spinners and bare prompts out, spaces squeezed, the last two worth reading',
+    TT.previewLines(['╭──────╮', '│ ● Read src/a.py   │', '  9 passed  in 1.4s', '', '> ', '──────', '? for shortcuts', '✻'], 2), ['● Read src/a.py', '9 passed in 1.4s']);
+} else eq('v7 agents scripts are loaded', 'missing', 'loaded');
 
 const total = out.length;
 if (typeof document !== 'undefined') {

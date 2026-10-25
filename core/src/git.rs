@@ -5,6 +5,8 @@ use std::io::Read as _;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 
+pub mod desk;
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct RepoInfo {
     pub is_repo: bool,
@@ -81,6 +83,8 @@ fn git_cmd(dir: &Path) -> Command {
         .env("GIT_TERMINAL_PROMPT", "0")
         .env("GIT_EDITOR", "true")
         .env("LC_ALL", "C")
+        // a repository's own config must not run a program on a read (fsmonitor of an unpacked or agent-written .git)
+        .args(["-c", "core.fsmonitor=false"])
         .args(identity_args(dir));
     c
 }

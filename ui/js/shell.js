@@ -77,6 +77,7 @@
     s.lastEnv = envId; NS.storage.set('ns.lastenv', envId);
     if (chat) lastChat.set(envId, chat);
     renderSide(); barUpdate('route');
+    if (NS.notices) NS.notices.onRoute(Object.assign({}, s.route, { screen: 'chat' }));   // the one-time "no sandbox" bar follows the env in focus
   }
   const forward = (evt, payload) => { if (current && current.inst && current.inst.update) current.inst.update(evt, payload); };
   // an env picked in the bar, the palette or by ⌥⌘n: a full screen that belongs to an env (settings, factory) follows it
@@ -86,7 +87,8 @@
     else nav('env', { env: envId });
   }
   const callsTotal = () => s.envs.reduce((n, e) => n + L.envCounts(NS.store.envTasks(e.id), e.id, s.snoozed).calls, 0);
-  function patchTitle() { const n = callsTotal(); document.title = n ? `(${n}) Nightshift` : 'Nightshift'; }
+  // the title counts who needs the person: tasks that call and (v7) agent terminals that wait
+  function patchTitle() { const n = callsTotal() + (NS.agents ? NS.agents.waitingCount() : 0); document.title = n ? `(${n}) Nightshift` : 'Nightshift'; }
 
   // ---------- the bar (story 296): modules from the registry ('bar'), drawn once, each patches itself on events ----------
   const barInst = new Map();
@@ -151,12 +153,13 @@
   R.extend('bar', { id: 'branch', side: 'left', order: 30, render(el) {
     const draw = () => {
       const chat = s.route.chat && s.route.chat !== 'new' ? NS.store.findChat(s.route.chat) : null;
-      const pid = (chat && chat.project_id) || NS.projects.current();
+      const fp = NS.tabs && NS.tabs.active, fpid = fp && fp.kind === 'term' && NS.agents ? NS.agents.projectOf(fp) : '';   // v7: the agent in focus
+      const pid = fpid || (chat && chat.project_id) || NS.projects.current();
       const p = NS.store.project(pid);
       if (!p) { clear(el).append(h('span', { class: 'bm-t mute', text: t('bar.no_project') })); return; }
       const repo = s.repos.get(p.id);
       if (!s.repos.has(p.id)) NS.store.loadRepo(p.id).then(draw);
-      const br = repo ? (repo.current_branch || p.base_branch) + (repo.ahead ? ' ↑' + repo.ahead : '') + (repo.behind ? ' ↓' + repo.behind : '') : p.base_branch || '';
+      const br = fp && fp.branch ? fp.branch : repo ? (repo.current_branch || p.base_branch) + (repo.ahead ? ' ↑' + repo.ahead : '') + (repo.behind ? ' ↓' + repo.behind : '') : p.base_branch || '';
       clear(el).append(h('span', { class: 'bm-t', title: t('bar.branch') }, ic('i-branch'), h('span', { text: p.name }), br ? h('span', { class: 'mute', text: br }) : null));
     };
     draw();
@@ -289,7 +292,7 @@
   function toggleSide(force) {
     const v = force === undefined ? !document.body.classList.contains('side-on') : !!force;
     document.body.classList.toggle('side-on', v);
-    NS.storage.set('ns.side', v ? '1' : '0');
+    NS.storage.set('ns.side7', v ? '1' : '0');
     if (v) renderSide();
     barUpdate('side');
   }
@@ -373,5 +376,6 @@
     mountScreen: (id, params) => mount(id, params),
     get current() { return current; } };
   NS.nav = nav;
-  { const saved = NS.storage.get('ns.side'); if (saved === '1' || (saved == null && window.innerWidth >= 900)) document.body.classList.add('side-on'); }
+  // v7: the agents column took the place of the chat list; ⌘B still brings the list back (a new key: the v5 default is gone)
+  { const saved = NS.storage.get('ns.side7'); if (saved === '1') document.body.classList.add('side-on'); }
 })();

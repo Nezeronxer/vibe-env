@@ -37,7 +37,11 @@
     let inTerm = !!(chatObj && chatObj.in_terminal);
     const termMark = h('span', { class: 'term6', title: t('shell.term_on_d'), hidden: !inTerm }, h('span', { class: 't-glyph', 'aria-hidden': 'true', text: '>_' }), h('span', { text: t('shell.term_on') }));
     const setTerm = (on) => { inTerm = !!on; termMark.hidden = !inTerm; };
-    const openTerm = () => NS.chatShell.openTerminal(chatId).then((r) => { if (r && alive.v) setTerm(true); });
+    // one terminal per chat: a second CLI on the same session would lose one of the two talks (bring the open one forward instead)
+    const openTerm = () => {
+      if (inTerm) { const have = NS.tabs && window.NSPanes.allPanes(NS.tabs.state).find((x) => x.pane.kind === 'term' && x.pane.chat === chatId); if (have) { NS.tabs.focusPane(have.pane.id); return Promise.resolve(); } NS.shell.toast(t('shell.term_on_d')); return Promise.resolve(); }
+      return NS.chatShell.openTerminal(chatId).then((r) => { if (r && alive.v) setTerm(true); });
+    };
     const header = h('header', { class: 'convo-h pane-h' }, h('span', { class: 'pane-ic' }, envIcon(env.custom ? 'custom' : envId)), lamp,
       title, sub, termMark, sideBtn, !isNew ? menuBtn : null);
     // F11: a new chat starts with the project button above the field (the menu: recent, open a folder, create)
@@ -164,6 +168,7 @@
       const edit = h('button', { type: 'button', class: 'q-act', text: t('chatx.edit'), onclick: () => {
         queue = queue.filter((x) => x.id !== q.id); renderFeed(); dropQueued(q);
         composer.insert(q.text + (composer.ta.value ? '\n' + composer.ta.value : ''));
+        (q.attachments || []).forEach((p) => composer.addPath(p));          // the images go back with the text
       } });
       const drop = h('button', { type: 'button', class: 'q-act', 'aria-label': t('chatx.drop'), title: t('chatx.drop'), text: '×', onclick: () => { queue = queue.filter((x) => x.id !== q.id); renderFeed(); composer.drawHint(); dropQueued(q); } });
       return h('div', { class: 'me queued' }, attNode(q), h('div', { class: 'me-b' }, h('span', { class: 'sr-only', text: t('feed.you') }), richText(q.text)),
@@ -627,6 +632,12 @@
           const kind = L.whoOf(payload).kind;
           const agent = ['model', 'role'].includes(kind) && !payload.tool && payload.text;
           if (kind !== 'human' && (agent || kind === 'system' || payload.action)) think = null;       // G80: an answer, an action or a line ends "thinking"
+          // a stop or a failure in the middle of an answer comes as one system line (reply_to set): nothing of this answer goes on -
+          // the streams that never got their final message end as they are, the chat's unfinished actions end as failed
+          if (kind === 'system' && payload.reply_to) {
+            for (const [sid, sx] of streams) if (!sx.final) { streams.delete(sid); reveals.delete(sx.reveal); if (sx.text) msgs = L.mergeMsgs(msgs, [{ id: sid, chat_id: chatId, who: 'model', text: sx.text, at: new Date(sx.at || Date.now()).toISOString() }]); }
+            for (const e of acts.values()) if (!e.taskId && e.action && !e.action.done) e.action = Object.assign({}, e.action, { done: true, ok: false });
+          }
           const sx = streams.get(payload.id);
           if (sx) {                                     // G81: the streamed answer is complete: it prints to its end, then markdown replaces it
             Object.assign(sx, { text: payload.text, final: true, msg: payload });
@@ -663,7 +674,7 @@
         else if (evt === 'project' || evt === 'chats') { drawHeader(); }
         else if (evt === 'focus-input') composer.focus();
       },
-      destroy() { alive.v = false; for (const r of reveals) r.stop(); offs.forEach((f) => f.then((u) => u && u()).catch(() => {})); live.destroy(); if (convoy) convoy.destroy(); closeChatMenu(); NS.taskCard.closeMenu(); clearInterval(tick); document.removeEventListener('keydown', onKey); limits.destroy(); composer.destroy(); },
+      destroy() { alive.v = false; if (pj && pj.destroy) pj.destroy(); for (const r of reveals) r.stop(); offs.forEach((f) => f.then((u) => u && u()).catch(() => {})); live.destroy(); if (convoy) convoy.destroy(); closeChatMenu(); NS.taskCard.closeMenu(); clearInterval(tick); document.removeEventListener('keydown', onKey); limits.destroy(); composer.destroy(); },
     };
   }
 

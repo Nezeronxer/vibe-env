@@ -276,14 +276,25 @@ fn front(text: &str, key: &str) -> Option<String> {
     let mut lines = text.lines();
     let first = lines.next()?.trim();
     let yaml = first == "---";
-    let rest: Box<dyn Iterator<Item = &str>> = if yaml { Box::new(lines.take_while(|l| l.trim() != "---")) } else { Box::new(text.lines()) };
-    for l in rest {
-        let l = l.trim();
+    let rest: Vec<&str> = if yaml { lines.take_while(|l| l.trim() != "---").collect() } else { text.lines().collect() };
+    for (i, raw) in rest.iter().enumerate() {
+        let l = raw.trim();
         let Some(v) = l.strip_prefix(key).map(str::trim_start) else { continue };
         let v = v.strip_prefix(':').or_else(|| if yaml { None } else { v.strip_prefix('=') });
         let Some(v) = v.map(str::trim) else { continue };
+        // a block scalar (`>-`, `>`, `|`, `|+` ...): the value is the lines below it that are indented deeper than the key
+        if yaml && v.starts_with(['|', '>']) && v[1..].chars().all(|c| "+-0123456789".contains(c)) {
+            let indent = |s: &str| s.len() - s.trim_start().len();
+            let key_indent = indent(raw);
+            let block: Vec<&str> = rest[i + 1..].iter().take_while(|n| n.trim().is_empty() || indent(n) > key_indent).map(|n| n.trim()).collect();
+            let joined = block.join(" ");
+            if !joined.trim().is_empty() {
+                return Some(line_of(&joined));
+            }
+            continue;
+        }
         let v = v.trim_matches(|c| c == '"' || c == '\'');
-        if !v.is_empty() && v != "|" && v != ">" {
+        if !v.is_empty() {
             return Some(line_of(v));
         }
     }

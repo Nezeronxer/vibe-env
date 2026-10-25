@@ -75,6 +75,9 @@ fn no_tokens(v: Vec<AgentEvent>) -> Vec<AgentEvent> {
 fn text(t: &str) -> AgentEvent {
     AgentEvent::Text(t.into())
 }
+fn delta(t: &str) -> AgentEvent {
+    AgentEvent::TextDelta(t.into())
+}
 fn done(session: &str, t: &str) -> AgentEvent {
     AgentEvent::Done { session: Some(session.into()), text: t.into(), is_error: false }
 }
@@ -161,10 +164,24 @@ fn gemini_events_join_deltas_and_report_errors() {
     let evs = replay(&Gemini::new(), "gemini-from-docs.jsonl", true);
     assert_eq!(
         evs,
-        vec![start("t1", "run_shell_command", bash("ls")), end("t1", "run_shell_command", bash("ls"), Some("a b"), true), text("o"), text("k"), done("gem-sess-1", "ok")]
+        // the pieces of the answer (`delta: true`) are deltas: the chat streams them, the log gets the whole answer once in Done
+        vec![start("t1", "run_shell_command", bash("ls")), end("t1", "run_shell_command", bash("ls"), Some("a b"), true), delta("o"), delta("k"), done("gem-sess-1", "ok")]
     );
     let evs = replay(&Gemini::new(), "gemini-error-from-docs.jsonl", false);
     assert!(matches!(evs.as_slice(), [AgentEvent::Limit { resets_at: None }]), "{evs:?}");
+}
+
+#[test]
+fn a_secret_cut_between_two_gemini_pieces_is_held_until_it_is_whole() {
+    let secret = "tok-ABCDEFGH12345678";
+    let d = tempfile::tempdir().unwrap();
+    let f = d.path().join("gemini.jsonl");
+    let piece = |t: &str| format!(r#"{{"type":"message","role":"assistant","content":"{t}","delta":true}}"#);
+    std::fs::write(&f, format!("{}\n{}\n{}\n", piece("the key is tok-ABCD"), piece("EFGH12345678 ok"), r#"{"type":"result","status":"success","stats":{"total_tokens":10}}"#)).unwrap();
+    let evs = replay_path(&Gemini::new(), f.to_str().unwrap(), true, vec![("API_TOKEN".into(), secret.into())]);
+    let shown: String = evs.iter().filter_map(|e| if let AgentEvent::TextDelta(t) | AgentEvent::Text(t) = e { Some(t.as_str()) } else { None }).collect();
+    assert!(shown.starts_with("the key is ") && shown.ends_with(" ok") && !shown.contains("tok-"), "{shown:?}");
+    assert!(matches!(evs.last(), Some(AgentEvent::Done { text, .. }) if !text.contains("tok-")), "{evs:?}");
 }
 
 #[test]
@@ -530,6 +547,26 @@ fn claude_blocked_status_is_a_limit_with_the_reset_time() {
     let w = &windows(&evs)[0];
     assert!(w[0].exhausted && w[0].used_pct == Some(100.0), "{w:?}");
     assert!(!w[1].exhausted);
+}
+
+#[test]
+fn claude_rejected_status_with_the_extra_usage_allowed_is_no_limit() {
+    let d = tempfile::tempdir().unwrap();
+    let line = |overage: &str, using: bool| {
+        serde_json::json!({"type":"rate_limit_event","rate_limit_info":{"status":"rejected","resetsAt":1792576800,"rateLimitType":"five_hour","overageStatus":overage,"isUsingOverage":using,
+            "unifiedWindows":{"five_hour":{"utilization":1.0,"resetsAt":1792576800},"seven_day":{"utilization":0.11,"resetsAt":1792918800}}}})
+    };
+    let result = serde_json::json!({"type":"result","subtype":"success","is_error":false,"result":"done","session_id":"s1"});
+    // paid by the extra usage: the answer stands, the env is not held until the reset
+    for (overage, using) in [("allowed", true), ("allowed", false), ("allowed_warning", true)] {
+        let evs = replay_lines(d.path(), &[line(overage, using), result.clone()], false);
+        assert!(!evs.iter().any(|e| matches!(e, AgentEvent::Limit { .. })), "{overage} {using}: {evs:?}");
+        assert!(windows(&evs).iter().flatten().all(|w| !w.exhausted), "{overage} {using}: {evs:?}");
+        assert!(matches!(evs.last(), Some(AgentEvent::Done { is_error: false, .. })), "{evs:?}");
+    }
+    // the fixture of a real stop: no extra usage
+    let evs = replay_lines(d.path(), &[line("rejected", false), result], false);
+    assert!(evs.iter().any(|e| matches!(e, AgentEvent::Limit { .. })), "{evs:?}");
 }
 
 #[test]

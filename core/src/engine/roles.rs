@@ -234,6 +234,7 @@ impl Engine {
             run.extra_env.extend(Self::copy_env(t));
             run.json_schema = call.schema.clone();
             run.extra_args = env_set.extra_args.clone();
+            run.attachments = self.state(&t.id).attachments;
             run.allowed_tools = settings.role_tools.get(&role).cloned().unwrap_or_else(|| agent::default_tools(role, &check_cmds(p)));
             if a.reports_cost() {
                 // capped by what is left of the task and of the env's day, whichever is less
@@ -541,12 +542,14 @@ impl Engine {
         if !ro.exists() {
             return;
         }
+        // the list first: a guard in the head of a `for` lives to the end of the loop, and `log` takes the store lock itself
+        let projects = lk(&self.store).projects();
         if let Err(e) = std::fs::remove_dir_all(&ro) {
-            for p in lk(&self.store).projects() {
+            for p in &projects {
                 self.log(&p.id, LogKind::Error, &format!("copy_not_removed: {}: {e}", ro.display()));
             }
         }
-        for p in lk(&self.store).projects() {
+        for p in &projects {
             if let Err(e) = self.rm_wt(&p.path, &ro.join("none"), false) {
                 self.log(&p.id, LogKind::Error, &format!("copy_not_removed: {e}")); // prunes what is gone
             }

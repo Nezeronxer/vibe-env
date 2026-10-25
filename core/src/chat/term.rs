@@ -41,9 +41,14 @@ impl Chats {
     /// The words for "В терминале". `fresh` = a new conversation of the env's CLI, chosen by the person. Err (keys):
     /// `chat_not_found`, `project_not_found`, `agent_not_found: <env>`, `env_unavailable: <hint>` (no CLI),
     /// `copy_failed: <why>`, `no_session` (nothing to continue yet), `cannot_resume` (the CLI has no way to),
-    /// `session_not_found` (Claude Code: no file of the session for the copy). After an Err the chat is as it was.
+    /// `session_not_found` (Claude Code: no file of the session for the copy), `already_in_terminal` (one terminal per
+    /// chat: a second would write the same session and the first to end would take the mark off). After an Err the chat
+    /// is as it was.
     pub fn terminal_open(&self, chat: &str, fresh: bool) -> Result<TermLaunch, String> {
         let c = self.chat(chat).ok_or("chat_not_found")?;
+        if c.terminal.is_some() {
+            return Err("already_in_terminal".into());
+        }
         let p = lk(self.engine.store()).project(&c.project_id).ok_or(reason::PROJECT_NOT_FOUND)?;
         let a = self.engine.adapter(&c.env).ok_or_else(|| format!("{}: {}", reason::AGENT_NOT_FOUND, c.env))?;
         a.available().map_err(|why| format!("{}: {why}", reason::ENV_UNAVAILABLE))?;
@@ -58,12 +63,10 @@ impl Chats {
             }
             (argv, Some(s))
         };
-        if c.terminal.is_none() {
-            let mark = ChatTerminal { since: self.now(), session: session.clone() };
-            self.update_chat(chat, |x| x.terminal = Some(mark));
-            self.line(chat, keys::OPENED_IN_TERMINAL, "", None, None, None);
-            self.emit(ChatEvent::Changed(chat.to_string()));
-        }
+        let mark = ChatTerminal { since: self.now(), session: session.clone() };
+        self.update_chat(chat, |x| x.terminal = Some(mark));
+        self.line(chat, keys::OPENED_IN_TERMINAL, "", None, None, None);
+        self.emit(ChatEvent::Changed(chat.to_string()));
         Ok(TermLaunch { env: c.env, cwd: copy, argv, resumed: session.is_some(), checked: a.resume_checked(), session })
     }
 
@@ -160,6 +163,9 @@ fn session_talk(file: &Path, since: DateTime<Local>) -> Vec<(String, Who, String
     let mut r = BufReader::new(f);
     let mut out = vec![];
     let mut buf = Vec::new();
+    // the chat's own runs (a message sent from the window while the terminal was open) are in the same file: their prompt
+    // and the answers to it are in the feed already, and the prompt is not the person's words
+    let mut own = false;
     for i in 0.. {
         buf.clear();
         match (&mut r).take(LINE_MAX + 1).read_until(b'\n', &mut buf) {
@@ -192,6 +198,12 @@ fn session_talk(file: &Path, since: DateTime<Local>) -> Vec<(String, Who, String
         };
         let text = text.trim();
         if text.is_empty() || (who == Who::Human && (text.contains("<command-name>") || text.contains("<local-command"))) {
+            continue;
+        }
+        if who == Who::Human {
+            own = OWN_PROMPT_MARKS.iter().any(|m| text.contains(m));
+        }
+        if own {
             continue;
         }
         let uuid = j["uuid"].as_str().filter(|u| u.chars().all(|c| c.is_ascii_alphanumeric() || c == '-')).map(String::from).unwrap_or_else(|| format!("line-{i}"));

@@ -62,7 +62,7 @@ pub async fn config_open() -> Res<Value> {
     if cfg!(target_os = "macos") {
         open.arg("-t"); // a file without an extension has no app of its own
     }
-    open.arg(&c.path).spawn().map_err(e2s)?;
+    crate::open::spawn_reaped(open.arg(&c.path)).map_err(e2s)?;
     Ok(json!({ "path": c.path, "created": created }))
 }
 

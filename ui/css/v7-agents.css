@@ -1,0 +1,194 @@
+/* v7: agents as terminals. The column of agent cards on the left (tabs.js + agents7.js), the aura of a working agent in the
+   colour of its env, the pulse of one that waits, the launcher, the changes panel. Colours only from tokens.css. */
+@property --a7 { syntax: "<angle>"; inherits: false; initial-value: 0deg; }
+.tab[data-env="claude"], .launch7 [data-env="claude"] { --env: var(--env-claude); }
+.tab[data-env="codex"], .launch7 [data-env="codex"] { --env: var(--env-codex); }
+.tab[data-env="gemini"], .launch7 [data-env="gemini"] { --env: var(--env-gemini); }
+.tab[data-env="qwen"], .launch7 [data-env="qwen"] { --env: var(--env-qwen); }
+.tab[data-env="opencode"], .launch7 [data-env="opencode"] { --env: var(--env-opencode); }
+.tab[data-env="cursor"], .launch7 [data-env="cursor"] { --env: var(--env-cursor); }
+
+/* ---------- the frame: the column | the panes ---------- */
+.ws.ws7 { flex-direction: row; gap: var(--gap); }
+.ws7-main { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; }
+.rail7 { flex: 0 0 272px; min-height: 0; display: flex; flex-direction: column; gap: 8px; padding: 12px 8px 8px;
+  background: var(--side-fx); border: 1px solid var(--line); border-radius: var(--radius-pane); position: relative; }
+.rail7-h { display: flex; align-items: center; gap: 8px; padding: 0 6px; min-height: 28px; }
+.rail7-brand { flex: 1; font: 600 13.5px var(--sans); letter-spacing: .01em; color: var(--ink); display: flex; align-items: center; gap: 9px; }
+.rail7-brand::before { content: ""; width: 10px; height: 10px; border-radius: 3px; background: var(--amber); box-shadow: 0 0 12px var(--glow);
+  transition: background var(--t2) var(--ease), box-shadow var(--t2) var(--ease); }
+.rail7 .tabs-corner { height: 24px; }
+.rail7-new { display: flex; align-items: center; gap: 8px; height: 36px; padding: 0 12px; border-radius: 10px; border: 1px solid var(--line2);
+  background: var(--card-fx); color: var(--ink); font: 500 13px var(--sans); cursor: pointer;
+  transition: border-color var(--t) var(--ease), background var(--t) var(--ease), transform var(--t) var(--ease); }
+.rail7-new .ic { width: 14px; height: 14px; color: var(--amber); }
+.rail7-new:hover { border-color: color-mix(in srgb, var(--amber) 60%, var(--line2)); background: color-mix(in srgb, var(--amber) 8%, var(--raised)); }
+.rail7-new:active { transform: scale(.98); }
+.rail7-new:focus-visible { outline: 2px solid var(--amber); outline-offset: 2px; }
+
+/* ---------- the list: groups of cards, one moving highlight under the card in focus ---------- */
+.tabstrip.rail7-list { flex: 1; min-height: 0; display: block; overflow-y: auto; overflow-x: hidden; position: relative; margin: 0 -4px; padding: 0 4px; scrollbar-width: thin; }
+.rail7-list .tabs-scroll { display: flex; flex-direction: column; gap: 3px; overflow: visible; position: relative; z-index: 1; }
+.rail7-sel { position: absolute; left: 4px; right: 4px; top: 0; height: var(--h, 0px); transform: translateY(var(--y, 0px)); border-radius: 10px; z-index: 0; pointer-events: none;
+  background: var(--raised); box-shadow: inset 0 0 0 1px var(--line2), var(--shadow-sm); opacity: var(--o, 0);
+  transition: transform var(--t2) var(--spring), height var(--t2) var(--spring), opacity var(--t) var(--ease); }
+.rail7-sel::before { content: ""; position: absolute; left: 0; top: 9px; bottom: 9px; width: 3px; border-radius: 0 3px 3px 0; background: var(--sel-env, var(--amber)); transition: background var(--t2) var(--ease); }
+.grp7 { display: flex; align-items: center; gap: 7px; padding: 12px 8px 5px; font: 600 10.5px var(--sans); letter-spacing: .07em; text-transform: uppercase; color: var(--ink3); }
+.grp7:first-child { padding-top: 4px; }
+.grp7-n { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.grp7 small { margin-left: auto; font: 500 10.5px var(--sans); letter-spacing: 0; }
+.grp7-dot { width: 7px; height: 7px; border-radius: 2px; flex: none; background: var(--plan); }
+.grp7[data-hue="1"] .grp7-dot { background: var(--test); }
+.grp7[data-hue="2"] .grp7-dot { background: var(--rev); }
+.grp7[data-hue="3"] .grp7-dot { background: var(--gate); }
+.grp7[data-hue="4"] .grp7-dot { background: var(--watch); }
+.grp7[data-hue="5"] .grp7-dot { background: var(--exec); }
+
+.rail7-list .tab { display: grid; grid-template-columns: 16px minmax(0, 1fr) auto auto auto; grid-template-areas: "ic t n dot x" "pv pv pv pv pv" "meta meta meta meta meta";
+  align-items: center; column-gap: 8px; height: auto; max-width: none; padding: 9px 8px 8px 12px; border-radius: 10px; position: relative; flex: none;
+  color: var(--ink2); background: transparent; box-shadow: none; transition: background var(--t) var(--ease), color var(--t) var(--ease); }
+.rail7-list .tab:hover { background: color-mix(in srgb, var(--ink) 4%, transparent); }
+.rail7-list .tab.on { background: transparent; color: var(--ink); box-shadow: none; }
+.rail7-list .tab:focus-visible { outline: 2px solid var(--amber); outline-offset: -2px; }
+.rail7-list .tab-ic { grid-area: ic; color: var(--env, var(--ink3)); display: grid; place-items: center; }
+.rail7-list .tab-ic .t-glyph { font: 600 10px var(--mono); color: var(--env, var(--ink3)); }
+.rail7-list .tab-t { grid-area: t; }
+.rail7-list .tab-l { font: 500 13px var(--sans); padding: 0; }
+.rail7-list .tab.on .tab-l { box-shadow: none; }
+.rail7-list .tab-n { grid-area: n; }
+.rail7-list .tdot { grid-area: dot; }
+.rail7-list .tab-x { grid-area: x; }
+.tab-pv { grid-area: pv; margin-top: 5px; font: 11px/1.5 var(--mono); color: var(--ink3); white-space: pre-line; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+  max-height: 3em; word-break: break-word; }
+.tab-pv:empty { display: none; }
+.tab-meta { grid-area: meta; display: flex; align-items: center; gap: 8px; margin-top: 5px; font: 11px var(--sans); color: var(--ink3); min-width: 0; }
+.tab-meta > span { white-space: nowrap; }
+.tab-br { font: 10.5px var(--mono); overflow: hidden; text-overflow: ellipsis; max-width: 110px; padding: 1px 5px; border-radius: 4px; background: var(--raised2); }
+.tab-use:empty { display: none; }
+.tab-k { margin-left: auto; font: 10.5px var(--sans); color: var(--ink3); opacity: 0; transition: opacity var(--t) var(--ease); background: none; border: 0; }
+.rail7-list .tab:hover .tab-k, .rail7-list .tab.on .tab-k { opacity: .8; }
+.rail7-list .tab.drag { opacity: .45; }
+.rail7-list .tab.over { box-shadow: inset 0 2px 0 var(--amber); }
+
+/* the aura: a light that runs round a working agent in its env colour; faster when it prints more (--aura-dur from term.js) */
+.rail7-list .tab[data-state="run"]::after, .pane:has(> .pane-body .t-pane[data-state="run"])::after {
+  content: ""; position: absolute; inset: 0; border-radius: inherit; padding: 1px; pointer-events: none; z-index: 2;
+  background: conic-gradient(from var(--a7), transparent 0 55%, color-mix(in srgb, var(--env, var(--amber)) 90%, transparent) 78%, transparent 92%);
+  -webkit-mask: linear-gradient(white, white) content-box, linear-gradient(white, white); -webkit-mask-composite: xor; mask-composite: exclude;
+  animation: aura7 var(--aura-dur, 3s) linear infinite; }
+.rail7-list .tab[data-state="run"] { box-shadow: 0 0 22px -8px color-mix(in srgb, var(--env, var(--amber)) 70%, transparent); }
+.rail7-list .tab[data-state="run"] .tdot { background: var(--env, var(--amber)); box-shadow: 0 0 8px 1px color-mix(in srgb, var(--env, var(--amber)) 60%, transparent); }
+.pane:has(> .pane-body .t-pane[data-state="run"]) { --env: var(--amber); }
+.pane:has(> .pane-body .t-pane[data-state="run"])::after { padding: 1.5px; opacity: .85; }
+@keyframes aura7 { to { --a7: 360deg; } }
+/* waiting for the person: a warm card that breathes; the pane gets the same rim */
+.rail7-list .tab[data-state="wait"] { background: color-mix(in srgb, var(--human) 9%, transparent); color: var(--ink); }
+.rail7-list .tab[data-state="wait"]::after, .pane:has(> .pane-body .t-pane[data-state="wait"])::after { content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none; z-index: 2;
+  box-shadow: inset 0 0 0 1px var(--human-line); animation: breathe7 1.8s var(--ease) infinite; }
+.rail7-list .tab[data-state="wait"] .tdot { background: var(--human); }
+@keyframes breathe7 { 0%, 100% { box-shadow: inset 0 0 0 1px var(--human-line), 0 0 0 0 color-mix(in srgb, var(--human) 35%, transparent); } 50% { box-shadow: inset 0 0 0 1px var(--human), 0 0 16px 0 color-mix(in srgb, var(--human) 22%, transparent); } }
+.rail7-list .tab[data-state="fail"] .tab-pv { color: color-mix(in srgb, var(--bad) 70%, var(--ink3)); }
+
+/* the foot: ⌘K, who waits, the settings */
+.ws-nav.rail7-foot { display: flex; flex-wrap: wrap; gap: 4px; padding-top: 8px; border-top: 1px solid var(--line); }
+.rail7-foot .navb { flex: 1; justify-content: center; }
+.rail7-foot .nb-wait { flex-basis: 100%; order: -1; background: var(--human-bg); color: var(--human); border: 1px solid var(--human-line); animation: breathe7 1.8s var(--ease) infinite; }
+.nb-wait-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--human); }
+
+/* switching agents: the new terminal comes in softly; a card dragged onto the panes opens beside */
+.panes.switch7 > .pane, .panes.switch7 > .split { animation: in7 var(--t2) var(--ease); }
+@keyframes in7 { from { opacity: 0; transform: translateY(6px) scale(.995); } }
+.panes.drop7 { outline: 2px dashed color-mix(in srgb, var(--amber) 70%, transparent); outline-offset: -4px; border-radius: var(--radius-pane); }
+
+/* ---------- the launcher ---------- */
+.launch7 { position: fixed; left: var(--x); top: var(--y); z-index: 60; width: 380px; max-width: calc(100vw - 24px); display: flex; flex-direction: column; gap: 6px; padding: 14px;
+  background: var(--raised); border: 1px solid var(--line2); border-radius: 14px; box-shadow: var(--shadow); transform-origin: 20px 0; animation: pop7 var(--t2) var(--spring); }
+@keyframes pop7 { from { opacity: 0; transform: translateY(-4px) scale(.97); } }
+.l7-h { display: flex; flex-direction: column; gap: 2px; margin-bottom: 4px; }
+.l7-h b { font: 600 14px var(--sans); color: var(--ink); }
+.l7-h small, .l7-lbl { font: 11.5px var(--sans); color: var(--ink3); }
+.l7-lbl { margin-top: 6px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; font-size: 10.5px; }
+.l7-envs { display: flex; flex-wrap: wrap; gap: 6px; }
+.l7-env { display: flex; align-items: center; gap: 7px; height: 30px; padding: 0 10px; border-radius: 8px; border: 1px solid var(--line2); background: var(--panel); color: var(--ink2);
+  font: 12.5px var(--sans); cursor: pointer; transition: border-color var(--t) var(--ease), background var(--t) var(--ease), color var(--t) var(--ease); }
+.l7-env .ic, .l7-env img { width: 13px; height: 13px; color: var(--env); }
+.l7-env:hover { color: var(--ink); }
+.l7-env.on { border-color: var(--env, var(--amber)); color: var(--ink); background: color-mix(in srgb, var(--env, var(--amber)) 12%, var(--panel)); }
+.l7-model { height: 32px; border-radius: 8px; border: 1px solid var(--line2); background: var(--panel); color: var(--ink); font: 13px var(--sans); padding: 0 8px; }
+.l7-where { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.l7-w { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--line2); background: var(--panel); color: var(--ink2);
+  text-align: left; cursor: pointer; transition: border-color var(--t) var(--ease), background var(--t) var(--ease); }
+.l7-w b { font: 500 12.5px var(--sans); color: var(--ink); overflow: hidden; text-overflow: ellipsis; max-width: 100%; white-space: nowrap; }
+.l7-w small { font: 11px/1.35 var(--sans); color: var(--ink3); }
+.l7-w.on { border-color: var(--amber); background: color-mix(in srgb, var(--amber) 9%, var(--panel)); }
+.l7-w:disabled { opacity: .5; cursor: default; }
+.l7-task { resize: vertical; min-height: 64px; border-radius: 8px; border: 1px solid var(--line2); background: var(--panel); color: var(--ink); font: 13px/1.45 var(--sans); padding: 8px 10px; }
+.l7-task:focus, .l7-model:focus { outline: none; border-color: var(--amber); box-shadow: 0 0 0 3px color-mix(in srgb, var(--amber) 22%, transparent); }
+.l7-tpl { display: flex; flex-wrap: wrap; gap: 5px; }
+.chip7 { height: 24px; padding: 0 9px; border-radius: 6px; border: 1px solid var(--line); background: transparent; color: var(--ink3); font: 11.5px var(--sans); cursor: pointer;
+  transition: color var(--t) var(--ease), border-color var(--t) var(--ease); }
+.chip7:hover { color: var(--ink); border-color: var(--line2); }
+.l7-foot { display: flex; justify-content: flex-end; margin-top: 8px; }
+.launch7 .l7-go { display: flex; align-items: center; gap: 10px; background: var(--amber); color: var(--on-amber); border-color: transparent; }
+.launch7 .l7-go kbd { font: 11px var(--sans); opacity: .75; background: none; border: 0; color: inherit; }
+.l7-more { display: grid; grid-template-columns: 1fr 1fr; gap: 2px; margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--line); }
+.l7-more-b { display: flex; align-items: center; gap: 8px; height: 30px; padding: 0 8px; border: 0; border-radius: 6px; background: none; color: var(--ink2); font: 12px var(--sans); cursor: pointer; text-align: left; }
+.l7-more-b:hover { background: var(--raised2); color: var(--ink); }
+.l7-more-b .ic { width: 13px; height: 13px; }
+
+/* ---------- the changes of an agent: a panel over the right side of its pane ---------- */
+.chg7 { position: absolute; top: 40px; right: 8px; bottom: 8px; width: min(520px, 62%); z-index: 6; display: flex; flex-direction: column; min-height: 0;
+  background: var(--raised); border: 1px solid var(--line2); border-radius: 12px; box-shadow: var(--shadow); animation: slide7 var(--t2) var(--ease); }
+@keyframes slide7 { from { opacity: 0; transform: translateX(14px); } }
+.chg7-h { display: flex; align-items: center; gap: 8px; padding: 10px 10px 10px 14px; border-bottom: 1px solid var(--line); }
+.chg7-h b { font: 600 13px var(--sans); }
+.chg7-h small { flex: 1; font: 11px var(--mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chg7-list { max-height: 38%; overflow: auto; padding: 6px; border-bottom: 1px solid var(--line); }
+.chg7-list p, .chg7-diff p { padding: 8px; font: 12.5px var(--sans); }
+.chg7-f { display: grid; grid-template-columns: 18px minmax(0, 1fr) auto auto; align-items: center; gap: 8px; padding: 5px 6px; border-radius: 6px; cursor: pointer; font: 12px var(--mono); color: var(--ink2); }
+.chg7-f:hover, .chg7-f.on { background: var(--raised2); color: var(--ink); }
+.chg7-s { font: 600 10.5px var(--mono); font-style: normal; color: var(--ink3); text-align: center; }
+.chg7-f[data-st="A"] .chg7-s, .chg7-f[data-st="?"] .chg7-s { color: var(--ok); }
+.chg7-f[data-st="D"] .chg7-s { color: var(--bad); }
+.chg7-f[data-st="M"] .chg7-s { color: var(--amber); }
+.chg7-p { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; direction: rtl; text-align: left; }
+.chg7-n { display: flex; gap: 6px; font: 11px var(--mono); }
+.chg7-n .add { color: var(--ok); }
+.chg7-n .del { color: var(--bad); }
+.chg7-diff { flex: 1; min-height: 0; overflow: auto; }
+.chg7-pre { margin: 0; padding: 8px 0; font: 11.5px/1.55 var(--mono); white-space: pre; tab-size: 4; }
+.chg7-pre .dl { display: block; padding: 0 12px; }
+.chg7-pre .add { background: var(--ok-bg); color: var(--ok); }
+.chg7-pre .del { background: var(--bad-bg); color: var(--bad); }
+.chg7-pre .hunk { color: var(--plan); background: color-mix(in srgb, var(--plan) 8%, transparent); }
+.chg7-pre .meta { color: var(--ink3); }
+.pt.pt-l { width: auto; padding: 0 8px; gap: 6px; display: inline-flex; align-items: center; font: 12px var(--sans); }
+.pt.pt-l .ic { width: 13px; height: 13px; }
+.pal-found .pal-t { font-family: var(--mono); font-size: 12px; color: var(--ink2); }
+
+@media (prefers-reduced-motion: reduce) {
+  .rail7-list .tab[data-state="run"]::after, .pane:has(> .pane-body .t-pane[data-state="run"])::after { animation: none; background: color-mix(in srgb, var(--env, var(--amber)) 50%, transparent); }
+  .rail7-list .tab[data-state="wait"]::after, .pane:has(> .pane-body .t-pane[data-state="wait"])::after, .rail7-foot .nb-wait { animation: none; }
+  .panes.switch7 > .pane, .panes.switch7 > .split, .launch7, .chg7 { animation: none; }
+  .rail7-sel { transition: none; }
+}
+
+/* the foot in one row: ⌘K wide, the gear square */
+.rail7-foot .navb { height: 32px; border-radius: 8px; border: 1px solid var(--line); background: transparent; color: var(--ink2); font: 12.5px var(--sans); letter-spacing: 0;
+  display: flex; align-items: center; justify-content: flex-start; gap: 8px; padding: 0 10px; cursor: pointer; transition: background var(--t) var(--ease), color var(--t) var(--ease), border-color var(--t) var(--ease); }
+.rail7-foot .navb:hover { background: var(--raised); color: var(--ink); border-color: var(--line2); }
+.rail7-foot .navb kbd { font: 11px var(--sans); color: var(--ink3); background: var(--raised2); border: 0; border-radius: 4px; padding: 1px 5px; }
+.rail7-foot .nb-set { flex: 0 0 32px; justify-content: center; padding: 0; }
+.rail7-foot .nb-set .nav-l { display: none; }
+.rail7-foot .nb-wait { justify-content: center; }
+
+/* v7: the limit meters in the bar lose the cream face of v5: a dark dial, a hairline, the needle in the live accent */
+.vu-s0 { stop-color: var(--raised2); } .vu-s1 { stop-color: var(--raised); }
+.vu-face { fill: var(--raised2); stroke: var(--line2); }
+.vu-tick { stroke: var(--ink3); }
+.vu-pivot { fill: var(--ink2); }
+.bar { background: transparent; }
+.rail7-foot .nb-auto { flex: 0 0 auto; padding: 0 9px; gap: 5px; }
+.rail7-foot .nb-auto .nav-l { display: none; }
+.rail7-foot .nb-auto .ic { width: 13px; height: 13px; }
+.rail7-foot .nb-auto .bn { font: 600 10.5px var(--sans); color: var(--on-amber); background: var(--amber); border-radius: 8px; padding: 0 5px; min-width: 16px; text-align: center; }

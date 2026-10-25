@@ -92,7 +92,20 @@ fn front_matter(text: &str) -> usize {
     if lines.next().map(str::trim) != Some("---") {
         return 0;
     }
-    lines.take_while(|l| l.trim() != "---").filter(|l| l.starts_with("name:") || l.starts_with("description:")).map(str::len).sum()
+    let (mut n, mut block) = (0, false);
+    for l in lines.take_while(|l| l.trim() != "---") {
+        // the lines of a block scalar (`description: >-` and its text below) are part of the description
+        if block && (l.starts_with([' ', '\t']) || l.trim().is_empty()) {
+            n += l.len();
+            continue;
+        }
+        block = false;
+        if l.starts_with("name:") || l.starts_with("description:") {
+            n += l.len();
+            block = l.strip_prefix("description:").is_some_and(|v| v.trim().starts_with(['|', '>']));
+        }
+    }
+    n
 }
 
 /// Skill dirs hold `<name>/SKILL.md`; agent dirs hold `<name>.md`.

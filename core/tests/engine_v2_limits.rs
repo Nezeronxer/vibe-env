@@ -402,6 +402,27 @@ fn a_login_is_asked_once_per_env_retried_every_minute_and_the_task_goes_on_after
 }
 
 #[test]
+fn a_task_waiting_for_a_login_does_not_go_on_by_itself_while_its_branch_is_in_the_project_folder() {
+    let env = Env::new();
+    let p = env.project(|p| p.agent = "fa".into());
+    let (clock, now) = manual_clock();
+    let fa = Arc::new(quiet_pipeline("fa").with_role(RoleKind::Worker, vec![vec![FakeStep::Auth("Not logged in.".into())], vec![write("a.txt", "A"), done("a")]]));
+    let e = env.engine(env.store(&p, |_| {}), vec![fa.clone()], Arc::new(RecordingNotifier::default()), Some(clock));
+    let id = submit(&e, &p, "Add a");
+    wait_status(&e, &id, Status::NeedsHuman);
+    e.take_to_main(&id).unwrap();
+    advance(&now, 61); // the minute of the login wait is over
+    std::thread::sleep(Duration::from_millis(400));
+    assert_eq!(calls_of(&fa, RoleKind::Worker).len(), 1, "no run in the detached copy");
+    assert_eq!(task(&e, &id).status, Status::NeedsHuman);
+    // given back, it goes on as before
+    e.give_to_agent(&id).unwrap();
+    advance(&now, 61);
+    wait_status(&e, &id, Status::Done);
+    assert_eq!(env.main_file("a.txt"), "A");
+}
+
+#[test]
 fn two_tasks_of_one_env_asking_for_a_login_make_one_call_between_them() {
     let env = Env::new();
     let p = env.project(|p| p.agent = "fa".into());

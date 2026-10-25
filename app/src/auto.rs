@@ -228,7 +228,9 @@ impl Auto {
     }
 
     pub fn scan_all(&self, hub: &Hub, now: DateTime<Local>) {
-        for p in lk(hub.engine.store()).projects() {
+        // the list first: a guard in the `for` head would live to the end of the loop, and `scan` takes the same lock
+        let projects = lk(hub.engine.store()).projects();
+        for p in projects {
             let _ = self.scan(hub, &p.id, now);
         }
     }
@@ -628,6 +630,26 @@ mod tests {
         let mut s = sched(&rig);
         s.project_id = "nope".into();
         assert!(a.save_schedule(&rig.hub, s, day(20, 12, 0)).unwrap_err().starts_with("project_not_found"));
+    }
+
+    #[test]
+    fn the_pass_over_all_projects_does_not_wait_for_the_store_lock_it_holds() {
+        let rig = Rig::new(FakeAdapter::new(vec![]));
+        std::fs::write(rig.repo.join("a.txt"), "one\n// TODO: first\n").unwrap();
+        g(&rig.repo, &["add", "-A"]);
+        g(&rig.repo, &["commit", "-q", "-m", "todo"]);
+        let (a, _) = auto_with(&rig, "{}");
+        let (a, hub, (tx, rx)) = (Arc::new(a), rig.hub.clone(), std::sync::mpsc::channel());
+        let a2 = a.clone();
+        std::thread::spawn(move || {
+            a2.scan_all(&hub, day(23, 1, 0));
+            let _ = tx.send(());
+        });
+        if rx.recv_timeout(Duration::from_secs(20)).is_err() {
+            std::mem::forget(rig); // its drop would wait for the locked store too
+            panic!("scan_all took the store lock for the whole loop and scan wanted it again");
+        }
+        assert_eq!(a.get(&rig.hub, day(23, 1, 0))["suggest"]["count"], 1);
     }
 
     #[test]

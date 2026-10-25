@@ -30,11 +30,13 @@ impl Hub {
 
     /// "Продолжить в терминале": the task goes to the person, the terminal opens in its copy with the env's own
     /// command to continue the session. The session id is checked before the engine is touched (A07).
-    pub fn hand_off(&self, task_id: &str, launch: &dyn Fn(&Launch) -> Res<()>) -> Res<Value> {
+    pub fn hand_off(&self, task_id: &str, ready: &dyn Fn() -> Res<()>, launch: &dyn Fn(&Launch) -> Res<()>) -> Res<Value> {
         let t = lk(self.engine.store()).task(task_id).ok_or("task_not_found")?;
         if t.session.as_deref().is_some_and(|s| !term::valid_session_id(s)) {
             return Err("bad_session_id".into());
         }
+        // no terminal to open: the task stays where it was, and its run goes on
+        ready()?;
         let h = self.engine.hand_off(task_id)?;
         let l = match &h.command {
             Some(c) => term::from_command(c),
@@ -243,7 +245,7 @@ mod tests {
             let mut t = r.task(&id);
             t.session = Some(forged.into());
             r.hub.engine.store().lock().unwrap().upsert_task(&t).unwrap();
-            assert_eq!(r.hub.hand_off(&id, &launch).unwrap_err(), "bad_session_id", "{forged}");
+            assert_eq!(r.hub.hand_off(&id, &|| Ok(()), &launch).unwrap_err(), "bad_session_id", "{forged}");
             assert_eq!(r.task(&id).status, Status::Failed, "the task stays where it was");
         }
         assert!(seen.borrow().is_empty());
@@ -251,7 +253,11 @@ mod tests {
         let mut t = r.task(&id);
         t.session = Some("abc-123".into());
         r.hub.engine.store().lock().unwrap().upsert_task(&t).unwrap();
-        let out = r.hub.hand_off(&id, &launch).unwrap();
+        // no terminal to open: nothing is changed, the task is still the engine's
+        assert_eq!(r.hub.hand_off(&id, &|| Err("no_terminal: set $TERMINAL".into()), &launch).unwrap_err(), "no_terminal: set $TERMINAL");
+        assert_eq!(r.task(&id).status, Status::Failed);
+        assert!(seen.borrow().is_empty());
+        let out = r.hub.hand_off(&id, &|| Ok(()), &launch).unwrap();
         assert_eq!(out["resumed"], true);
         assert_eq!(r.task(&id).status, Status::HandedOff);
         assert_eq!(*seen.borrow(), vec![crate::term::Launch { cwd: Some(wt.clone()), argv: ["/opt/bin/claude", "--resume", "abc-123"].map(String::from).to_vec(), banner: None, env: vec![] }]);

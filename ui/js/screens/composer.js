@@ -27,10 +27,12 @@
   NS.composerDrop = (pl) => {
     const paths = (pl && pl.paths) || [], pos = pl && pl.position, dpr = window.devicePixelRatio || 1;
     if (!paths.length || !pos) return false;
+    const imgs = paths.filter((p) => /\.(png|jpe?g|gif|webp)$/i.test(String(p)));
+    if (!imgs.length) return false;                // a folder or another file: app.js adds it as a project
     const x = pos.x / dpr, y = pos.y / dpr;
     for (const f of fields) {
       const r = f.form.getBoundingClientRect();
-      if (r.width && x >= r.left && x <= r.right && y >= r.top && y <= r.bottom) { f.dropPaths(paths); return true; }
+      if (r.width && x >= r.left && x <= r.right && y >= r.top && y <= r.bottom) { f.dropPaths(imgs); return true; }
     }
     return false;
   };
@@ -239,11 +241,14 @@
       if (mode.kind === 'answer') return call('answer', { id: mode.task.id, text });
       if (mode.kind === 'hint') return call('resume_failed', { taskId: mode.task.id, hint: text, model: null });
       const active = hooks.activeTask && hooks.activeTask();
-      if (active) {
+      // an ordinary chat sends through the chat: the core passes it to the task (note or answer) and keeps it in the history
+      // under msgId, which also clears the pending bubble; only the swarm, with its "кому", talks to the task directly
+      if (active && (hooks.noteTo || chat === 'new' || !chat)) {
         const to = hooks.noteTo ? hooks.noteTo() : null;               // swarm: "Всем" = null, a variant letter or "reviewer" (story 156)
         if (hooks.addPending) hooks.addPending({ id, text, at: new Date().toISOString(), to });
-        if (active.status === 'needs_human' && active.question) return call('answer', { id: active.id, text });
-        return call('note', { taskId: active.id, to, text });      // G05: goes to the next run of the executor
+        const done = () => { if (hooks.dropPending) hooks.dropPending(id); };
+        if (active.status === 'needs_human' && active.question) return call('answer', { id: active.id, text }).then(done);
+        return call('note', { taskId: active.id, to, text }).then(done);      // G05: goes to the next run of the executor
       }
       const target = chat === 'new' || !chat ? { new: { env: envId, project_id: hooks.projectId() } } : { existing: chat };
       if (hooks.addPending) hooks.addPending({ id, text, at: new Date().toISOString() });

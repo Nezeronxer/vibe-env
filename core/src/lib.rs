@@ -20,4 +20,5 @@ pub mod store;
 pub mod suggest;
 pub mod swarm;
 pub mod term;
+pub mod termusage;
 pub mod updates;

@@ -109,11 +109,13 @@
       const cur = opts2[active];
       if (cur) { ta.setAttribute('aria-activedescendant', cur.li.id); cur.li.scrollIntoView({ block: 'nearest' }); }
     }
+    let invFor;                                   // the project the inventory was read for: another project reads again
     async function load() {
-      if (inv || loading) return;
+      const pid = opts.projectId() || null;
+      if ((inv && invFor === pid) || loading) return;
       loading = true;
-      const r = await shell(envId, opts.projectId());
-      loading = false;
+      const r = await shell(envId, pid);
+      loading = false; invFor = pid;
       inv = (r && r.inventory) || { skills: [], commands: [], mcp: [], mods: [] };
       if (isOpen()) draw();
     }

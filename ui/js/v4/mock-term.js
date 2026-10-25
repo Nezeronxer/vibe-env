@@ -34,7 +34,14 @@
     const [cmd, ...args] = line.trim().split(/\s+/);
     if (s.cli) {
       if (!cmd) return out(s, prompt(s));
-      return out(s, C.dim + '· Read src/invoices/routes.py' + C.off + '\r\n' + 'Нашёл: страница считается от 1, а курсор - от 0. Исправить?\r\n\r\n' + prompt(s));
+      // v7: a CLI at work prints for a few seconds (the aura), then asks and goes quiet (ждёт тебя)
+      const steps = [C.dim + '✻ Думаю…' + C.off, C.green + '● ' + C.off + 'Read src/invoices/routes.py', C.green + '● ' + C.off + 'Read src/invoices/cursor.py', C.green + '● ' + C.off + 'Edit src/invoices/cursor.py  ' + C.green + '+14' + C.off + ' ' + C.red + '-3' + C.off,
+        C.green + '● ' + C.off + 'Bash pytest tests/test_invoices.py -q', C.dim + '  9 passed in 1.42s' + C.off, C.green + '● ' + C.off + 'Edit src/invoices/routes.py  ' + C.green + '+6' + C.off + ' ' + C.red + '-2' + C.off];
+      let i = 0;
+      const tick = () => { if (i < steps.length) { out(s, steps[i++] + '\r\n'); s.busy = setTimeout(tick, 420 + (i % 3) * 160); return; }
+        s.busy = 0; out(s, '\r\nГотово: курсор непрозрачный, тесты зелёные. Убрать старый параметр ?page= сразу или оставить на переходный период?\r\n\r\n' + prompt(s)); };
+      tick();
+      return;
     }
     if (!cmd) return out(s, prompt(s));
     if (cmd === 'ls') return out(s, LS.join('  ') + '\r\n' + prompt(s));
@@ -60,6 +67,9 @@
       const s = { id, cwd: spec.cwd || '/Users/dev', argv: spec.argv || [], title: spec.title || '', running: true, exit: null, buf: '', line: '', ch: null, cli: !!(spec.argv && spec.argv.length) };
       sessions.set(id, s);
       if (s.cli) banner(s); else out(s, C.dim + 'Last login: Thu Oct 23 09:14 on ttys004' + C.off + '\r\n' + prompt(s));
+      // v7: a task prompt as the last word starts the work at once (as `claude "..."` does)
+      const last = s.cli && s.argv.length > 1 ? s.argv[s.argv.length - 1] : '';
+      if (/\s/.test(last)) setTimeout(() => { out(s, last + '\r\n'); run(s, last); }, 700);
       return id;
     },
     term_attach: ({ id, channel }) => {

@@ -343,7 +343,15 @@ impl Engine {
             }
             let system = prompt::system_for(vendor, role);
             let ro = super::roles::is_read_only(role);
-            let copy = if ro && !a.read_only_native() { self.ro_copy_on(&t, l.project, l.at_task).ok() } else { None };
+            // a reader whose throwaway copy fails stops, as in `run_role`: it must not read (and write) in the person's folder
+            let copy = if ro && !a.read_only_native() {
+                match self.ro_copy_on(&t, l.project, l.at_task) {
+                    Ok(c) => Some(c),
+                    Err(e) => return LaneEnd::Failed(format!("copy_failed: {e}")),
+                }
+            } else {
+                None
+            };
             let Some(cwd) = copy.clone().or(l.cwd.clone()).or_else(|| ro.then(|| l.project.path.clone())) else {
                 return LaneEnd::Failed("no_worktree".into());
             };
@@ -354,6 +362,7 @@ impl Engine {
             run.extra_env = self.env_vars_of(&env, Some(l.task_id));
             run.json_schema = l.schema.clone();
             run.extra_args = env_set.extra_args.clone();
+            run.attachments = self.state(l.task_id).attachments;
             if a.reports_cost() {
                 let fresh = self.task(l.task_id).unwrap_or_else(|| t.clone());
                 let day = lk(&self.store).day_spend(&env, self.now().date_naive());

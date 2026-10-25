@@ -238,3 +238,15 @@ fn the_startup_tax_counts_rules_skill_descriptions_and_mcp_servers_and_flags_lon
     assert_eq!(t.mcp_servers, vec!["fs", "github", "db"]);
     assert_eq!(t.total_tokens, 625 + 2 + 8 + t.agent_tokens);
 }
+
+#[test]
+fn the_startup_tax_counts_the_text_of_a_block_description_too() {
+    let d = tempfile::tempdir().unwrap();
+    let home = d.path().join("home");
+    fs::create_dir_all(home.join(".claude/skills/big")).unwrap();
+    // `description: >-` and the two lines of its text count, the next key does not
+    fs::write(home.join(".claude/skills/big/SKILL.md"), "---\nname: big\ndescription: >-\n  This skill reads\n  and writes things\nallowed-tools: x\n---\nbody\n").unwrap();
+    let t = tax::startup_tax("claude", &home, None);
+    // "name: big" 9 + "description: >-" 15 + "  This skill reads" 18 + "  and writes things" 20 = 62 bytes -> 16 tokens
+    assert_eq!((t.skills, t.skill_tokens), (1, 16));
+}

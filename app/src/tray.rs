@@ -93,6 +93,24 @@ pub fn tray_host() -> Option<bool> {
     parse_host_registered(&String::from_utf8_lossy(&o.stdout))
 }
 
+/// Is there a notification server on the session bus that takes a notification? The plugin's `show` sends the
+/// notification from another thread and drops what the system answers, so a missing server is only visible from here.
+/// Linux asks `org.freedesktop.Notifications` (this starts a server that the bus can start); other systems and a
+/// missing `busctl`: None, cannot tell (macOS refuses by the person's settings, which no call tells).
+pub fn notification_server() -> Option<bool> {
+    if cfg!(target_os = "linux") { notification_server_with("busctl") } else { None }
+}
+
+fn notification_server_with(busctl: &str) -> Option<bool> {
+    let o = Command::new(busctl)
+        .args(["--user", "--timeout=2", "call", "org.freedesktop.Notifications", "/org/freedesktop/Notifications", "org.freedesktop.Notifications", "GetServerInformation"])
+        .stdin(Stdio::null())
+        .stderr(Stdio::null())
+        .output()
+        .ok()?;
+    Some(o.status.success())
+}
+
 #[derive(Debug, PartialEq)]
 pub enum OnClose {
     /// Leave only the tray icon.
@@ -113,6 +131,22 @@ pub fn on_close(host: Option<bool>) -> OnClose {
 mod tests {
     use super::*;
     use nightshift_core::model::{Question, QuestionKind, Status};
+
+    #[test]
+    fn a_missing_notification_server_is_told_and_a_missing_busctl_is_not() {
+        let d = std::env::temp_dir().join(format!("ns-busctl-{}", std::process::id()));
+        std::fs::create_dir_all(&d).unwrap();
+        let script = |name: &str, code: i32| {
+            let f = d.join(name);
+            std::fs::write(&f, format!("#!/bin/sh\nexit {code}\n")).unwrap();
+            std::fs::set_permissions(&f, std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
+            f.to_string_lossy().into_owned()
+        };
+        assert_eq!(notification_server_with(&script("up", 0)), Some(true));
+        assert_eq!(notification_server_with(&script("down", 1)), Some(false), "the bus has no such name");
+        assert_eq!(notification_server_with("/nonexistent/busctl"), None, "cannot tell");
+        let _ = std::fs::remove_dir_all(&d);
+    }
 
     #[test]
     fn the_counter_has_only_the_non_zero_parts_and_thirty_calls_show_thirty() {
