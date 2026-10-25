@@ -24,6 +24,8 @@ pub(crate) struct Folded {
     pub done: Option<(Option<String>, String, bool)>,
     /// The last context in use and window the run reported (story 305); None = it reported neither.
     pub context: Option<(Option<u64>, Option<u64>)>,
+    /// G70: the tokens of the run (input, output), summed; None = the CLI said nothing of them.
+    pub tokens: Option<(u64, u64)>,
 }
 
 pub(crate) fn fold(events: &[AgentEvent]) -> Folded {
@@ -32,6 +34,11 @@ pub(crate) fn fold(events: &[AgentEvent]) -> Folded {
         match e {
             AgentEvent::Usage(w) => f.windows = Some(w.clone()),
             AgentEvent::Cost(c) => f.cost = Some(f.cost.unwrap_or(0.0) + c),
+            AgentEvent::Tokens { input, output } => {
+                let t = f.tokens.get_or_insert((0, 0));
+                t.0 += input;
+                t.1 += output;
+            }
             AgentEvent::Limit { resets_at } => f.limit = Some(*resets_at),
             AgentEvent::ModelRejected(m) => f.rejected = Some(m.clone()),
             AgentEvent::AuthRequired(m) => f.auth = Some(m.clone()),
@@ -95,22 +102,20 @@ pub(super) fn stall_decision(nudged: bool, session: &Option<String>) -> Stall {
 
 impl Engine {
     /// Adds a cost to the day of the env (what a chat's run costs too).
-    pub(crate) fn add_day_cost(&self, env: &str, cost: f64) {
-        let _ = lk(&self.store).add_day_spend(env, self.now().date_naive(), cost, 0.0);
-        // only a chat's run comes here alone (a task's goes through `add_cost`): its project is not known here
-        self.record_spend(None, env, true, Some(cost));
+    /// A chat's run in `project` (G70): its cost goes to the day of the env, and the run is the chat's own row of the
+    /// history with its tokens. `usd` None = the env reports no money ("нет данных", not 0).
+    pub fn add_chat_cost(&self, env: &str, project: &str, usd: Option<f64>, tokens: Option<(u64, u64)>) {
+        if let Some(c) = usd {
+            let _ = lk(&self.store).add_day_spend(env, self.now().date_naive(), c, 0.0);
+        }
+        self.record_spend(Some(project), env, true, usd, tokens);
     }
 
-    /// A chat's run cost `cost` in `project`: the day of the env, and the chat's own row of the history (G70).
-    pub fn add_chat_cost(&self, env: &str, project: &str, cost: f64) {
-        let _ = lk(&self.store).add_day_spend(env, self.now().date_naive(), cost, 0.0);
-        self.record_spend(Some(project), env, true, Some(cost));
-    }
-
-    /// One run's spending in the history (G70): `usd` None = the env reports no money.
-    pub(crate) fn record_spend(&self, project: Option<&str>, env: &str, chat: bool, usd: Option<f64>) {
+    /// One run's spending in the history (G70): `usd` None = the env reports no money; `tokens` (input, output).
+    pub(crate) fn record_spend(&self, project: Option<&str>, env: &str, chat: bool, usd: Option<f64>, tokens: Option<(u64, u64)>) {
         let today = self.now().date_naive();
-        let row = crate::store::SpendRow { day: today, month: false, project: project.map(String::from), env: env.to_string(), chat, usd, tokens_in: None, tokens_out: None };
+        let (tokens_in, tokens_out) = (tokens.map(|t| t.0), tokens.map(|t| t.1));
+        let row = crate::store::SpendRow { day: today, month: false, project: project.map(String::from), env: env.to_string(), chat, usd, tokens_in, tokens_out };
         let _ = lk(&self.store).add_spend(row, today);
     }
 
@@ -128,7 +133,7 @@ impl Engine {
     }
 
     /// Adds a cost to the task and to the day of its env: the one way a cost is written.
-    pub(super) fn add_cost(&self, task_id: &str, env: &str, role: RoleKind, cost: f64) {
+    pub(super) fn add_cost(&self, task_id: &str, env: &str, role: RoleKind, cost: f64, tokens: Option<(u64, u64)>) {
         let t = {
             let mut st = lk(&self.store);
             let Some(mut t) = st.task(task_id) else { return };
@@ -137,7 +142,7 @@ impl Engine {
             t
         };
         let _ = lk(&self.store).add_day_spend(env, self.now().date_naive(), cost, 0.0);
-        self.record_spend(Some(&t.project_id), env, false, Some(cost));
+        self.record_spend(Some(&t.project_id), env, false, Some(cost), tokens);
         self.emit(EngineEvent::TaskChanged(t));
         self.log(task_id, LogKind::Stage, &format!("{COST_LOG}{cost:.4} ({role:?})"));
     }
@@ -149,11 +154,11 @@ impl Engine {
             self.record_usage(cx.env, w.clone());
         }
         match f.cost {
-            Some(c) => self.add_cost(cx.task_id, cx.env, cx.role, c),
+            Some(c) => self.add_cost(cx.task_id, cx.env, cx.role, c, f.tokens),
             // the run is in the history even when the env says nothing of money: "нет данных", not 0
             None => {
                 if let Some(t) = self.task(cx.task_id) {
-                    self.record_spend(Some(&t.project_id), cx.env, false, None);
+                    self.record_spend(Some(&t.project_id), cx.env, false, None, f.tokens);
                 }
             }
         }

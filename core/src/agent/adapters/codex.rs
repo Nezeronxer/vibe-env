@@ -88,7 +88,15 @@ fn scan(line: &str) -> Scan {
                 s.text = Some(t.to_string());
             }
         }
-        (Some("turn.completed"), _) => s.ok = true,
+        (Some("turn.completed"), _) => {
+            s.ok = true;
+            // G70: usage of the turn (docs shape: input_tokens with the cached part inside, output_tokens)
+            let u = &j["usage"];
+            let (i, o) = (u["input_tokens"].as_u64().unwrap_or(0), u["output_tokens"].as_u64().unwrap_or(0) + u["reasoning_output_tokens"].as_u64().unwrap_or(0));
+            if i + o > 0 {
+                s.events.push(AgentEvent::Tokens { input: i, output: o });
+            }
+        }
         (Some("turn.failed"), _) => s.error = Some(j["error"]["message"].as_str().unwrap_or("codex turn failed").to_string()),
         (Some("error"), _) => s.error = j["message"].as_str().map(String::from),
         _ => {}
@@ -140,8 +148,13 @@ impl Adapter for Codex {
             // unverified: whether `resume` accepts --json/--sandbox placed before it; docs show `codex exec resume <ID> "<prompt>"`
             c.args(["resume", s]);
         }
+        // G65.3: `-i/--image <FILE>` (developers.openai.com/codex/image-inputs, research-v6 §1; по документации, the CLI
+        // is not on this machine); `=` keeps a variadic option from taking the prompt
+        for f in &run.attachments {
+            c.arg(format!("--image={}", f.display()));
+        }
         // unverified: `--` before the prompt is clap convention, not shown in the codex docs
-        c.arg("--").arg(with_system(&run.system, &run.prompt));
+        c.arg("--").arg(with_system(&run.system, &crate::agent::with_attachments(&run.prompt, &run.attachments)));
         c
     }
     fn parse(&self, line: &str) -> Vec<AgentEvent> {
@@ -164,6 +177,17 @@ impl Adapter for Codex {
         if fams.is_empty() { Err("codex debug models: no models in the output".into()) } else { Ok(fams) }
     }
     // Codex has no interactive resume template (only `codex exec resume`): interactive_resume stays None.
+    /// `codex resume <id>` - the interactive TUI (по документации: developers.openai.com/codex/cli, not on this machine).
+    fn resume_argv(&self, session: &str, _cwd: &std::path::Path) -> Option<Vec<String>> {
+        crate::agent::resume_words(&self.bin, &["resume"], session)
+    }
+    fn supports_images(&self) -> bool {
+        true
+    }
+    fn inventory(&self, cwd: &std::path::Path) -> crate::agent::Inventory {
+        crate::agent::inventory::home().map(|h| crate::agent::inventory::scan("codex", &h, cwd)).unwrap_or_default()
+    }
+
     fn set_private_dir(&self, dir: &std::path::Path) {
         self.schema_dir.lock().unwrap_or_else(|e| e.into_inner()).get_or_insert_with(|| dir.join("schemas"));
     }

@@ -54,6 +54,15 @@ fn scan(line: &str) -> Scan {
                 s.events.push(AgentEvent::Action(actions::result(id, out, status == "completed", input)));
             }
         }
+        // G70: each step's tokens (live 1.18.34 shape): input + cache read/write, output + reasoning
+        Some("step_finish") => {
+            let t = &j["part"]["tokens"];
+            let n = |v: &serde_json::Value| v.as_u64().unwrap_or(0);
+            let (i, o) = (n(&t["input"]) + n(&t["cache"]["read"]) + n(&t["cache"]["write"]), n(&t["output"]) + n(&t["reasoning"]));
+            if i + o > 0 {
+                s.events.push(AgentEvent::Tokens { input: i, output: o });
+            }
+        }
         Some("error") => {
             let m = j["error"]["data"]["message"].as_str().or_else(|| j["error"]["name"].as_str());
             s.error = Some(m.unwrap_or("opencode error").to_string());
@@ -94,7 +103,11 @@ impl Adapter for OpenCode {
         if let Some(s) = &run.resume {
             c.args(["--session", s]);
         }
-        c.arg("--").arg(with_system(&run.system, &run.prompt));
+        // G65.3: `-f, --file  file(s) to attach to message` (`opencode run --help`, 1.19.4)
+        for f in &run.attachments {
+            c.arg(format!("--file={}", f.display()));
+        }
+        c.arg("--").arg(with_system(&run.system, &crate::agent::with_attachments(&run.prompt, &run.attachments)));
         c
     }
     fn parse(&self, line: &str) -> Vec<AgentEvent> {
@@ -119,6 +132,19 @@ impl Adapter for OpenCode {
             return Err("opencode models: no models in the output".into());
         }
         Ok(group_models(&rows, |id| id.split('/').next().unwrap_or("opencode").to_string()))
+    }
+    /// `opencode --session <id>` (`opencode --help` 1.19.4: "-s, --session  session id to continue" of the TUI).
+    fn resume_argv(&self, session: &str, _cwd: &std::path::Path) -> Option<Vec<String>> {
+        crate::agent::resume_words(&self.bin, &["--session"], session)
+    }
+    fn resume_checked(&self) -> bool {
+        true
+    }
+    fn supports_images(&self) -> bool {
+        true
+    }
+    fn inventory(&self, cwd: &std::path::Path) -> crate::agent::Inventory {
+        crate::agent::inventory::home().map(|h| crate::agent::inventory::scan("opencode", &h, cwd)).unwrap_or_default()
     }
     /// `opencode -s <id>`. unverified: that it works in the interactive mode.
     fn interactive_resume(&self, session: &str, cwd: &std::path::Path) -> Option<Command> {

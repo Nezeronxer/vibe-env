@@ -51,6 +51,7 @@ impl Engine {
                 queue: vec![],
                 wait: None,
                 answering: None,
+                terminal: None,
             })
             .map_err(|e| e.to_string())?;
             st.append_chat_msg(&ChatMsg {
@@ -66,6 +67,7 @@ impl Engine {
                 model: None,
                 reply_to: None,
                 action: None,
+                attachments: vec![],
             })
             .map_err(|e| e.to_string())?;
         }
@@ -116,6 +118,7 @@ impl Engine {
                     model: None,
                     reply_to: None,
                     action: None,
+                    attachments: vec![],
                 });
             }
         }

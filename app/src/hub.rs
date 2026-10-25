@@ -133,11 +133,11 @@ impl Hub {
     // ---- chats ----
 
     /// A message of the person: to a chat, or the first one of a new chat (that needs the project's folder).
-    pub fn send_chat(&self, target: ChatTarget, msg_id: &str, text: &str) -> Res<String> {
+    pub fn send_chat(&self, target: ChatTarget, msg_id: &str, text: &str, attachments: &[std::path::PathBuf]) -> Res<String> {
         if let ChatTarget::New { project_id, .. } = &target {
             self.project_ready(project_id)?;
         }
-        self.chats.send(target, msg_id, text)
+        self.chats.send_with(target, msg_id, text, attachments)
     }
 
     /// G84: what the window takes from the env's settings for a project (Claude Code: `spinnerVerbs`); the person's
@@ -310,12 +310,12 @@ mod tests {
     fn a_new_chat_gets_the_answer_of_the_model_and_a_moved_folder_stops_the_next_one() {
         let r = Rig::new(FakeAdapter::new(vec![]).with_role(RoleKind::Chat, vec![vec![FakeStep::Done("pong".into())]]));
         let target = ChatTarget::New { env: "fake".into(), project_id: r.project.id.clone() };
-        let chat = r.hub.send_chat(target.clone(), "m1", "ping").unwrap();
+        let chat = r.hub.send_chat(target.clone(), "m1", "ping", &[]).unwrap();
         until("the answer", || r.hub.chats.messages(&chat, None, 50).iter().any(|m| m.who == Who::Model && m.text == "pong"));
         assert_eq!(r.hub.chats.list("fake").len(), 1);
 
         std::fs::rename(&r.repo, r.s.0.join("moved")).unwrap();
-        let err = r.hub.send_chat(target, "m2", "again").unwrap_err();
+        let err = r.hub.send_chat(target, "m2", "again", &[]).unwrap_err();
         assert_eq!(err, format!("folder_not_found: {}", r.repo.display()));
         assert_eq!(r.hub.chats.list("fake").len(), 1, "no chat was made");
     }

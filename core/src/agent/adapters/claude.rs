@@ -152,7 +152,13 @@ impl Adapter for Claude {
         if let Some(s) = &run.resume {
             c.args(["--resume", s]);
         }
-        c.arg("--").arg(&run.prompt);
+        // G65.3: the folder of the attached images is one the session may read (plan mode reads, never writes)
+        let mut dirs: Vec<&std::path::Path> = run.attachments.iter().filter_map(|f| f.parent()).collect();
+        dirs.dedup();
+        for d in dirs {
+            c.arg(format!("--add-dir={}", d.display()));
+        }
+        c.arg("--").arg(crate::agent::with_attachments(&run.prompt, &run.attachments));
         c
     }
     fn parse(&self, line: &str) -> Vec<AgentEvent> {
@@ -203,6 +209,20 @@ impl Adapter for Claude {
         let mut c = Command::new(find_bin(&self.bin).unwrap_or_else(|| self.bin.clone().into()));
         c.current_dir(cwd).args(["--resume", valid_session(session)?]);
         Some(c)
+    }
+    /// `claude --resume <id>`: the same session id goes on (`--fork-session` would make a new one; `claude --help` 2.1.309).
+    fn resume_argv(&self, session: &str, _cwd: &std::path::Path) -> Option<Vec<String>> {
+        crate::agent::resume_words(&self.bin, &["--resume"], session)
+    }
+    fn resume_checked(&self) -> bool {
+        true
+    }
+    /// The Read tool reads an image by its path (research-v6 §1, Claude Code docs).
+    fn supports_images(&self) -> bool {
+        true
+    }
+    fn inventory(&self, cwd: &std::path::Path) -> crate::agent::Inventory {
+        crate::agent::inventory::home().map(|h| crate::agent::inventory::scan("claude", &h, cwd)).unwrap_or_default()
     }
     /// No list command in the CLI (`claude --help`); aliases are "the latest model" of a family.
     /// Versions and identifiers: Claude Platform docs (models overview, "Model IDs and versioning",
@@ -335,10 +355,27 @@ pub fn parse_line(line: &str) -> Vec<AgentEvent> {
                     other => return vec![other],
                 }
             }
-            vec![AgentEvent::Done { session: j["session_id"].as_str().map(String::from), text, is_error }]
+            let done = AgentEvent::Done { session: j["session_id"].as_str().map(String::from), text, is_error };
+            result_tokens(&j).into_iter().chain([done]).collect()
         }
         _ => vec![],
     }
+}
+
+/// G70: the tokens of a run from its `result`: `modelUsage` summed over the models (Claude Code, the cache read and
+/// written counted as input), else `usage` (Qwen Code). Nothing when both are zero or missing.
+fn result_tokens(j: &serde_json::Value) -> Option<AgentEvent> {
+    let n = |v: &serde_json::Value, k: &str| v[k].as_u64().unwrap_or(0);
+    let (input, output) = match j["modelUsage"].as_object().filter(|m| !m.is_empty()) {
+        Some(m) => m.values().fold((0, 0), |(i, o), u| {
+            (i + n(u, "inputTokens") + n(u, "cacheReadInputTokens") + n(u, "cacheCreationInputTokens"), o + n(u, "outputTokens"))
+        }),
+        None => {
+            let u = &j["usage"];
+            (n(u, "input_tokens") + n(u, "cache_read_input_tokens") + n(u, "cache_creation_input_tokens"), n(u, "output_tokens"))
+        }
+    };
+    (input + output > 0).then_some(AgentEvent::Tokens { input, output })
 }
 
 /// What the tool's own record of a result says better than its start: the real hunks of an edit (with the

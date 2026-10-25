@@ -313,7 +313,7 @@ mod tests {
         use nightshift_core::chat::{ChatEvent, ChatTarget};
         use nightshift_core::model::{ChatKind, Who};
         let r = Rig::new(FakeAdapter::new(vec![]).with_role(RoleKind::Chat, vec![vec![FakeStep::Done("hi".into())]]));
-        let chat = r.hub.send_chat(ChatTarget::New { env: "fake".into(), project_id: r.project.id.clone() }, "m1", "hello").unwrap();
+        let chat = r.hub.send_chat(ChatTarget::New { env: "fake".into(), project_id: r.project.id.clone() }, "m1", "hello", &[]).unwrap();
         until("answered", || r.hub.chats.messages(&chat, None, 50).iter().any(|m| m.who == Who::Model));
         let events = r.hub.chats.subscribe();
         let seen = std::cell::RefCell::new(vec![]);

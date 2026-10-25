@@ -68,6 +68,10 @@ fn end(id: &str, name: &str, input: ActionInput, output: Option<&str>, ok: bool)
 fn bash(c: &str) -> ActionInput {
     ActionInput::Bash { command: c.into() }
 }
+/// v6 (G70): the tokens of a run are checked in `chat_shell.rs`; these tests read the talk of a run.
+fn no_tokens(v: Vec<AgentEvent>) -> Vec<AgentEvent> {
+    v.into_iter().filter(|e| !matches!(e, AgentEvent::Tokens { .. })).collect()
+}
 fn text(t: &str) -> AgentEvent {
     AgentEvent::Text(t.into())
 }
@@ -80,7 +84,7 @@ fn claude_real_run_text_tool_and_done_with_session() {
     // fixture captured from `claude -p "run echo hi, then say ok" --output-format stream-json --verbose`
     let evs = replay(&Claude::new(), "claude.jsonl", true);
     let plain: Vec<AgentEvent> =
-        evs.into_iter().filter(|e| !matches!(e, AgentEvent::Usage(_) | AgentEvent::Cost(_) | AgentEvent::Context { .. })).collect();
+        evs.into_iter().filter(|e| !matches!(e, AgentEvent::Usage(_) | AgentEvent::Cost(_) | AgentEvent::Context { .. } | AgentEvent::Tokens { .. })).collect();
     assert_eq!(
         plain,
         vec![
@@ -94,7 +98,7 @@ fn claude_real_run_text_tool_and_done_with_session() {
 
 #[test]
 fn opencode_real_run_text_tool_and_done_with_session() {
-    let evs = replay(&OpenCode::new(), "opencode.jsonl", true);
+    let evs = no_tokens(replay(&OpenCode::new(), "opencode.jsonl", true));
     let id = "call_0b407c29ddb54297b98f91e2";
     assert_eq!(
         evs,
@@ -117,7 +121,7 @@ fn opencode_real_error_becomes_failed_done() {
 
 #[test]
 fn qwen_stream_text_tool_done_and_real_auth_error() {
-    let evs = replay(&Qwen::new(), "qwen-from-docs.jsonl", true);
+    let evs = no_tokens(replay(&Qwen::new(), "qwen-from-docs.jsonl", true));
     assert_eq!(
         evs,
         vec![start("t1", "run_shell_command", bash("ls")), end("t1", "run_shell_command", bash("ls"), Some("a b"), true), text("ok"), done("qwen-sess-1", "ok")]
@@ -134,7 +138,7 @@ fn qwen_stream_text_tool_done_and_real_auth_error() {
 
 #[test]
 fn codex_events_text_tool_done_and_error() {
-    let evs = replay(&Codex::new(), "codex-from-docs.jsonl", true);
+    let evs = no_tokens(replay(&Codex::new(), "codex-from-docs.jsonl", true));
     assert_eq!(
         evs,
         vec![
@@ -533,7 +537,8 @@ fn claude_reports_the_cost_of_the_run_before_done_and_only_claude_does() {
     let evs = events_of(&Claude::new(), "claude.jsonl");
     let i = evs.iter().position(|e| matches!(e, AgentEvent::Cost(_))).expect("cost");
     assert_eq!(evs[i], AgentEvent::Cost(0.2655434)); // total_cost_usd of the saved run
-    assert!(matches!(evs[i + 1], AgentEvent::Done { .. }));
+    // then the tokens of the run (G70), then Done
+    assert!(matches!(evs[i + 1], AgentEvent::Tokens { .. }) && matches!(evs[i + 2], AgentEvent::Done { .. }), "{evs:?}");
     let costly: Vec<String> = adapters(&Settings::default()).iter().filter(|a| a.reports_cost()).map(|a| a.id().to_string()).collect();
     assert_eq!(costly, ["claude"]);
 }

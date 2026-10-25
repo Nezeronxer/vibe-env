@@ -63,14 +63,13 @@ impl Chats {
 
     /// Records what the env reported (windows, cost, a used-up limit) the way the engine does for a task,
     /// and says what the run came to.
-    fn read_outcome(&self, env: &str, had_session: bool, events: &[agent::AgentEvent]) -> Outcome {
+    fn read_outcome(&self, env: &str, project: &str, had_session: bool, events: &[agent::AgentEvent]) -> Outcome {
         let f = fold(events);
         if let Some(w) = &f.windows {
             self.engine.record_usage(env, w.clone());
         }
-        if let Some(c) = f.cost {
-            self.engine.add_day_cost(env, c);
-        }
+        // G70: the chat's own row of its project, with the tokens; an env that says nothing of money is "нет данных"
+        self.engine.add_chat_cost(env, project, f.cost, f.tokens);
         if let Some(m) = &f.auth {
             return Outcome::Failed(format!("{}: {m}", reason::AUTH_REQUIRED));
         }
@@ -178,6 +177,7 @@ impl Chats {
             run.read_only = true;
             run.extra_args = env_set.extra_args.clone();
             run.extra_env = self.engine.env_vars_of(&c.env, None);
+            run.attachments = msg.attachments.clone();
             let mut on = |e: &agent::AgentEvent| match e {
                 agent::AgentEvent::TextDelta(t) => self.emit(ChatEvent::Delta { chat: chat.to_string(), msg_id: reply_id.clone(), text: t.clone() }),
                 agent::AgentEvent::Thinking(t) => {
@@ -204,7 +204,7 @@ impl Chats {
                 Ok(e) => e,
                 Err(e) => return self.fail(chat, &msg.id, &format!("{}: {e}", reason::RUN_FAILED)),
             };
-            match self.read_outcome(&c.env, session.is_some(), &events) {
+            match self.read_outcome(&c.env, &c.project_id, session.is_some(), &events) {
                 Outcome::Reply { session, text } => return self.reply(&c, job, &signature, session, &text, reply_id),
                 Outcome::Failed(why) => return self.fail(chat, &msg.id, &why),
                 Outcome::Limit(until) => return self.hold_for_limit(&c, job, until),
@@ -260,7 +260,7 @@ impl Chats {
         run.extra_args = env_set.extra_args.clone();
         run.extra_env = self.engine.env_vars_of(&c.env, None);
         let events = agent::run_blocking(&*a, &run, &mut |_| {}, &self.stop).map_err(|e| format!("{}: {e}", reason::RUN_FAILED))?;
-        match self.read_outcome(&c.env, false, &events) {
+        match self.read_outcome(&c.env, &c.project_id, false, &events) {
             Outcome::Reply { text, .. } => Ok(prompt::parse_signals(&text).body.trim().to_string()),
             Outcome::Failed(why) => Err(why),
             Outcome::Limit(_) => Err("limit_used_up".into()),
@@ -290,6 +290,7 @@ impl Chats {
                 model: Some(signature.to_string()),
                 reply_to: Some(job.msg.id.clone()),
                 action: None,
+                attachments: vec![],
             });
         }
         if is_task {

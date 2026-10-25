@@ -71,6 +71,16 @@ impl Adapter for Qwen {
     fn install_hint(&self) -> Option<String> {
         Some("npm install -g @qwen-code/qwen-code (не сверено)".into())
     }
+    /// `qwen --resume <id>` (`qwen --help` 0.26.0: "-r, --resume  Resume a specific session by its ID").
+    fn resume_argv(&self, session: &str, _cwd: &std::path::Path) -> Option<Vec<String>> {
+        crate::agent::resume_words(&self.bin, &["--resume"], session)
+    }
+    fn resume_checked(&self) -> bool {
+        true
+    }
+    fn inventory(&self, cwd: &std::path::Path) -> crate::agent::Inventory {
+        crate::agent::inventory::home().map(|h| crate::agent::inventory::scan("qwen", &h, cwd)).unwrap_or_default()
+    }
     fn interactive_resume(&self, session: &str, cwd: &std::path::Path) -> Option<Command> {
         let mut c = Command::new(find_bin(&self.bin).unwrap_or_else(|| self.bin.clone().into()));
         c.current_dir(cwd).args(["--resume", super::claude::valid_session(session)?]);

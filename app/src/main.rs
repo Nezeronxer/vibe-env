@@ -19,6 +19,7 @@ mod proj;
 mod ptycmds;
 mod sessions;
 mod settings_check;
+mod shellcmds;
 mod startup;
 mod term;
 #[cfg(test)]
@@ -687,8 +688,8 @@ async fn get_chat(s: State<'_, App>, id: String, before: Option<String>, limit: 
 }
 
 #[tauri::command]
-async fn send_chat(s: State<'_, App>, target: ChatTarget, msg_id: String, text: String) -> Res<String> {
-    hub(&s).send_chat(target, &msg_id, &text)
+async fn send_chat(s: State<'_, App>, target: ChatTarget, msg_id: String, text: String, attachments: Option<Vec<PathBuf>>) -> Res<String> {
+    hub(&s).send_chat(target, &msg_id, &text, &attachments.unwrap_or_default())
 }
 
 #[tauri::command]
@@ -722,8 +723,8 @@ async fn chat_queue(s: State<'_, App>, id: String) -> Res<Value> {
 }
 
 #[tauri::command]
-async fn chat_queue_add(s: State<'_, App>, id: String, msg_id: String, text: String, first: Option<bool>) -> Res<()> {
-    s.hub.chats.queue_add(&id, &msg_id, &text, first.unwrap_or(false))
+async fn chat_queue_add(s: State<'_, App>, id: String, msg_id: String, text: String, first: Option<bool>, attachments: Option<Vec<PathBuf>>) -> Res<()> {
+    s.hub.chats.queue_add_with(&id, &msg_id, &text, first.unwrap_or(false), &attachments.unwrap_or_default())
 }
 
 #[tauri::command]
@@ -1264,6 +1265,7 @@ fn main() {
             list_envs, get_catalog, refresh_catalog, get_limits, check_custom, install_env, login_env,
             list_chats, get_chat, send_chat, retry_chat, side_ask, remove_chat, open_chat_terminal,
             chat_queue, chat_queue_add, chat_queue_edit, chat_queue_drop, chat_stop, ui_hints,
+            shellcmds::chat_shell, shellcmds::chat_attach, shellcmds::chat_attach_path, shellcmds::chat_detach, shellcmds::chat_terminal,
             note, answer_outward, resume_failed, pick_variant, stop_swarm, nudge, switch_model, freeze,
             hand_off, take_back, start_now, not_a_task, submit_convoy, summary_since, diff_file,
             kits_inventory, kits_export, kits_preview, kits_install, kits_enable, kits_snapshots, kits_rollback, kits_check_update, set_secret,

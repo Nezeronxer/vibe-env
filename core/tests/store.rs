@@ -154,7 +154,7 @@ fn msg(id: &str, chat: &str, mins: i64) -> ChatMsg {
     ChatMsg {
         id: id.into(), chat_id: chat.into(), at: Local::now() + chrono::Duration::minutes(mins),
         who: Who::Human, text: format!("text {id}"), task_id: None, delivered_at: None,
-        kind: None, tool: None, model: None, reply_to: None, action: None,
+        kind: None, tool: None, model: None, reply_to: None, action: None, attachments: vec![],
     }
 }
 
@@ -192,7 +192,7 @@ fn chats_are_listed_per_env_and_removed_with_their_feed() {
     let chat = |id: &str, env: &str| Chat {
         id: id.into(), env: env.into(), project_id: "p".into(), title: id.into(), session: None,
         convoy: false, created_at: Local::now(), updated_at: Local::now(), archived: false,
-        queue: vec![], wait: None, answering: None,
+        queue: vec![], wait: None, answering: None, terminal: None,
     };
     s.upsert_chat(&chat("c1", "claude")).unwrap();
     s.upsert_chat(&chat("c2", "codex")).unwrap();

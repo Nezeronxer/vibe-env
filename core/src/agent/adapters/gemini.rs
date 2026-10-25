@@ -50,7 +50,14 @@ fn scan(line: &str) -> Scan {
             s.events.push(AgentEvent::Action(actions::result(j["tool_id"].as_str().unwrap_or(""), out, ok, None)));
         }
         Some("error") if j["severity"] == "error" => s.error = j["message"].as_str().map(String::from),
-        Some("result") if j["status"] == "success" => s.ok = true,
+        Some("result") if j["status"] == "success" => {
+            s.ok = true;
+            // G70: stats with input/output (the docs' sample has only total_tokens: then nothing)
+            let st = &j["stats"];
+            if let (Some(i), Some(o)) = (st["input_tokens"].as_u64(), st["output_tokens"].as_u64()) {
+                s.events.push(AgentEvent::Tokens { input: i, output: o });
+            }
+        }
         Some("result") => {
             s.error = Some(j["error"]["message"].as_str().unwrap_or("gemini failed").to_string());
         }
@@ -106,6 +113,13 @@ impl Adapter for Gemini {
     }
     fn install_hint(&self) -> Option<String> {
         Some("npm i -g @google/gemini-cli (не сверено)".into())
+    }
+    /// `gemini --resume <id>` (по документации: geminicli.com cli-reference `-r <session-id>`; not on this machine).
+    fn resume_argv(&self, session: &str, _cwd: &std::path::Path) -> Option<Vec<String>> {
+        crate::agent::resume_words(&self.bin, &["--resume"], session)
+    }
+    fn inventory(&self, cwd: &std::path::Path) -> crate::agent::Inventory {
+        crate::agent::inventory::home().map(|h| crate::agent::inventory::scan("gemini", &h, cwd)).unwrap_or_default()
     }
     fn interactive_resume(&self, session: &str, cwd: &std::path::Path) -> Option<Command> {
         let mut c = Command::new(find_bin(&self.bin).unwrap_or_else(|| self.bin.clone().into()));

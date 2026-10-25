@@ -7,8 +7,12 @@
 //!
 //! Works on top of the public API of `Engine`. One env per chat and per task: the adapter of a chat is the
 //! adapter of its env and nothing else (G22). Lines of the feed are keys `key: details`, the UI translates.
+mod attach;
 mod reply;
+mod term;
 mod verbs;
+pub use attach::{from_base64, image_ext, Attached, MAX_ATTACHMENTS, MAX_ATTACHMENT_BYTES};
+pub use term::TermLaunch;
 
 use crate::engine::{Engine, EngineEvent, NewTask, NoteResult};
 use crate::git;
@@ -50,6 +54,12 @@ pub mod keys {
     pub const BACK_TO_QUESTION: &str = "back_to_question";
     /// The chat was opened in the person's terminal: edits made there in the read-only copy are not kept (A07.2).
     pub const TERMINAL_EDITS_LOST: &str = "terminal_edits_lost";
+    /// v6 (G83): the chat is open in a terminal tab (the same session in the real CLI); edits there are not kept.
+    pub const OPENED_IN_TERMINAL: &str = "opened_in_terminal";
+    /// v6 (G85): back from the terminal of an env whose session the app cannot read: the talk is there.
+    pub const CONTINUED_IN_TERMINAL: &str = "continued_in_terminal";
+    /// v6 (G83.1): back from the terminal; the details are how many messages of it were read into the feed (Claude Code).
+    pub const BACK_FROM_TERMINAL: &str = "back_from_terminal";
 }
 
 /// Reasons after `not_answered: ` - keys, details after `: `; the UI translates the key.
@@ -111,6 +121,9 @@ pub struct ChatSummary {
     pub convoy: bool,
     /// The chat of a swarm task.
     pub swarm: bool,
+    /// v6 (G83): the chat is open in a terminal now.
+    #[serde(default)]
+    pub in_terminal: bool,
 }
 
 /// What the window listens to.
@@ -205,6 +218,8 @@ pub struct Chats {
     act_msgs: Mutex<HashMap<(TaskId, String), String>>,
     /// (task, role) -> the id of the message the text being streamed will be stored in.
     delta_msgs: Mutex<HashMap<(TaskId, RoleKind), String>>,
+    /// Where Claude Code keeps its sessions; None = `~/.claude/projects` (`sessions::claude_dir`).
+    claude_projects: Mutex<Option<PathBuf>>,
     pub(crate) stop: AtomicBool,
 }
 
@@ -257,6 +272,7 @@ impl Chats {
             last_said: Mutex::new(HashMap::new()),
             act_msgs: Mutex::new(HashMap::new()),
             delta_msgs: Mutex::new(HashMap::new()),
+            claude_projects: Mutex::new(None),
             stop: AtomicBool::new(false),
         });
         me.restore();
@@ -285,7 +301,12 @@ impl Chats {
             if !c.queue.is_empty() {
                 self.kick(&c.id);
             }
+            // G83: the terminals ended with the app: the chat is back, with what was said there
+            if c.terminal.is_some() {
+                let _ = self.terminal_closed(&c.id);
+            }
         }
+        self.sweep_pending();
     }
 
     /// Stops the runs and the watchers; messages stay in the store. `send`, `retry` and `not_a_task` refuse afterwards.
@@ -403,6 +424,7 @@ impl Chats {
             model: None,
             reply_to: reply_to.map(str::to_string),
             action: None,
+            attachments: vec![],
         });
     }
 
@@ -412,6 +434,13 @@ impl Chats {
     /// (double Enter, click plus Enter). An empty message is refused. Returns the chat the message is in.
     /// The answer of the model comes later as `ChatEvent::Msg`.
     pub fn send(self: &Arc<Self>, target: ChatTarget, msg_id: &str, text: &str) -> Result<ChatId, String> {
+        self.send_with(target, msg_id, text, &[])
+    }
+
+    /// `send` with images (G65): files `attach` kept, at most `MAX_ATTACHMENTS`, for an env that reads images. They
+    /// move into the chat's folder and go to the model as paths. Err also `too_many_images`, `attachment_not_found`,
+    /// `images_not_supported` (nothing is made then).
+    pub fn send_with(self: &Arc<Self>, target: ChatTarget, msg_id: &str, text: &str, attachments: &[PathBuf]) -> Result<ChatId, String> {
         self.running()?;
         let text = text.trim();
         if text.is_empty() {
@@ -421,6 +450,14 @@ impl Chats {
             return Err("empty_message_id".into());
         }
         let _g = lk(&self.send_lock);
+        let env_of = match &target {
+            ChatTarget::Existing(id) => self.chat(id).map(|c| c.env),
+            ChatTarget::New { env, .. } => Some(env.clone()),
+        };
+        let own = match env_of {
+            Some(env) => self.check_attachments(&env, attachments)?,
+            None => vec![],
+        };
         let chat = match target {
             ChatTarget::Existing(id) => {
                 let chat = self.chat(&id).ok_or("chat_not_found")?;
@@ -454,6 +491,7 @@ impl Chats {
                     queue: vec![],
                     wait: None,
                     answering: None,
+                    terminal: None,
                 };
                 lk(self.engine.store()).upsert_chat(&chat).map_err(|e| e.to_string())?;
                 lk(&self.first_msgs).insert(msg_id.to_string(), chat.id.clone());
@@ -461,18 +499,19 @@ impl Chats {
                 chat
             }
         };
+        let attachments = self.move_attachments(&chat.id, own)?;
         // G62: the model is answering or waits for a limit: the message waits its turn in the queue on disk
         if self.answer_busy(&chat) && self.find_msg(&chat.id, |m| m.id == msg_id).is_none() {
-            self.push_queued(&chat.id, QueuedMsg { id: msg_id.to_string(), text: text.to_string(), attachments: vec![], at: self.now() }, false);
+            self.push_queued(&chat.id, QueuedMsg { id: msg_id.to_string(), text: text.to_string(), attachments, at: self.now() }, false);
             return Ok(chat.id);
         }
-        self.take_in(&chat, msg_id, text);
+        self.take_in(&chat, msg_id, text, attachments);
         Ok(chat.id)
     }
 
     /// The message goes into the feed and is handled: a note or answer to a task of the chat, a task, or a question.
     /// False = the same message is in the feed already.
-    fn take_in(self: &Arc<Self>, chat: &Chat, msg_id: &str, text: &str) -> bool {
+    fn take_in(self: &Arc<Self>, chat: &Chat, msg_id: &str, text: &str, attachments: Vec<PathBuf>) -> bool {
         let msg = ChatMsg {
             id: msg_id.to_string(),
             chat_id: chat.id.clone(),
@@ -486,6 +525,7 @@ impl Chats {
             model: None,
             reply_to: None,
             action: None,
+            attachments,
         };
         let Some(msg) = self.push(msg) else { return false }; // the same message again
         if chat.archived {
@@ -544,6 +584,11 @@ impl Chats {
     /// itself when the chat is free: no answer is written, no limit is waited for and no task of the chat is on its
     /// way. The same id again does nothing.
     pub fn queue_add(self: &Arc<Self>, chat: &str, msg_id: &str, text: &str, first: bool) -> Result<(), String> {
+        self.queue_add_with(chat, msg_id, text, first, &[])
+    }
+
+    /// `queue_add` with images (the checks of `send_with`).
+    pub fn queue_add_with(self: &Arc<Self>, chat: &str, msg_id: &str, text: &str, first: bool, attachments: &[PathBuf]) -> Result<(), String> {
         self.running()?;
         let text = text.trim();
         if text.is_empty() {
@@ -558,7 +603,9 @@ impl Chats {
             if c.queue.iter().any(|q| q.id == msg_id) || self.find_msg(chat, |m| m.id == msg_id).is_some() {
                 return Ok(());
             }
-            self.push_queued(chat, QueuedMsg { id: msg_id.to_string(), text: text.to_string(), attachments: vec![], at: self.now() }, first);
+            let own = self.check_attachments(&c.env, attachments)?;
+            let attachments = self.move_attachments(chat, own)?;
+            self.push_queued(chat, QueuedMsg { id: msg_id.to_string(), text: text.to_string(), attachments, at: self.now() }, first);
         }
         self.kick(chat);
         Ok(())
@@ -606,7 +653,7 @@ impl Chats {
         self.update_chat(chat, |x| x.queue.retain(|y| y.id != q.id));
         self.queue_changed(chat);
         let Some(c) = self.chat(chat) else { return false };
-        self.take_in(&c, &q.id, &q.text);
+        self.take_in(&c, &q.id, &q.text, q.attachments);
         true
     }
 
@@ -798,6 +845,7 @@ impl Chats {
                 archived: false,
                 convoy: false,
                 swarm: true,
+                in_terminal: false,
             });
         }
         out.sort_by(|a, b| a.archived.cmp(&b.archived).then(b.updated_at.cmp(&a.updated_at)));
@@ -819,6 +867,7 @@ impl Chats {
             archived: c.archived,
             convoy: c.convoy,
             swarm: tasks.iter().any(|t| t.swarm.is_some()),
+            in_terminal: c.terminal.is_some(),
         }
     }
 
@@ -844,6 +893,7 @@ impl Chats {
             let _ = std::fs::remove_dir_all(&dir);
         }
         lk(self.engine.store()).remove_chat(id).map_err(|e| e.to_string())?;
+        self.drop_attachments(id);
         lk(&self.waiting).retain(|w| w.chat != id);
         self.emit(ChatEvent::Removed(id.to_string()));
         Ok(())
@@ -1086,6 +1136,7 @@ impl Chats {
             model: e.model.clone(),
             reply_to: None,
             action: None,
+            attachments: vec![],
         });
     }
 
@@ -1122,6 +1173,7 @@ pub(crate) fn action_msg(id: String, chat: &str, at: DateTime<Local>, who: Who, 
         model,
         reply_to: reply_to.map(str::to_string),
         action: Some(a.clone()),
+        attachments: vec![],
     }
 }
 

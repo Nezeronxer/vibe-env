@@ -33,8 +33,13 @@
     // F12 #9: the side question: a narrow panel on the right, ⌘; or this button
     const side = !isNew && NS.sidechat ? NS.sidechat.create(chatId) : null;
     const sideBtn = side ? h('button', { type: 'button', class: 'btn sm side-btn', 'aria-label': t('chatx.side'), title: t('chatx.side_d'), text: t('chatx.side'), onclick: () => side.toggle() }) : null;
+    // v6 G83: the chat is open in a terminal (the same session in the real CLI): a quiet mark in the header, sending asks first
+    let inTerm = !!(chatObj && chatObj.in_terminal);
+    const termMark = h('span', { class: 'term6', title: t('shell.term_on_d'), hidden: !inTerm }, h('span', { class: 't-glyph', 'aria-hidden': 'true', text: '>_' }), h('span', { text: t('shell.term_on') }));
+    const setTerm = (on) => { inTerm = !!on; termMark.hidden = !inTerm; };
+    const openTerm = () => NS.chatShell.openTerminal(chatId).then((r) => { if (r && alive.v) setTerm(true); });
     const header = h('header', { class: 'convo-h pane-h' }, h('span', { class: 'pane-ic' }, envIcon(env.custom ? 'custom' : envId)), lamp,
-      title, sub, sideBtn, !isNew ? menuBtn : null);
+      title, sub, termMark, sideBtn, !isNew ? menuBtn : null);
     // F11: a new chat starts with the project button above the field (the menu: recent, open a folder, create)
     const pj = isNew ? NS.projects.picker(() => selProject, (p) => { selProject = p.id; drawHeader(); renderFeed(); composer.focus(); }) : null;
     function drawLamp() {
@@ -63,11 +68,7 @@
       closeChatMenu();
       const busy = st.chatTasks(chatId).some((x) => ['wait', 'run', 'queue'].includes(L.kindOf(x)));
       const m = h('div', { class: 'menu menu-r', role: 'menu' },
-        h('button', { type: 'button', role: 'menuitem', text: t('chat.terminal'), onclick: async () => {      // A07.2: the same session in the CLI of the env, read-only copy
-          closeChatMenu();
-          try { await NS.api.call('open_chat_terminal', { id: chatId }); feed.append(h('div', { class: 'sysline bad' }, ic('i-warn'), h('span', { text: t('chat.terminal_warn') }))); toBottom(); }
-          catch (er) { NS.shell.toast(NS.errHuman(NS.api.errText(er)), true); }
-        } }),
+        h('button', { type: 'button', role: 'menuitem', text: t('shell.term'), onclick: () => { closeChatMenu(); openTerm(); } }),      // v6 G83: the same session in a terminal tab
         h('button', { type: 'button', role: 'menuitem', disabled: busy, title: busy ? t('chat.delete_busy') : '', text: t('chat.delete'),
         onclick: async () => {
           closeChatMenu();
@@ -114,18 +115,20 @@
     // the executor is on its way (not waiting for an answer): a new message waits its turn in the core's queue (G62)
     const busy = () => { const a = activeTask(); return !!a && L.kindOf(a) !== 'wait'; };
     function setQueue(list) {
-      queue = (list || []).map((q) => ({ id: q.id, text: q.text, at: q.at }));
+      queue = (list || []).map((q) => ({ id: q.id, text: q.text, at: q.at, attachments: q.attachments || [] }));
       const ids = new Set(queue.map((q) => q.id));
       const was = pending.length;
       pending = pending.filter((p) => !ids.has(p.id));                 // the core queued what was sent while it answered
       if (think && was && !pending.length) think = null;
       schedule(); composer.drawHint();
     }
-    async function enqueueCore(text, first) {
-      const q = { id: qid(), text, at: new Date().toISOString() };
+    async function enqueueCore(text, first, files) {
+      const q = { id: qid(), text, at: new Date().toISOString(), attachments: files || [] };
       if (first) queue.unshift(q); else queue.push(q);
       renderFeed(); toBottom();
-      try { await NS.api.call('chat_queue_add', { id: chatId, msgId: q.id, text, first: !!first }); }
+      const args = { id: chatId, msgId: q.id, text, first: !!first };
+      if (files && files.length) args.attachments = files;
+      try { await NS.api.call('chat_queue_add', args); }
       catch (e) { queue = queue.filter((x) => x.id !== q.id); renderFeed(); NS.shell.toast(t('chat6.queue_fail', { why: NS.errHuman(NS.api.errText(e)) }), true); }
     }
     const dropQueued = (q) => NS.api.call('chat_queue_drop', { id: chatId, msgId: q.id }).catch((e) => NS.shell.toast(NS.errHuman(NS.api.errText(e)), true));
@@ -146,9 +149,15 @@
       const note = !isPending && m.task_id;
       const to = m.to ? ' · ' + (m.to === 'reviewer' ? t('swarm.to_reviewer') : t('swarm.to_variant', { v: m.to })) : '';     // a note to a swarm: who gets it (story 156)
       // F9: my message is a grey bubble on the right; the time and delivery sit under it and show on hover
-      return h('div', { class: 'me' + (isPending ? ' sending' : '') }, h('div', { class: 'me-b' }, h('span', { class: 'sr-only', text: t('feed.you') }), richText(m.text)),
+      return h('div', { class: 'me' + (isPending ? ' sending' : '') }, attNode(m), h('div', { class: 'me-b' }, h('span', { class: 'sr-only', text: t('feed.you') }), richText(m.text)),
         h('small', { class: 'me-m' }, NS.hhmm(m.at), isPending ? ' · ' + t('msg.sending') : note ? ' · ' + (m.delivered_at ? t('msg.delivered', { time: NS.hhmm(m.delivered_at) }) : t('msg.will_pass')) + to : '',
         note && NS.rollbackBtn ? [' ', NS.rollbackBtn(m.task_id, NS.snapAfter(m.at))] : null));   // F13: "Вернуть код сюда" (only when the task has a snapshot after this message)
+    }
+    // v6 G65: the images that went with a message of the person: a quiet row of chips (the file name only)
+    function attNode(m) {
+      const list = (m && m.attachments) || [];
+      if (!list.length) return null;
+      return h('div', { class: 'me-att6' }, list.map((p) => h('span', { class: 'att6-c', title: String(p) }, h('span', { 'aria-hidden': 'true', text: '▣' }), h('span', { text: t('img.chip') + ' ' + String(p).split('/').pop() }))));
     }
     // F12 #8: a message that waits for the agent: grey, can be edited or removed until it is sent (v6: in the core's queue)
     function queuedNode(q) {
@@ -157,7 +166,7 @@
         composer.insert(q.text + (composer.ta.value ? '\n' + composer.ta.value : ''));
       } });
       const drop = h('button', { type: 'button', class: 'q-act', 'aria-label': t('chatx.drop'), title: t('chatx.drop'), text: '×', onclick: () => { queue = queue.filter((x) => x.id !== q.id); renderFeed(); composer.drawHint(); dropQueued(q); } });
-      return h('div', { class: 'me queued' }, h('div', { class: 'me-b' }, h('span', { class: 'sr-only', text: t('feed.you') }), richText(q.text)),
+      return h('div', { class: 'me queued' }, attNode(q), h('div', { class: 'me-b' }, h('span', { class: 'sr-only', text: t('feed.you') }), richText(q.text)),
         h('small', { class: 'me-m' }, t('chatx.queued') + ' · ' + t('chatx.queued_d'), edit, drop));
     }
     // G62: a line of the app `key: details` in words; the details may be a key themselves (`note_not_passed: task_cancelled`)
@@ -533,10 +542,11 @@
     const convoEl = h('section', { class: 'convo' });
     const composer = NS.composer.create({ envId, chat: chatId, hooks: {
       projectId: () => selProject, activeTask, busy,
-      enqueue(text) { return enqueueCore(text, false); },
-      async now(text) {                        // "Сразу": stop the current run; the message is first in the queue and goes as soon as the run is over
+      chatId: () => (isNew ? null : chatId), inTerminal: () => inTerm, openTerminal: isNew ? null : openTerm,
+      enqueue(text, files) { return enqueueCore(text, false, files); },
+      async now(text, files) {                        // "Сразу": stop the current run; the message is first in the queue and goes as soon as the run is over
         const tk = activeTask();
-        await enqueueCore(text, true);
+        await enqueueCore(text, true, files);
         if (!tk) return;
         try { await NS.api.call('cancel', { id: tk.id }); } catch (e) { NS.shell.toast(NS.errHuman(NS.api.errText(e)), true); }
       },
@@ -610,6 +620,7 @@
           pin();
         } else if (evt === 'chatmsg') {
           if (payload.chat_id !== chatId) return;
+          if (payload.who === 'system' && /^(opened_in_terminal|continued_in_terminal|back_from_terminal)\b/.test(payload.text || '')) setTerm(/^opened/.test(payload.text));
           pending = pending.filter((p) => !(p.id === payload.id || (L.whoOf(payload).kind === 'human' && p.text === payload.text)));
           queue = queue.filter((q) => q.id !== payload.id);                           // a queued message went out
           const known = msgs.some((x) => x.id === payload.id);

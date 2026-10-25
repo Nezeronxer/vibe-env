@@ -33,6 +33,8 @@ pub enum FakeStep {
     Delta(String),
     /// v4: context in use and the window, in tokens.
     Context(u64, u64),
+    /// v6: tokens the run used (input, output).
+    Tokens(u64, u64),
 }
 
 /// Which runs a role script answers: a role, and optionally one swarm variant.
@@ -49,6 +51,7 @@ pub struct FakeAdapter {
     by_role: HashMap<Key, Vec<Vec<FakeStep>>>,
     models: Option<Vec<ModelFamily>>,
     read_only_native: bool,
+    images: bool,
     calls: Mutex<Vec<Run>>,
     /// How many runs each queue has served, and how many went to `scripts`.
     served: Mutex<(HashMap<Key, usize>, usize)>,
@@ -63,6 +66,7 @@ impl FakeAdapter {
             by_role: HashMap::new(),
             models: None,
             read_only_native: false,
+            images: false,
             calls: Mutex::new(vec![]),
             served: Mutex::new((HashMap::new(), 0)),
         }
@@ -112,6 +116,11 @@ impl FakeAdapter {
             }
         };
         step.unwrap_or_else(|| vec![FakeStep::Done("ok".into())])
+    }
+    /// v6: the fake reads attached images (`supports_images`).
+    pub fn with_images(mut self, yes: bool) -> FakeAdapter {
+        self.images = yes;
+        self
     }
     pub fn with_id(mut self, id: &str) -> FakeAdapter {
         self.id = id.to_string();
@@ -171,6 +180,7 @@ impl Adapter for FakeAdapter {
                 FakeStep::Action(a) => sh.push_str(&ev(serde_json::json!({"t":"action","action":a}))),
                 FakeStep::Delta(t) => sh.push_str(&ev(serde_json::json!({"t":"delta","text":t}))),
                 FakeStep::Context(u, w) => sh.push_str(&ev(serde_json::json!({"t":"context","used":u,"window":w}))),
+                FakeStep::Tokens(i, o) => sh.push_str(&ev(serde_json::json!({"t":"tokens","input":i,"output":o}))),
             }
         }
         let mut c = Command::new("sh");
@@ -196,6 +206,7 @@ impl Adapter for FakeAdapter {
             Some("action") => serde_json::from_value(v["action"].clone()).map(AgentEvent::Action).into_iter().collect(),
             Some("delta") => vec![AgentEvent::TextDelta(s("text"))],
             Some("context") => vec![AgentEvent::Context { used: v["used"].as_u64(), window: v["window"].as_u64() }],
+            Some("tokens") => vec![AgentEvent::Tokens { input: v["input"].as_u64().unwrap_or(0), output: v["output"].as_u64().unwrap_or(0) }],
             _ => vec![],
         }
     }
@@ -204,6 +215,13 @@ impl Adapter for FakeAdapter {
     }
     fn read_only_native(&self) -> bool {
         self.read_only_native
+    }
+    fn supports_images(&self) -> bool {
+        self.images
+    }
+    /// `fake-cli --resume <id>` (a terminal test needs words, no program runs them).
+    fn resume_argv(&self, session: &str, _cwd: &std::path::Path) -> Option<Vec<String>> {
+        super::adapters::common::valid_session_id(session).then(|| vec!["fake-cli".into(), "--resume".into(), session.to_string()])
     }
     fn reports_cost(&self) -> bool {
         true

@@ -42,6 +42,7 @@
     api.listen('tauri://drag-leave', () => document.body.classList.remove('dragging'));
     api.listen('tauri://drag-drop', async (pl) => {
       document.body.classList.remove('dragging');
+      if (NS.composerDrop && NS.composerDrop(pl)) return;       // v6 G65.2: dropped on an input field: an image for the message, not a project
       const path = pl && pl.paths && pl.paths[0];
       if (!path) return;
       const p = await NS.projects.addByPath(path);

@@ -22,6 +22,18 @@
 
   // ids stay unique when several panels each have an input field (tabs.js): the first one keeps the plain ids
   const usedN = new Set();
+  // v6 G65.2: the input fields on screen; a file dropped on one of them is an image for it, not "open this folder" (app.js asks first)
+  const fields = new Set();
+  NS.composerDrop = (pl) => {
+    const paths = (pl && pl.paths) || [], pos = pl && pl.position, dpr = window.devicePixelRatio || 1;
+    if (!paths.length || !pos) return false;
+    const x = pos.x / dpr, y = pos.y / dpr;
+    for (const f of fields) {
+      const r = f.form.getBoundingClientRect();
+      if (r.width && x >= r.left && x <= r.right && y >= r.top && y <= r.bottom) { f.dropPaths(paths); return true; }
+    }
+    return false;
+  };
   function create(opts) {
     let n = 1; while (usedN.has(n)) n++;
     usedN.add(n);
@@ -47,6 +59,57 @@
     let sugg = null;
     const tabTag = h('kbd', { class: 'cmp-tab', 'aria-hidden': 'true', text: 'Tab', hidden: true });
     const hintOn = () => NS.storage.get('ns.hint_next') !== '0';
+    // v6 G65: images of the message - thumbnails over the text, × takes one off; the clip shows only for an env that reads images
+    const atts = [];
+    const attStrip = h('div', { class: 'atts6', role: 'list', 'aria-label': t('img.limit'), hidden: true });
+    const clipBtn = h('button', { type: 'button', class: 'clip6', id: 'clipBtn' + sfx, 'aria-label': t('img.attach'), title: t('img.attach') + ' · ' + t('img.limit'), hidden: true },
+      svgOf('clip-g', ['M10.6 4.4 5.9 9.1a1.5 1.5 0 0 0 2.1 2.1l4.9-4.9a2.9 2.9 0 0 0-4.1-4.1L3.9 7.1a4.3 4.3 0 0 0 6.1 6.1l4.2-4.2']));
+    let caps = null;                                   // {images, resume, checked} of the env, from `chat_shell`
+    const projectOf = () => (hooks.projectId ? hooks.projectId() : null);
+    const chatOf = () => (hooks.chatId ? hooks.chatId() : (chat === 'new' || !chat ? null : chat));
+    if (NS.slash) NS.slash.shell(envId, projectOf()).then((r) => { caps = r || { images: false }; clipBtn.hidden = !caps.images; });
+    const toastErr = (k) => NS.shell.toast(NS.errHuman(k), true);
+    function drawAtts() {
+      clear(attStrip);
+      atts.forEach((a, i) => attStrip.append(h('div', { class: 'att6', role: 'listitem' },
+        a.preview ? h('img', { src: a.preview, alt: t('img.alt', { n: i + 1 }) }) : h('span', { class: 'att6-n', text: t('img.chip') }),
+        h('button', { type: 'button', class: 'att6-x', 'aria-label': t('img.remove'), title: t('img.remove'), text: '×', onclick: () => {
+          atts.splice(atts.indexOf(a), 1); drawAtts(); drawHint(); ta.focus();
+          NS.api.call('chat_detach', { path: a.path }).catch(() => {});
+        } }))));
+      attStrip.hidden = !atts.length;
+    }
+    // can an image be taken now: the env reads images, the message goes to the model (not to a task), room for one more
+    function canTake() {
+      if (!caps || !caps.images) { toastErr('images_not_supported'); return false; }
+      if (mode.kind !== 'message' || (hooks.activeTask && hooks.activeTask())) { NS.shell.toast(t('img.task'), true); return false; }
+      if (atts.length >= L5) { toastErr('too_many_images'); return false; }
+      return true;
+    }
+    const L5 = 5, MB10 = 10 * 1024 * 1024;
+    async function addFile(file) {
+      if (!canTake()) return;
+      if (!/^image\/(png|jpe?g|gif|webp)$/.test(file.type || '')) return toastErr('not_an_image');
+      if (file.size > MB10) return toastErr('image_too_big');
+      const url = await new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(String(r.result)); r.onerror = () => rej(r.error); r.readAsDataURL(file); }).catch(() => null);
+      if (!url) return toastErr('not_an_image');
+      try {
+        const a = await NS.api.call('chat_attach', { id: chatOf(), data: url.slice(url.indexOf(',') + 1) });
+        atts.push({ path: a.path, preview: url }); drawAtts(); drawHint();
+      } catch (e) { toastErr(NS.api.errText(e)); }
+    }
+    async function addPath(path) {
+      if (!canTake()) return;
+      try { const a = await NS.api.call('chat_attach_path', { id: chatOf(), path }); atts.push({ path: a.path, preview: a.preview || null }); drawAtts(); drawHint(); }
+      catch (e) { toastErr(NS.api.errText(e)); }
+    }
+    clipBtn.onclick = async () => {
+      if (!canTake()) return;
+      const d = window.__TAURI__ && window.__TAURI__.dialog;
+      let p = null;
+      try { p = d && d.open ? await d.open({ multiple: true, filters: [{ name: 'image', extensions: ['png', 'jpg', 'jpeg', 'gif', 'webp'] }] }) : null; } catch (e) { /* the dialog was closed */ }
+      for (const x of [].concat(p || []).slice(0, L5 - atts.length)) await addPath(x);
+    };
     const stopBtn = h('button', { type: 'button', class: 'send4 stop4', id: 'stopBtn' + sfx, 'aria-label': t('composer.stop'), title: t('composer.stop'), hidden: true }, svgOf('stop-g', ['M4.5 4.5h7v7h-7z'], true));
     // the plate over the field: who works and on what, with "Стоп" when there is a task to cancel (pin-85)
     let work = null;
@@ -113,7 +176,23 @@
     // ---- draft: one per chat, survives a restart ----
     ta.value = NS.storage.get(key) || '';
     ta.addEventListener('input', () => { if (ta.value) NS.storage.set(key, ta.value); else NS.storage.del(key); drawHint(); grow(); });
+    // G65: ⌘V of a screenshot (a file on the clipboard) becomes an image of the message; text pastes as text
+    ta.addEventListener('paste', (e) => {
+      const files = [...((e.clipboardData && e.clipboardData.items) || [])].filter((i) => i.kind === 'file').map((i) => i.getAsFile()).filter(Boolean);
+      if (!files.length) return;
+      e.preventDefault();
+      files.forEach((f) => addFile(f));
+    });
+    // a file dragged onto the field in a browser (in the app the window's drop event comes through NS.composerDrop)
+    form.addEventListener('dragover', (e) => { if (e.dataTransfer && [...e.dataTransfer.types].includes('Files')) { e.preventDefault(); form.classList.add('drop6'); } });
+    form.addEventListener('dragleave', () => form.classList.remove('drop6'));
+    form.addEventListener('drop', (e) => { const f = e.dataTransfer && e.dataTransfer.files; form.classList.remove('drop6'); if (!f || !f.length) return; e.preventDefault(); e.stopPropagation(); [...f].forEach((x) => addFile(x)); });
+    const me = { form, dropPaths: (paths) => { paths.forEach((p) => addPath(p)); } };
+    fields.add(me);
+    // G82: the menu "/" of the env over the field
+    const slash = NS.slash ? NS.slash.attach({ ta, form, envId, projectId: projectOf, onTerminal: hooks.openTerminal || null }) : null;
     ta.addEventListener('keydown', (e) => {
+      if (slash && slash.key(e)) return;
       if (e.key === 'Tab' && !e.shiftKey && sugg && hintOn() && !ta.value && mode.kind === 'message') { e.preventDefault(); const s = sugg; sugg = null; applyMode(); insert(s); return; }
       if (sugg && !['Shift', 'Meta', 'Control', 'Alt'].includes(e.key)) { sugg = null; applyMode(); }
       if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); send(); }
@@ -125,8 +204,11 @@
       const text = ta.value, v = L.validateSend(text);
       if (!v.ok) { if (v.reason === 'empty') ta.focus(); else drawHint(); return; }
       if (hooks.needProject && mode.kind === 'message' && hooks.needProject()) return;     // F11: a new chat needs a chosen project
+      // G83: the same conversation is open in the terminal: sending from here is asked first
+      if (mode.kind === 'message' && hooks.inTerminal && hooks.inTerminal() && !(await NS.projects.confirm(t('shell.term_warn_t'), t('shell.term_warn'), t('shell.term_send')))) return;
+      const files = atts.map((a) => a.path);
       if (mode.kind === 'message' && isBusy() && hooks.enqueue) {                              // F12 #8: the agent works: the message waits, grey, until it is done
-        hooks.enqueue(text); ta.value = ''; NS.storage.del(key); grow(); drawHint(); return;
+        hooks.enqueue(text, files); ta.value = ''; NS.storage.del(key); atts.length = 0; drawAtts(); grow(); drawHint(); return;
       }
       let id = gate.begin(key, text);
       if (id == null) return;                      // a double press while the first call is still running
@@ -137,8 +219,9 @@
       NS.storage.set(idKey, id + '\n' + text);
       sendBtn.disabled = true;
       try {
-        await dispatch(text, id);
+        await dispatch(text, id, files);
         ta.value = ''; NS.storage.del(key); NS.storage.del(idKey); gate.done(); setMode('message'); grow();
+        if (files.length) { atts.length = 0; drawAtts(); }
       } catch (e) {
         gate.fail();                               // the same text will reuse this id, the core ignores a repeat
         if (hooks.dropPending) hooks.dropPending(id);
@@ -149,9 +232,9 @@
     nowBtn.onclick = () => {
       const text = ta.value;
       if (!L.validateSend(text).ok || !hooks.now) return;
-      hooks.now(text); ta.value = ''; NS.storage.del(key); grow(); drawHint();
+      hooks.now(text, atts.map((a) => a.path)); ta.value = ''; NS.storage.del(key); atts.length = 0; drawAtts(); grow(); drawHint();
     };
-    async function dispatch(text, id) {
+    async function dispatch(text, id, files) {
       const call = NS.api.call;
       if (mode.kind === 'answer') return call('answer', { id: mode.task.id, text });
       if (mode.kind === 'hint') return call('resume_failed', { taskId: mode.task.id, hint: text, model: null });
@@ -164,7 +247,7 @@
       }
       const target = chat === 'new' || !chat ? { new: { env: envId, project_id: hooks.projectId() } } : { existing: chat };
       if (hooks.addPending) hooks.addPending({ id, text, at: new Date().toISOString() });
-      const chatId = await call('send_chat', { target, msgId: id, text });
+      const chatId = await call('send_chat', files && files.length ? { target, msgId: id, text, attachments: files } : { target, msgId: id, text });
       if (hooks.sent) hooks.sent(chatId);
     }
 
@@ -224,8 +307,8 @@
 
     qSw = makeSwitch(t('composer.quality'), true, (v) => { quality.on = v; save(); if (!tunePanel.hidden) drawTune(); }, t('composer.quality_d'));
     sSw = makeSwitch(t('composer.swarm'), false, (v) => { swarm = v ? { mode: 'race', n: 3 } : null; save(); drawHint(); if (!tunePanel.hidden) drawTune(); }, t('composer.swarm_d'));
-    form.append(plate, modebar, h('div', { class: 'cmp-line' }, ta, tabTag),
-      h('div', { class: 'comp-row' }, pickBtn, qSw, sSw, tuneBtn, h('span', { class: 'comp-gap' }), stopBtn, nowBtn, sendBtn),
+    form.append(plate, modebar, attStrip, h('div', { class: 'cmp-line' }, ta, tabTag),
+      h('div', { class: 'comp-row' }, pickBtn, qSw, sSw, tuneBtn, h('span', { class: 'comp-gap' }), clipBtn, stopBtn, nowBtn, sendBtn),
       hint, swhint, modelPop, tunePanel);
     // under the field, quiet: the keys, and in a new chat where the terminal is
     const box = h('div', { class: 'cmpbox' }, form, h('p', { class: 'cmp-keys', text: t('composer.keys') }), chat === 'new' || !chat ? h('p', { class: 'cmp-note', text: t('composer.note_new') }) : null);
@@ -237,7 +320,8 @@
     const deliver = (text, id) => dispatch(text, id || (crypto.randomUUID ? crypto.randomUUID() : 'q-' + Date.now()));
     function suggest(text) { sugg = text || null; applyMode(); drawHint(); }
     return { el: box, form, ta, refresh, setMode, setWork, drawHint, deliver, suggest, accept: () => ta.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', cancelable: true })), focus: () => ta.focus(), closePops, insert,
-      destroy() { usedN.delete(n); offSettings(); document.removeEventListener('click', onDoc); document.removeEventListener('keydown', onKey); } };
+      atts: () => atts.slice(), addPath,
+      destroy() { usedN.delete(n); fields.delete(me); offSettings(); document.removeEventListener('click', onDoc); document.removeEventListener('keydown', onKey); } };
   }
 
   NS.composer = { create };

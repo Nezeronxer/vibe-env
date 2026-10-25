@@ -148,11 +148,11 @@
     get_limits: ({ env }) => { limitsCache = limitsCache || window.NSMockLimits.build({ exhausted }); return limitsCache[env] || null; },
     list_chats: ({ env }) => chats.filter((c) => c.env === env),
     get_chat: ({ id, before, limit }) => chatMsgs(id).filter((m) => !before || Date.parse(m.at) < Date.parse(before)).slice(-limit),
-    send_chat: ({ target, msgId, text }) => {
+    send_chat: ({ target, msgId, text, attachments }) => {
       let id = target.existing;
       if (!id) { id = 'n' + Date.now(); chats.unshift(C(id, target.new.env, target.new.project_id, text.slice(0, 40), '', 0)); }
       if (chatMsgs(id).some((m) => m.id === msgId)) return id;               // the core ignores a repeat of the same id
-      pushMsg({ id: msgId, chat_id: id, at: iso(Date.now()), who: 'human', text, task_id: null, delivered_at: null });
+      pushMsg({ id: msgId, chat_id: id, at: iso(Date.now()), who: 'human', text, task_id: null, delivered_at: null, attachments: attachments || [] });
       const replyId = 'm' + Date.now() + 'r', delay = Number(q.get('reply')) || 700;            // v6 (task 27): ?reply=<ms> the model thinks this long
       if (q.get('thoughts')) ['Человек спрашивает про ', 'кэш отчётов. ', 'Смотрю src/reports/cache.py.'].forEach((x, i) => setTimeout(() => emit('chat-thinking', { id, msgId: replyId, text: x }), 150 + 120 * i));
       setTimeout(() => {
@@ -363,18 +363,47 @@
   const pumpQueue = (id) => setTimeout(() => {
     if (!id || chatWorks(id) || !qOf(id).length) return;
     const m = qOf(id).shift(); qEmit(id);
-    cmds.send_chat({ target: { existing: id }, msgId: m.id, text: m.text });
+    cmds.send_chat({ target: { existing: id }, msgId: m.id, text: m.text, attachments: m.attachments });
   }, 250);
   (subs['task-changed'] = subs['task-changed'] || []).push(({ payload }) => payload && pumpQueue(payload.chat_id));
   cmds.chat_queue = ({ id }) => ({ queue: qOf(id).slice(), wait: null });
-  cmds.chat_queue_add = ({ id, msgId, text, first }) => {
-    if (!qOf(id).some((x) => x.id === msgId)) { const m = { id: msgId, text, attachments: [], at: iso(Date.now()) }; if (first) qOf(id).unshift(m); else qOf(id).push(m); }
+  cmds.chat_queue_add = ({ id, msgId, text, first, attachments }) => {
+    if (!qOf(id).some((x) => x.id === msgId)) { const m = { id: msgId, text, attachments: attachments || [], at: iso(Date.now()) }; if (first) qOf(id).unshift(m); else qOf(id).push(m); }
     qEmit(id); pumpQueue(id); return null;
   };
   cmds.chat_queue_edit = ({ id, msgId, text }) => { const m = qOf(id).find((x) => x.id === msgId); if (!m) fail('queued_not_found'); m.text = text; qEmit(id); return null; };
   cmds.chat_queue_drop = ({ id, msgId }) => { if (!qOf(id).some((x) => x.id === msgId)) fail('queued_not_found'); queues[id] = qOf(id).filter((x) => x.id !== msgId); qEmit(id); return null; };
   cmds.chat_stop = () => null;
   cmds.ui_hints = () => ({ spinner_verbs: q.get('verbs') ? q.get('verbs').split(',') : null, spinner_append: false });
+
+  // v6 (task 29): the menu "/" (?slash=empty - an env with nothing), images of a message, the chat in a terminal tab
+  // (?term=nosession - the chat has no session yet: the core says no_session and the window offers a new conversation)
+  const I = (name, description, source) => ({ name, description, source: source || 'global' });
+  const INV6 = {
+    claude: { skills: [I('review', 'Ревью текущего диффа'), I('graphify', 'Граф знаний по коду'), I('ponytail:ponytail', 'Ленивый сеньор: минимальная правка', 'plugin:ponytail'), I('release-notes', 'Заметки к релизу', 'project')],
+      commands: [I('deploy', 'Выкатить на стенд'), I('git:sync', 'Подтянуть main и перебазировать ветку')], mcp: [I('github', 'gh-mcp'), I('qmd', 'qmd')], mods: [I('tolya-text', 'Правит ответ перед показом'), I('clawd-run', 'Clawd в статус-строке')] },
+    codex: { skills: [I('autopilot', 'Сборка по спецификации')], commands: [I('prompts:review', 'Ревью')], mcp: [I('github', 'gh')], mods: [] },
+    opencode: { skills: [I('impeccable', 'Полировка интерфейса')], commands: [I('impeccable', 'Полировка интерфейса')], mcp: [], mods: [I('agent-plugin', '')] },
+  };
+  const IMG6 = { claude: true, codex: true, opencode: true };
+  cmds.chat_shell = ({ env }) => ({ inventory: q.get('slash') === 'empty' ? { skills: [], commands: [], mcp: [], mods: [] } : (INV6[env] || { skills: [], commands: [], mcp: [], mods: [] }),
+    images: !!IMG6[env], resume: !/^custom/.test(env), checked: ['claude', 'qwen', 'opencode'].includes(env) });
+  let att6 = 0;
+  const PNG1 = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFBQIAX8jx0gAAAABJRU5ErkJggg==';
+  const attPath = (id) => '/Users/dev/Library/Application Support/nightshift/attachments/' + (id || '.pending') + '/' + (++att6) + '.png';
+  cmds.chat_attach = ({ id, data }) => { if (!/^iVBOR|^\/9j\/|^R0lG|^UklG/.test(data || '')) fail('not_an_image'); return { path: attPath(id), size: Math.round((data.length * 3) / 4) }; };
+  cmds.chat_attach_path = ({ id, path }) => { if (!/\.(png|jpe?g|gif|webp)$/i.test(path || '')) fail('not_an_image'); return { path: attPath(id), size: 2048, preview: PNG1 }; };
+  cmds.chat_detach = () => null;
+  cmds.chat_terminal = async ({ id, fresh }) => {
+    const c = chats.find((x) => x.id === id) || fail('chat_not_found');
+    if (!fresh && q.get('term') === 'nosession') fail('no_session');
+    const e = envs.find((x) => x.id === c.env) || {};
+    const cwd = '/Users/dev/Library/Application Support/nightshift/worktrees/.chats/' + id;
+    const argv = fresh ? [e.path || c.env] : [e.path || c.env, c.env === 'opencode' ? '--session' : '--resume', 's-' + id];
+    const termId = await window.__TAURI__.core.invoke('term_open', { spec: { cwd, argv, env: [], cols: 100, rows: 30, title: e.name || c.env } });
+    pushMsg({ id: 'tm' + Date.now(), chat_id: id, at: iso(Date.now()), who: 'system', text: 'opened_in_terminal' });
+    return { termId, env: c.env, argv, cwd, resumed: !fresh, checked: ['claude', 'qwen', 'opencode'].includes(c.env), title: e.name || c.env };
+  };
 
   // ================= v3: the live course of work (Границы v3) =================
   // task-action {id, action} (each action twice: start with done=false, then the result), chat-delta {id, msgId, text}, chat-msg at the end.

@@ -44,6 +44,24 @@ const all = sheets.map(css).join('\n');
 const radiusOf = (sel) => { const re = new RegExp('(^|[},\\s])' + sel.replace(/[.[\]=]/g, '\\$&') + '\\s*[,{][^}]*?border-radius:\\s*([^;}]+)', 'gm'); let m, last = null; while ((m = re.exec(all))) last = m[2].split(/\s/)[0]; return last; };
 const corners = { '.pane': radiusOf('.pane'), '.tcard': radiusOf('.tcard'), '.composer': radiusOf('.composer'), 'input[type=text]': radiusOf('input[type=text]'), '.card4': radiusOf('.card4'), '.bar': radiusOf('.bar') };
 check('corners: pane, task card, input field, cards and the bar are rounded (border-radius > 0 from the tokens)', Object.values(corners).every((v) => px(v) > 0), corners);
+// v6 (task 29): the menu "/" as pure logic - the "/word" under the caret, the sections for a query, the text after a choice
+{
+  const sctx = vm.createContext({});
+  vm.runInContext(fs.readFileSync(path.join(ui, 'js/v4/slash.js'), 'utf8'), sctx, { filename: 'slash.js' });
+  const S = sctx.NSSlash;
+  const tk = (x, c) => JSON.stringify(S && S.token(x, c));
+  check('G82: «/» starts the menu at the start of the field or after a space, not inside a word or after a space after the name',
+    !!S && tk('/re', 3) === JSON.stringify({ start: 0, end: 3, query: 're' }) && tk('fix /gi', 7) === JSON.stringify({ start: 4, end: 7, query: 'gi' }) && tk('a/b', 3) === 'null' && tk('/a b', 4) === 'null' && tk('/', 1) === JSON.stringify({ start: 0, end: 1, query: '' }),
+    S && [tk('/re', 3), tk('fix /gi', 7), tk('a/b', 3), tk('/a b', 4)]);
+  const inv = { skills: [{ name: 'graphify', description: 'Граф кода' }, { name: 'review', description: 'Ревью диффа' }, { name: 'preview-ui', description: '' }], commands: [{ name: 'deploy', description: 'Выкатить review-стенд' }], mcp: [{ name: 'github', description: '' }], mods: [] };
+  const sec = S ? S.filter(inv, 'rev') : [];
+  const names = (k) => (sec.find((x) => x.key === k) || { items: [] }).items.map((x) => x.name);
+  check('G82: the search takes the name (the start first) and then the description; sections Скиллы, Команды, MCP, Моды in that order; only skills and commands insert',
+    !!S && sec.map((x) => x.key).join() === 'skills,commands,mcp,mods' && names('skills').join() === 'review,preview-ui' && names('commands').join() === 'deploy' && !names('mcp').length && sec[0].insertable && !sec[2].insertable,
+    sec.map((x) => [x.key, x.items.map((i) => i.name)]));
+  const ins = S ? S.insert('look /rev please', { start: 5, end: 9, query: 'rev' }, 'review') : null;
+  check('G82: a choice puts «/name » in place of the typed word and the caret after it', !!ins && ins.text === 'look /review please' && ins.caret === 13, ins);
+}
 process.stdout.write('\n' + out4.join('\n') + '\n');
 if (out4.some((l) => l.startsWith('FAIL'))) process.exitCode = 1;
 
@@ -65,7 +83,7 @@ if (process.env.NS_PLAYWRIGHT) (async () => {
     return { buttons: buttons.length, names: buttons.map((x) => x.getAttribute('aria-label') || x.textContent.trim()).slice(0, 20), pane: rad('.pane'), card: rad('.tcard'), field: rad('.composer'), bar: rad('.bar') };
   });
   const out = [];
-  out.push((r.buttons <= 20 ? 'PASS ' : 'FAIL ') + 'main view: at most 20 visible buttons outside the feed (14 + the three entrances of F8 + "Новый чат" of the chat list that F9 shows by default + "Спросить" of F12 + "Автоматика" of F14) (' + r.buttons + ')' + (r.buttons <= 20 ? '' : ' ' + JSON.stringify(r.names)));
+  out.push((r.buttons <= 21 ? 'PASS ' : 'FAIL ') + 'main view: at most 21 visible buttons outside the feed (14 + the three entrances of F8 + "Новый чат" of the chat list that F9 shows by default + "Спросить" of F12 + "Автоматика" of F14 + "Приложить картинку" of v6 G65.2, shown only for an env that reads images) (' + r.buttons + ')' + (r.buttons <= 21 ? '' : ' ' + JSON.stringify(r.names)));
   out.push((r.pane > 0 && r.card > 0 && r.field > 0 && r.bar > 0 ? 'PASS ' : 'FAIL ') + 'computed border-radius > 0: pane ' + r.pane + ', card ' + r.card + ', field ' + r.field + ', bar ' + r.bar);
   await f5(b, 'http://127.0.0.1:' + srv.address().port, out);
   await f7(b, 'http://127.0.0.1:' + srv.address().port, out);
@@ -91,6 +109,8 @@ if (process.env.NS_PLAYWRIGHT) (async () => {
   await v6is(b, 'http://127.0.0.1:' + srv.address().port, out);
   await b.close(); b = await launch();       // v6 task 28 (lane on its limit, spending, about, the release bar) in a fresh browser too
   await ops6(b, 'http://127.0.0.1:' + srv.address().port, out);
+  await b.close(); b = await launch();       // v6 task 29 (the menu "/", images, the chat in the terminal) in a fresh browser too
+  await shell6(b, 'http://127.0.0.1:' + srv.address().port, out);
   process.stdout.write(out.join('\n') + '\n');
   if (out.some((l) => l.startsWith('FAIL'))) process.exitCode = 1;
   await b.close(); srv.close();
@@ -878,5 +898,91 @@ async function ops6(b, base, out) {
   ok('G69: «Вышла версия X» with a link to the release; closed, it is gone and not shown again for that version', /Вышла версия 0\.2\.0/.test(bar) && /Открыть релиз/.test(bar) && !gone.bar && gone.show === false, { bar, gone });
   const words = await p.evaluate(() => { const d = NSI18n.dicts; const keys = Object.keys(d.ru).filter((k) => /^(spend|about|appupd|diag)\.|^swarm\.(paused|part_paused)/.test(k)); return { n: keys.length, missing: keys.filter((k) => !(k in d.en)) }; });
   ok('G64/G69/G70/G71: every new word exists in ru and en', words.n > 40 && !words.missing.length, words);
+  await p.close();
+}
+
+// v6 (task 29): the chat as a shell of the CLI - the menu "/" (G82, G84.1), images in the field (G65), "В терминале" and back (G83, G85)
+async function shell6(b, base, out) {
+  const ok = (name, cond, detail) => out.push((cond ? 'PASS ' : 'FAIL ') + name + (cond ? '' : ' ' + JSON.stringify(detail)));
+  const open = async (qs) => { const p = await b.newPage({ viewport: { width: 1440, height: 900 } }); await p.goto(base + '/index.html?lang=ru&platform=mac&' + qs); await p.waitForTimeout(1700); return p; };
+  const type = (p, text) => p.evaluate((text) => { const ta = document.querySelector('.composer textarea'); ta.focus(); ta.value = text; ta.setSelectionRange(text.length, text.length); ta.dispatchEvent(new Event('input')); }, text);
+  const pop = (p) => p.evaluate(() => { const m = document.querySelector('.composer .slash6'); return m && { open: !m.hidden, secs: [...m.querySelectorAll('.sl-sec h4 span:first-child')].map((x) => x.textContent), opts: [...m.querySelectorAll('.sl-o b')].map((x) => x.textContent), empty: (m.querySelector('.sl-empty') || {}).textContent || '', mods: (m.querySelector('.sl-mods h4 .sl-term') || {}).textContent || '' }; });
+  // 1: the menu "/" of Claude Code: four sections, the search, Enter inserts
+  let p = await open('env=claude&chat=how&log=1');
+  await type(p, '/'); await p.waitForTimeout(300);
+  const m1 = await pop(p);
+  ok('G82: «/» in the field opens the menu of the env: Скиллы, Команды, MCP, Моды', m1 && m1.open && m1.secs.join() === 'Скиллы,Команды,MCP,Моды' && m1.opts.includes('/review'), m1);
+  ok('G84.1: the section «Моды» says «рисуют в терминале - открыть»', m1 && m1.mods === 'рисуют в терминале - открыть', m1);
+  await type(p, 'look /rel'); await p.waitForTimeout(200);
+  const m2 = await pop(p);
+  ok('G82: the typed name filters the menu', m2 && m2.opts.join() === '/release-notes', m2);
+  await p.press('.composer textarea', 'Enter'); await p.waitForTimeout(150);
+  const v = await p.evaluate(() => ({ field: document.querySelector('.composer textarea').value, open: !document.querySelector('.composer .slash6').hidden, sent: JSON.parse(document.documentElement.getAttribute('data-calls') || '[]').some((c) => c[0] === 'send_chat') }));
+  ok('G82: Enter puts «/release-notes » into the field and closes the menu, nothing is sent', v.field === 'look /release-notes ' && !v.open && !v.sent, v);
+  await type(p, '/'); await p.waitForTimeout(150); await p.press('.composer textarea', 'Escape'); await p.waitForTimeout(100);
+  ok('G82: Esc closes the menu', !(await pop(p)).open, null);
+  // 2: an image pasted with ⌘V: a thumbnail with ×, × removes it, a second one goes with the message as a path
+  await type(p, '');
+  const paste = () => p.evaluate(() => {
+    const b = Uint8Array.from(atob('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFBQIAX8jx0gAAAABJRU5ErkJggg=='), (c) => c.charCodeAt(0));
+    const dt = new DataTransfer(); dt.items.add(new File([b], 'shot.png', { type: 'image/png' }));
+    document.querySelector('.composer textarea').dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true }));
+  });
+  const clip = await p.evaluate(() => { const c = document.querySelector('.composer .clip6'); return c && !c.hidden; });
+  ok('G65: the clip «Приложить картинку» shows for an env that reads images', clip, clip);
+  await paste(); await p.waitForTimeout(300);
+  const t1 = await p.evaluate(() => ({ n: document.querySelectorAll('.atts6 .att6 img').length, x: (document.querySelector('.att6-x') || {}).getAttribute && document.querySelector('.att6-x').getAttribute('aria-label') }));
+  ok('G65: ⌘V of a screenshot shows its thumbnail over the field with ×', t1.n === 1 && t1.x === 'Убрать картинку', t1);
+  await p.click('.att6-x'); await p.waitForTimeout(150);
+  ok('G65: × takes the image off', (await p.evaluate(() => document.querySelectorAll('.atts6 .att6').length)) === 0, null);
+  await paste(); await p.waitForTimeout(300);
+  await type(p, 'Что не так на скриншоте?');
+  await p.click('#sendBtn'); await p.waitForTimeout(400);
+  const s1 = await p.evaluate(() => { const c = JSON.parse(document.documentElement.getAttribute('data-calls') || '[]').filter((x) => x[0] === 'send_chat').pop(); return { args: c && c[1], strip: document.querySelectorAll('.atts6 .att6').length, chip: [...document.querySelectorAll('.cfeed .me .att6-c')].map((x) => x.textContent) }; });
+  ok('G65: the image goes with the text as a path in the app\'s data; the strip empties; the message shows it', s1.args && Array.isArray(s1.args.attachments) && s1.args.attachments.length === 1 && /nightshift\/attachments\//.test(s1.args.attachments[0]) && s1.strip === 0 && s1.chip.length === 1, s1);
+  // 3: a file dropped on the field is an image of the message, not a project; outside the field it is not taken
+  const d1 = await p.evaluate(() => { const r = document.querySelector('.composer').getBoundingClientRect(), dpr = devicePixelRatio; const inField = NS.composerDrop({ paths: ['/Users/dev/Desktop/shot.png'], position: { x: (r.left + 20) * dpr, y: (r.top + 10) * dpr } }); const outside = NS.composerDrop({ paths: ['/Users/dev/code/other'], position: { x: 5, y: 5 } }); return { inField, outside }; });
+  await p.waitForTimeout(200);
+  const d2 = await p.evaluate(() => document.querySelectorAll('.atts6 .att6 img').length);
+  ok('G65.2: a file dropped on the field is attached (not «open the folder»); elsewhere the window keeps its own drop', d1.inField === true && d1.outside === false && d2 === 1, { d1, d2 });
+  await p.close();
+  // 4: an env without images: no clip, a pasted picture is refused in words
+  p = await open('env=gemini&chat=avif');
+  const g1 = await p.evaluate(() => { const c = document.querySelector('.composer .clip6'); return c ? c.hidden : 'none'; });
+  await p.evaluate(() => {
+    const dt = new DataTransfer(); dt.items.add(new File([new Uint8Array([137, 80, 78, 71])], 'a.png', { type: 'image/png' }));
+    document.querySelector('.composer textarea').dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true }));
+  });
+  await p.waitForTimeout(300);
+  const g2 = await p.evaluate(() => ({ toast: document.body.textContent.includes('Эта среда не принимает картинки'), n: document.querySelectorAll('.atts6 .att6').length }));
+  ok('G65.2: an env without images has no clip and a pasted image says «Эта среда не принимает картинки»', g1 === true && g2.toast && g2.n === 0, { g1, g2 });
+  await p.close();
+  // 5: an env with nothing: «В среде нет скиллов - открыть Каталог»
+  p = await open('env=claude&chat=how&slash=empty');
+  await type(p, '/'); await p.waitForTimeout(300);
+  const e1 = await pop(p);
+  ok('G82: an env with nothing says «В среде нет скиллов - открыть Каталог»', e1 && e1.open && e1.empty === 'В среде нет скиллов - открыть Каталог', e1);
+  await p.close();
+  // 6: «В терминале»: a terminal tab with the session in the chat's copy, the chat marked, sending asks first
+  p = await open('env=claude&chat=how');
+  await p.click('.convo-h .menu-btn'); await p.waitForTimeout(150);
+  const items = await p.evaluate(() => [...document.querySelectorAll('.convo-h .menu [role=menuitem]')].map((x) => x.textContent));
+  await p.click('.convo-h .menu [role=menuitem] >> text=В терминале'); await p.waitForTimeout(900);
+  const tm = await p.evaluate(() => ({ term: !!document.querySelector('.t-pane'), cwd: (document.querySelector('.t-pane .t-cwd') || {}).textContent || '', mark: (() => { const m = document.querySelector('.convo-h .term6'); return m && !m.hidden && m.textContent; })(), line: [...document.querySelectorAll('.cfeed .sysline')].map((x) => x.textContent).filter((x) => /открыт в терминале/.test(x)).length }));
+  ok('G83: «В терминале» opens a terminal tab in the chat\'s copy; the chat is marked «в терминале» and the feed says so', items.includes('В терминале') && tm.term && /\.chats\/how/.test(tm.cwd) && /в терминале/.test(tm.mark || '') && tm.line === 1, { items, tm });
+  await type(p, 'И ещё вопрос'); await p.click('#sendBtn'); await p.waitForTimeout(300);
+  const w1 = await p.evaluate(() => { const d = document.querySelector('dialog[open]'); return d && d.textContent; });
+  ok('G83: while the terminal is open, sending from the chat asks «Разговор идёт в терминале»', /Разговор идёт в терминале/.test(w1 || ''), w1);
+  await p.close();
+  // 7: no session yet: the reason in words and the explicit choice «Новый разговор в терминале»
+  p = await open('env=claude&chat=how&term=nosession');
+  await p.click('.convo-h .menu-btn'); await p.waitForTimeout(150);
+  await p.click('.convo-h .menu [role=menuitem] >> text=В терминале'); await p.waitForTimeout(400);
+  const n1 = await p.evaluate(() => { const d = document.querySelector('dialog[open]'); return d && { text: d.textContent, ok: (d.querySelector('.btn.primary') || {}).textContent }; });
+  ok('G83.2: no session - the reason in words and the choice «Новый разговор в терминале», not silently', n1 && /ещё нет разговора/.test(n1.text) && n1.ok === 'Новый разговор в терминале' && !(await p.evaluate(() => !!document.querySelector('.t-pane'))), n1);
+  await p.click('dialog[open] .btn.primary'); await p.waitForTimeout(900);
+  ok('G83.2: after the choice a new conversation opens in a terminal tab', await p.evaluate(() => !!document.querySelector('.t-pane')), null);
+  const words = await p.evaluate(() => { const d = NSI18n.dicts; const keys = Object.keys(d.ru).filter((k) => /^(slash|shell|img)\.|^err\.(no_session|cannot_resume|session_not_found|opened_in_terminal|continued_in_terminal|back_from_terminal|not_an_image|image_too_big|too_many_images|images_not_supported|attachment_not_found)$/.test(k)); return { n: keys.length, missing: keys.filter((k) => !(k in d.en)) }; });
+  ok('G82/G83/G65: every new word exists in ru and en', words.n > 30 && !words.missing.length, words);
   await p.close();
 }

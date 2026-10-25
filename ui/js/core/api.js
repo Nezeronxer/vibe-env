@@ -28,6 +28,8 @@
     'chat_queue', 'chat_queue_add', 'chat_queue_edit', 'chat_queue_drop', 'chat_stop', 'ui_hints',
     // v6 (task 28): spending by day, the error report, the app's own release
     'spend_history', 'diag_collect', 'app_update_state', 'app_update_check', 'app_update_dismiss',
+    // v6 (task 29): the menu "/" and what the env can do, images of a message, the chat's session in a terminal tab
+    'chat_shell', 'chat_attach', 'chat_attach_path', 'chat_detach', 'chat_terminal',
   ]);
   const EVENTS = new Set(['task-changed', 'task-log', 'task-removed', 'project-changed', 'chat-msg', 'limits-changed', 'catalog-changed', 'frozen',
     'focus-input', 'open-task', 'tauri://drag-enter', 'tauri://drag-leave', 'tauri://drag-drop',

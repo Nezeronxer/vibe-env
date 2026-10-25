@@ -554,12 +554,8 @@
     const f = NS.tabs && NS.tabs.active;
     if (!f || f.kind !== 'agent' || f.chat === 'new') return toast(t('term.no_chat'), true);
     if (cfg().external) return call('open_chat_terminal', { id: f.chat }).catch((e) => toast(errText(e), true));
-    const chat = NS.store.findChat(f.chat), env = NS.store.env(f.env);
-    if (!chat || !env) return;
-    const p = NS.store.project(chat.project_id) || project();
-    const argv = [env.path || env.id];
-    if (chat.session && /^[\w-]{1,128}$/.test(chat.session)) argv.push(...(env.id === 'claude' ? ['--resume', chat.session] : env.id === 'codex' ? ['resume', chat.session] : []));
-    openTerm({ env: env.id, argv, cwd: p ? p.path : null, title: env.name }, 'h');
+    // v6 G83: the core gives the words that continue the session in the chat's copy and opens the session (NS.chatShell)
+    if (NS.chatShell) return NS.chatShell.openTerminal(f.chat);
   }
 
   // ---------- windows (260, 301) ----------

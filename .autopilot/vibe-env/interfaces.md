@@ -602,3 +602,21 @@ pub fn load_token() -> Option<String>; pub fn save_token(t: &str) -> Result<(), 
 - core: `preview::{local_url, host_port, Pick{selector,text,w,h}, parse_pick, trait Capture{available, shoot}, NodeCapture}`; `Engine::set_proof`; `Project.proof: bool`, `Project.app_url: Option<String>`; `Outcome.proof: Option<Proof{shots, skipped}>`; снимки `<data>/proof/<task>/`.
 - Tauri: `preview_open{url}`, `preview_reload`, `preview_width{px}`, `preview_close`, `preview_pick`, `proof_shot{taskId,file}`; событие `preview-pick` только в main; окно `preview`.
 - UI: `NS.preview{open, strip, checkLine, isLocal, insertToChat}`; paneKind `preview`.
+
+## Из таска 27 (чат v6) - что выставлено
+- model: `Chat.{queue: Vec<QueuedMsg{id,text,attachments,at}>, wait: Option<ChatWait{msg_id,resets_at}>, answering: Option<String>}`; `Store::all_chats()`.
+- `Chats::{queue(chat)->(Vec<QueuedMsg>,Option<ChatWait>), queue_add(chat,id,text,first), queue_edit(chat,id,text), queue_drop(chat,id), stop_answer(chat)}`; `ChatEvent::{Thinking{chat,msg_id,text}, Queue{chat,queue,wait}}`; `chat::reason::INTERRUPTED`.
+- agent: `AgentEvent::Thinking(String)`; `UiHints{spinner_verbs: Option<Vec<String>>, spinner_append}`, `spinner_hints(&[PathBuf])`; `Adapter::ui_hints(&Path)`; `Hub::ui_hints(env, project_id)`; `WinItem::ChatThinking`. `spinnerVerbs` = `{mode: append|replace, verbs}` (схема claude 2.1.309).
+- Tauri: `chat_queue{id}`, `chat_queue_add{id,msgId,text,first?}`, `chat_queue_edit`, `chat_queue_drop`, `chat_stop{id}`, `ui_hints{env,projectId?}`; события `chat-thinking{id,msgId,text}`, `chat-queue{id,queue,wait}`.
+- UI: `NS.reveal.{attach(node,getTarget,{isFinal,onGrow,onDone}), step, MAX=40}`; `liveBar().set({think:{verbs,stop},since,who})`. «Сразу» = `chat_queue_add` first=true, затем `cancel`.
+
+## Из таска 30 (issues, сессии) - что выставлено
+- `ci::Gh::{issue_list(repo), issue_close(repo, n, comment)}`, `ci::{Issue, parse_issues, ISSUE_LIMIT=30}`; `suggest::{Source::{Todo{file,line}, Issue{number,url}}, Suggestion.source, is_github_remote, issue_prompt, issue_cards, scan_issues, gh_reason}`.
+- `sessions::{PAGE=50, SessionHead{id,started_at,first_prompt,messages,approx,branch,unreadable}, key_for, valid_id, list, count, list_in, count_in, find_in, copy_into, copy_into_in, claude_dir}`; `Task.resume_session`; `Engine::submit_resumed(NewTask, session)`.
+- Tauri: `sessions_list{projectId,page}`, `session_continue{projectId,id}`, `auto_issue_answer{taskId,close}`; `auto_get` + `issues:{notes,asks}`. Вопрос «Закрыть issue» - в «Автоматике»; экран сессий - из палитры и «Автоматики».
+
+## Из таска 28 (рой, расходы, отчёт, обновление) - что выставлено
+- `LaneState::Paused{resume_at}`; `VariantView/PartView.resume_at`, состояние "paused" (гонка и бригада; совет пока ставит на паузу всю задачу).
+- `Engine::{spend_history(from,to), add_chat_cost(env,project,usd)}`; `store::{SpendRow{day,month,project,env,chat,usd,tokens_in,tokens_out}, SPEND_KEEP_DAYS, Store::add_spend, Store::spend_history}` - токены пока `None` (доделывает 29).
+- `diag::{collect, collect_with(.., &Extra{envs}), AppLog{new,with_limits,write,tail}, init, log}`; `scrub::clean(s, home)` (ядро, kits реэкспортирует); `net::release::{Releases{new,state,view,due,check,dismiss}, UpdateCheck, parse_release, newer, NO_FEED}`; `Settings.release_feed`.
+- Tauri: `spend_history{from?,to?}`, `diag_collect{dir?}`, `app_update_state`, `app_update_check`, `app_update_dismiss{version}`; событие `app-update{latest,url}`. JS: экраны `spend`, `about`; палитра `spend.open`, `about.open`, `diag.collect`; `NS.spend`, `NS.about.showBar`.

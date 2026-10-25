@@ -857,6 +857,16 @@ pub struct Chat {
     /// v6 (G62.4): the message whose answer has started and not ended; after a restart it gets "Повторить".
     #[serde(default)]
     pub answering: Option<String>,
+    /// v6 (G83): the chat is open in a terminal (the same session in the real CLI) since `since`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub terminal: Option<ChatTerminal>,
+}
+
+/// v6 (G83): a chat open in a terminal: since when, and the session the terminal continued (None = a new one).
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct ChatTerminal {
+    pub since: DateTime<Local>,
+    pub session: Option<String>,
 }
 
 /// v6: a message of the person in the queue of a chat (G62).
@@ -913,6 +923,9 @@ pub struct ChatMsg {
     /// v3: an agent's action with its output and diff (the window gets it as `chat-action`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub action: Option<ToolAction>,
+    /// v6 (G65): images the person attached to the message (files in `<data>/attachments/<chat>/`).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub attachments: Vec<PathBuf>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]

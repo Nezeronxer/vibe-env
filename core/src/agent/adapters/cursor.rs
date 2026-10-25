@@ -124,6 +124,13 @@ impl Adapter for Cursor {
         }
         Ok(group_models(&rows, |_| "cursor".into()))
     }
+    /// `cursor-agent --resume <id>` (по документации: cursor.com/docs/cli; not on this machine).
+    fn resume_argv(&self, session: &str, _cwd: &std::path::Path) -> Option<Vec<String>> {
+        crate::agent::resume_words(&self.bin, &["--resume"], session)
+    }
+    fn inventory(&self, cwd: &std::path::Path) -> crate::agent::Inventory {
+        crate::agent::inventory::home().map(|h| crate::agent::inventory::scan("cursor", &h, cwd)).unwrap_or_default()
+    }
     /// `agent --resume <id>` (binary name as configured, see `bin`).
     fn interactive_resume(&self, session: &str, cwd: &std::path::Path) -> Option<Command> {
         let mut c = Command::new(find_bin(&self.bin).unwrap_or_else(|| self.bin.clone().into()));
