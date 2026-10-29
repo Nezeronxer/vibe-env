@@ -46,7 +46,7 @@
 .mk-kv dd { margin: 0; overflow-wrap: anywhere; }
 .mk-runs { display: flex; flex-direction: column; gap: 4px; margin: 8px 0; }
 .mk-runs code, .pubpaths code, .mk-files code, .mk-exec code { font: 12px var(--mono); overflow-wrap: anywhere; }
-.mk-runs code { padding: 6px 8px; background: var(--bg); border: 1px solid var(--line); border-radius: var(--radius-sm); }
+.mk-runs code { white-space: pre-wrap; padding: 6px 8px; background: var(--bg); border: 1px solid var(--line); border-radius: var(--radius-sm); }
 .mk-vars { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 8px 0; }
 .mk-readme { margin: 10px 0; }
 .mk-readme summary { cursor: pointer; color: var(--ink2); }

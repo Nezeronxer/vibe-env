@@ -134,7 +134,7 @@
       if (!real.length) return;
       const rows = real.map((x) => {
         const bar = [];
-        if (x.source && x.source.repo) bar.push(h('button', { type: 'button', class: 'btn sm', text: t('kits.check_update'), onclick: async (e) => {
+        if (x.source && x.source.repo && !String(x.source.repo).startsWith('catalog:')) bar.push(h('button', { type: 'button', class: 'btn sm', text: t('kits.check_update'), onclick: async (e) => {
           e.currentTarget.disabled = true;
           try {
             const installed = { env: env.id, kit_name: x.kit_name, source: x.source, commit: x.commit, scope: x.scope, snapshot: x.id };

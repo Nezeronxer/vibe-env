@@ -68,6 +68,10 @@ pub enum Scope {
     Project(PathBuf),
 }
 
+/// The source of a snapshot made by the catalog: `catalog:<item id>`. Not cloned, never pruned while installed (the
+/// only way back to what it replaced).
+pub const CATALOG_SOURCE: &str = "catalog:";
+
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 #[serde(rename_all = "snake_case")]
 pub enum KitSource {
@@ -975,6 +979,7 @@ impl Kits {
                 return Err(KitError::UnsafePath(p.clone()));
             }
         }
+        source::no_case_clash(files.keys())?;
         let manifest = Manifest {
             name: name.chars().filter(|c| !c.is_control()).take(100).collect(),
             env: env.into(),
@@ -1255,6 +1260,9 @@ impl Kits {
 
     /// Same plan as `preview`, for the source a kit was installed from. Installs nothing.
     pub fn check_update(&self, inst: &Installed) -> Result<ImportPlan, KitError> {
+        if matches!(&inst.source, KitSource::Repo(r) if r.starts_with(CATALOG_SOURCE)) {
+            return Err(KitError::CloneFailed("clone refused (installed from the catalog: update it there)".into()));
+        }
         let mut p = self.preview(&inst.env, inst.source.clone(), &inst.scope)?;
         p.update_from = inst.commit.clone();
         Ok(p)

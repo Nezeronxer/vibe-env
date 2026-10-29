@@ -3,7 +3,7 @@
 //! config (research §2.5-2.6) with variables by name only.
 use super::sources::{enc, ok_repo, registry_item};
 use super::{Item, ItemDetail, Kind, Market, MarketError, Origin, Result, VarInfo, MAX_INDEX, MAX_ITEM, MAX_UNPACKED};
-use crate::kits::{env_name_allowed, read_tree, safe_rel, scratch_dir, with_clone, EnvVarNeed, KitError, KitSource, ScriptText};
+use crate::kits::{env_name_allowed, read_tree, safe_rel, scratch_dir, with_clone, EnvVarNeed, KitError, ScriptText};
 use regex::Regex;
 use serde_json::{json, Map, Value};
 use std::collections::BTreeMap;
@@ -11,7 +11,6 @@ use std::io::Read;
 
 pub(super) struct Built {
     pub files: BTreeMap<String, Vec<u8>>,
-    pub source: KitSource,
     pub commit: Option<String>,
     pub env_vars: Vec<EnvVarNeed>,
     pub runs: Option<String>,
@@ -109,9 +108,9 @@ fn folder_name(n: &str) -> Result<String> {
     Ok(n)
 }
 
-/// The files of a git-like origin: (repo files, commit, folder inside, kit source for the snapshot).
+/// The files of a git-like origin: (repo files, commit, folder inside).
 /// `zip` keeps a GitHub archive between two reads of the same item (one download).
-fn tree_of(m: &Market, origin: &Origin, keep: &dyn Fn(&str) -> bool, zip: &mut Option<Vec<u8>>) -> Result<(Files, Option<String>, String, KitSource)> {
+fn tree_of(m: &Market, origin: &Origin, keep: &dyn Fn(&str) -> bool, zip: &mut Option<Vec<u8>>) -> Result<(Files, Option<String>, String)> {
     match origin {
         Origin::Github { repo, path, git_ref, .. } => {
             let rf = git_ref.clone().unwrap_or_else(|| "HEAD".into());
@@ -123,14 +122,14 @@ fn tree_of(m: &Market, origin: &Origin, keep: &dyn Fn(&str) -> bool, zip: &mut O
                 *zip = Some(m.get(&format!("https://codeload.github.com/{repo}/zip/{rf}"), MAX_ITEM)?);
             }
             let (files, commit) = unzip(zip.as_deref().unwrap_or_default(), keep)?;
-            Ok((files, commit.or_else(|| is_sha(&rf).then(|| rf.clone())), root, KitSource::Repo(format!("https://github.com/{repo}"))))
+            Ok((files, commit.or_else(|| is_sha(&rf).then(|| rf.clone())), root))
         }
         Origin::Git { url, path } => {
             let root = if path.is_empty() { String::new() } else { safe_rel(path)? };
             let (files, commit) = with_clone(url, &scratch_dir(), |d, c| Ok((read_tree(d)?, c)))?;
-            Ok((files, commit, root, KitSource::Repo(url.clone())))
+            Ok((files, commit, root))
         }
-        Origin::Folder { path } => Ok((read_tree(path)?, None, String::new(), KitSource::Folder(path.clone()))),
+        Origin::Folder { path } => Ok((read_tree(path)?, None, String::new())),
         Origin::Zip { path } => {
             let size = std::fs::metadata(path).map_err(|_| KitError::NotFound(path.display().to_string()))?.len();
             if size > MAX_ITEM as u64 {
@@ -138,7 +137,7 @@ fn tree_of(m: &Market, origin: &Origin, keep: &dyn Fn(&str) -> bool, zip: &mut O
             }
             let b = std::fs::read(path).map_err(|e| MarketError::Io(e.to_string()))?;
             let (files, _) = unzip(&b, keep)?;
-            Ok((files, None, String::new(), KitSource::Zip(path.clone())))
+            Ok((files, None, String::new()))
         }
         Origin::Unsupported { why } => Err(MarketError::Unsupported(why.clone())),
         _ => Err(MarketError::Unsupported("origin".into())),
@@ -175,7 +174,7 @@ fn files_item(m: &Market, item: &Item, env: &str) -> Result<Built> {
     let mut zip = None;
     if let Origin::Github { path, skill: Some(want), .. } = &mut origin {
         if path.is_empty() {
-            let (mds, _, _, _) = tree_of(m, &item.origin, &|r| r == "SKILL.md" || r.ends_with("/SKILL.md"), &mut zip)?;
+            let (mds, _, _) = tree_of(m, &item.origin, &|r| r == "SKILL.md" || r.ends_with("/SKILL.md"), &mut zip)?;
             let found = mds
                 .iter()
                 .filter(|(k, b)| {
@@ -194,7 +193,7 @@ fn files_item(m: &Market, item: &Item, env: &str) -> Result<Built> {
     };
     let root = root_of(&origin);
     let pre = if root.is_empty() { String::new() } else { format!("{root}/") };
-    let (tree, commit, root, source) = tree_of(m, &origin, &|r| pre.is_empty() || r.starts_with(&pre), &mut zip)?;
+    let (tree, commit, root) = tree_of(m, &origin, &|r| pre.is_empty() || r.starts_with(&pre), &mut zip)?;
     let sub = under(&tree, &root);
     if sub.is_empty() {
         return Err(MarketError::NotFound(if root.is_empty() { item.name.clone() } else { root }));
@@ -238,7 +237,7 @@ fn files_item(m: &Market, item: &Item, env: &str) -> Result<Built> {
             }
         }
     }
-    Ok(Built { files, source, version: commit.clone(), commit, env_vars: vec![], runs: None, needs: vec![], warnings, texts })
+    Ok(Built { files, version: commit.clone(), commit, env_vars: vec![], runs: None, needs: vec![], warnings, texts })
 }
 
 // ---------------- MCP ----------------
@@ -309,7 +308,7 @@ fn spec(server: &Value, var_ref: &dyn Fn(&str) -> String) -> Result<Spec> {
     let packages = server.get("packages").and_then(Value::as_array).cloned().unwrap_or_default();
     for p in &packages {
         let transport = p.get("transport").and_then(|t| t.get("type")).and_then(Value::as_str).unwrap_or("stdio");
-        let Some(id) = p.get("identifier").and_then(Value::as_str).and_then(plain) else { continue };
+        let Some(id) = p.get("identifier").and_then(Value::as_str).and_then(plain).filter(|i| !i.starts_with('-')) else { continue };
         let ver = p.get("version").and_then(Value::as_str).and_then(plain).filter(|v| v != "latest");
         let (cmd, mut args, pkg, need) = match p.get("registryType").and_then(Value::as_str) {
             Some("npm") => ("npx", vec!["-y".to_string()], ver.as_ref().map(|v| format!("{id}@{v}")), "node"),
@@ -358,10 +357,19 @@ fn spec(server: &Value, var_ref: &dyn Fn(&str) -> String) -> Result<Spec> {
         if !matches!(t, "streamable-http" | "sse") {
             continue;
         }
+        // what goes to someone else's host may name only a variable the person is asked for (never HOME or a key
+        // not in the list): the CLI fills `${VAR}` from the person's own environment
+        let listed = |s: &str| placeholder().captures_iter(s).all(|c| env_name_allowed(&var_name(&c[1])));
+        if !listed(url) {
+            return Err(MarketError::Unsupported("remote_var".into()));
+        }
         let url = subst(url, false, &mut vars, var_ref);
         let mut headers = vec![];
         for h in r.get("headers").and_then(Value::as_array).into_iter().flatten() {
             let (Some(n), Some(v)) = (h.get("name").and_then(Value::as_str), h.get("value").and_then(Value::as_str)) else { continue };
+            if !listed(v) || plain(n).is_none() {
+                return Err(MarketError::Unsupported("remote_var".into()));
+            }
             let secret = h.get("isSecret").and_then(Value::as_bool).unwrap_or(false);
             headers.push((n.to_string(), v.to_string()));
             subst(v, secret, &mut vars, var_ref); // collect the variables (the value itself is rendered per environment)
@@ -369,6 +377,11 @@ fn spec(server: &Value, var_ref: &dyn Fn(&str) -> String) -> Result<Spec> {
         return Ok(Spec { local: None, remote: Some((t.into(), url, headers)), pass: vec![], vars, needs: vec![], warnings: vec!["remote".into()] });
     }
     Err(MarketError::Unsupported("no_package".into()))
+}
+
+/// The address of a remote server and every header sent to it, as shown before install.
+fn remote_runs(url: &str, hs: &[(String, String)]) -> String {
+    std::iter::once(url.to_string()).chain(hs.iter().map(|(n, v)| format!("{n}: {}", placeholder().replace_all(v, "$${$1}")))).collect::<Vec<_>>().join("\n")
 }
 
 /// A key the config files and TOML headers take as is.
@@ -560,7 +573,7 @@ fn mcp(m: &Market, item: &Item, env: &str) -> Result<Built> {
     let (file, bytes, sp) = render(env, &key, &server)?;
     let runs = match (&sp.local, &sp.remote) {
         (Some((c, a)), _) => Some(std::iter::once(c.clone()).chain(a.iter().cloned()).collect::<Vec<_>>().join(" ")),
-        (_, Some((_, u, _))) => Some(u.clone()),
+        (_, Some((_, u, hs))) => Some(remote_runs(u, hs)),
         _ => None,
     };
     let env_vars = sp.vars.iter().map(|v| EnvVarNeed { name: v.name.clone(), used_by: vec![format!("mcp:{key}")], missing: false }).collect();
@@ -568,7 +581,6 @@ fn mcp(m: &Market, item: &Item, env: &str) -> Result<Built> {
     files.insert(file, bytes);
     Ok(Built {
         files,
-        source: KitSource::Repo(item.homepage.clone().unwrap_or_else(|| format!("mcp:{name}"))),
         commit: None,
         env_vars,
         runs,
@@ -611,7 +623,7 @@ pub(super) fn detail(m: &Market, mut item: Item) -> Result<ItemDetail> {
             let sp = spec(&server, &|v: &str| format!("${{{v}}}"))?;
             d.runs = match (&sp.local, &sp.remote) {
                 (Some((c, a)), _) => Some(std::iter::once(c.clone()).chain(a.iter().cloned()).collect::<Vec<_>>().join(" ")),
-                (_, Some((_, u, _))) => Some(u.clone()),
+                (_, Some((_, u, hs))) => Some(remote_runs(u, hs)),
                 _ => None,
             };
             d.env_vars = sp.vars;

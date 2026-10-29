@@ -139,12 +139,13 @@ impl Snaps {
     }
 
     /// Keep the newest `KEEP` snapshots of `env` that are younger than `KEEP_DAYS`; never the
-    /// one just made, never an install still open.
+    /// one just made, never an install still open, never a catalog install still in place.
     pub fn prune(&self, env: &str, keep_id: &str) {
         let cutoff = chrono::Local::now() - chrono::Duration::days(KEEP_DAYS);
         let mine: Vec<Meta> = self.all().into_iter().filter(|m| m.env == env).collect();
         for (i, m) in mine.iter().enumerate() {
-            if m.id != keep_id && m.state != SnapshotState::Installing && (i >= KEEP || m.at < cutoff) {
+            let catalog = matches!(&m.source, KitSource::Repo(r) if r.starts_with(super::CATALOG_SOURCE)) && matches!(m.state, SnapshotState::Done | SnapshotState::NotApplied);
+            if m.id != keep_id && m.state != SnapshotState::Installing && !catalog && (i >= KEEP || m.at < cutoff) {
                 let _ = std::fs::remove_dir_all(self.dir(&m.id));
             }
         }

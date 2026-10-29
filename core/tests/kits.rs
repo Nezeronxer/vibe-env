@@ -1234,3 +1234,27 @@ fn rolling_back_an_older_kit_does_not_take_away_a_newer_one() {
     k.rollback(&a).unwrap();
     assert_eq!(fs::read_to_string(c.join("CLAUDE.md")).unwrap(), "# kit B rules\n", "B is still installed");
 }
+
+#[test]
+fn a_cloned_kit_never_lets_git_lfs_fetch_from_the_address_in_its_lfsconfig() {
+    if std::process::Command::new("git").args(["lfs", "version"]).output().map_or(true, |o| !o.status.success()) {
+        eprintln!("git-lfs is not installed: nothing to check");
+        return;
+    }
+    let tmp = TempDir::new().unwrap();
+    let ear = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    ear.set_nonblocking(true).unwrap();
+    let repo = tmp.path().join("repo");
+    fs::create_dir_all(&repo).unwrap();
+    git(&repo, &["init", "-q"]);
+    fs::write(repo.join(".lfsconfig"), format!("[lfs]\n\turl = http://{}/lfs\n", ear.local_addr().unwrap())).unwrap();
+    fs::write(repo.join(".gitattributes"), "*.bin filter=lfs diff=lfs merge=lfs -text\n").unwrap();
+    let oid = "4d7a214614ab2935c943f9e0ff69d22eadbb8f32b1258daaa5e2ca24d17e2393";
+    fs::write(repo.join("blob.bin"), format!("version https://git-lfs.github.com/spec/v1\noid sha256:{oid}\nsize 12345\n")).unwrap();
+    git(&repo, &["-c", "core.hooksPath=/dev/null", "add", "-A"]);
+    git(&repo, &["-c", "user.name=t", "-c", "user.email=t@t", "-c", "core.hooksPath=/dev/null", "commit", "-q", "-m", "lfs"]);
+    let kits = Kits::new(tmp.path().join("home"), tmp.path().join("data"));
+    fs::create_dir_all(tmp.path().join("home")).unwrap();
+    let _ = kits.preview("claude", KitSource::Repo(repo.display().to_string()), &Scope::Global);
+    assert!(matches!(ear.accept(), Err(e) if e.kind() == std::io::ErrorKind::WouldBlock), "git-lfs called the address from the cloned repo");
+}

@@ -245,8 +245,12 @@ fn git_limited(dir: &Path, args: &[&str], watch: &Path, err_file: &Path, out_fil
         .env("GIT_TERMINAL_PROMPT", "0")
         .env("GIT_ALLOW_PROTOCOL", "https:ssh:file")
         .env("GIT_NO_LAZY_FETCH", "1")
+        // git-lfs of the person's global config would fetch from the address in the repo's .lfsconfig (any host,
+        // even http://): a kit is plain files, LFS pointers stay pointers
+        .env("GIT_LFS_SKIP_SMUDGE", "1")
         .env("LC_ALL", "C")
         .args(["-c", "core.sshCommand=ssh -o BatchMode=yes", "-c", "protocol.ext.allow=never", "-c", "core.hooksPath=/dev/null"])
+        .args(["-c", "filter.lfs.process=", "-c", "filter.lfs.smudge=", "-c", "filter.lfs.required=false"])
         .args(args)
         .stdin(std::process::Stdio::null())
         .stdout(out)
@@ -369,7 +373,20 @@ pub(crate) fn with_clone<T>(url: &str, scratch: &Path, f: impl FnOnce(&Path, Opt
     res
 }
 
+/// Two paths that differ only in case are one file on macOS (and Windows): the one written last wins, so the
+/// file shown before install may not be the one on disk.
+pub(crate) fn no_case_clash<'a>(paths: impl IntoIterator<Item = &'a String>) -> Result<(), KitError> {
+    let mut seen = std::collections::BTreeSet::new();
+    for p in paths {
+        if !seen.insert(p.to_lowercase()) {
+            return Err(KitError::UnsafePath(format!("{p} (another file has the same name in other case)")));
+        }
+    }
+    Ok(())
+}
+
 fn finish(manifest: Manifest, files: BTreeMap<String, Vec<u8>>, commit: Option<String>, raw: &[u8]) -> Result<LoadedKit, KitError> {
+    no_case_clash(files.keys())?;
     for f in &manifest.files {
         let b = &files[&f.path];
         if sha256_hex(b) != f.sha256.to_ascii_lowercase() {

@@ -27,6 +27,15 @@
     return { writes: plan.writes || [], exec, enabled: exec.filter((e) => e.on).map((e) => e.key), runs: plan.runs || null, needs: plan.needs || [],
       runsCode: w.includes('runs_code'), remote: w.includes('remote'), docker: w.includes('needs_docker'), texts: plan.texts || [], installed: !!plan.installed };
   }
+  // the variables the install will pass, from the plan (it says which already have a saved value) with the card's notes;
+  // a saved value goes to this server too, so the person is told
+  function planVars(plan, detail) {
+    const info = new Map(((detail && detail.env_vars) || []).map((v) => [v.name, v]));
+    return ((plan.kit && plan.kit.env_vars) || []).map((v) => {
+      const d = info.get(v.name) || {};
+      return { name: v.name, required: !!d.required, secret: d.secret !== false, description: d.description || '', saved: v.missing === false };
+    });
+  }
   // "установлено" / "есть обновление" of one item against market_installed
   function itemState(item, installed) {
     const rec = (installed || []).find((x) => x.id === item.id);
@@ -41,7 +50,7 @@
     return m ? { kind: m[1], detail: m[2] } : { kind: s, detail: '' };
   }
   const validSource = (kind, url) => ['skill', 'mcp', 'mod'].includes(kind) && !!safeHttps(url);
-  root.NSMarket = { vrange, safeHttps, mergeItems, planView, itemState, fmtCount, errParts, validSource, ROW_H: 62 };
+  root.NSMarket = { vrange, safeHttps, mergeItems, planView, planVars, itemState, fmtCount, errParts, validSource, ROW_H: 62 };
   if (typeof document === 'undefined' || !root.NS || !root.NS.h) return;
 
   // ---------- the screen ----------
@@ -222,9 +231,10 @@
       const p = st.plan, v = planView(p, st.ticked);
       const out = h('div', { class: 'mk-plan' }, h('h2', { text: t('mk.plan_title', { name: p.item.name }) }));
       if (v.runsCode) out.append(h('p', { class: 'mk-warn' }, ic('i-warn'), h('span', { text: it0(p) === 'mod' ? t('mk.warn_mod') : t('mk.warn_code') })));
-      if (v.remote) out.append(h('p', { class: 'mk-warn' }, ic('i-warn'), h('span', { text: t('mk.warn_remote', { url: v.runs || '' }) })));
+      if (v.remote) out.append(h('p', { class: 'mk-warn' }, ic('i-warn'), h('span', { text: t('mk.warn_remote', { url: String(v.runs || '').split('\n')[0] }) })));
       if (v.docker) out.append(h('p', { class: 'mk-warn' }, ic('i-warn'), h('span', { text: t('mk.warn_docker') })));
-      if (v.runs && !v.remote) out.append(h('div', { class: 'mk-runs' }, h('span', { class: 'mute', text: t('mk.runs') }), h('code', { text: v.runs })));
+      // a remote server: its address and every header it is sent (a header may carry a saved key)
+      if (v.runs) out.append(h('div', { class: 'mk-runs' }, h('span', { class: 'mute', text: v.remote ? t('mk.remote_sends') : t('mk.runs') }), h('code', { text: v.runs })));
       out.append(h('h3', { text: t('mk.writes') }), v.writes.length ? h('ul', { class: 'mk-files' }, v.writes.map((w) => h('li', {}, h('code', { text: w })))) : h('p', { class: 'mute', text: t('mk.writes_none') }));
       if (v.exec.length) {
         out.append(h('h3', { text: t('mk.exec') }), h('p', { class: 'mute', text: t('mk.exec_d') }),
@@ -234,10 +244,11 @@
               h('code', { text: e.key }), note);
           })()))));
       }
-      const vars = (st.detail && st.detail.env_vars) || [];
+      const vars = planVars(p, st.detail);
       if (vars.length) {
         NS.append(out, [h('h3', { text: t('mk.vars_title') }), h('p', { class: 'mute', text: t('mk.vars_d') }),
           vars.map((x) => h('label', { class: 'mk-var' }, h('span', { text: x.name + (x.required ? ' *' : '') }), x.description ? h('small', { class: 'mute', text: x.description }) : null,
+            x.saved ? h('small', { class: 'mk-warn', text: t('mk.var_saved') }) : null,
             h('input', { type: x.secret ? 'password' : 'text', autocomplete: 'off', spellcheck: false, value: st.vars.get(x.name) || '', oninput: (ev) => st.vars.set(x.name, ev.target.value) })))]);
       }
       if (v.texts.length) NS.append(out, [h('h3', { text: t('mk.texts') }), v.texts.map((x) => h('details', { class: 'mk-readme' }, h('summary', {}, h('code', { text: x.path })), h('pre', {}, h('code', { text: String(x.text).slice(0, 20000) }))))]);

@@ -319,6 +319,8 @@ pub struct Market {
     ttl: Duration,
     /// Items seen in searches and links: install and detail take items by id only.
     seen: Mutex<HashMap<String, Item>>,
+    /// `<kind>/<id>` the window lists for the current search of each kind (its first portion and the next ones).
+    listed: Mutex<std::collections::HashSet<String>>,
     plans: Mutex<Vec<InstallPlan>>,
 }
 
@@ -327,7 +329,7 @@ const KEEP_PLANS: usize = 16;
 
 impl Market {
     pub fn new(fetch: Box<dyn Fetch>, cache_dir: PathBuf) -> Self {
-        Self { fetch, dir: cache_dir, kits: None, ttl: CACHE_TTL, seen: Mutex::new(HashMap::new()), plans: Mutex::new(vec![]) }
+        Self { fetch, dir: cache_dir, kits: None, ttl: CACHE_TTL, seen: Mutex::new(HashMap::new()), listed: Mutex::new(Default::default()), plans: Mutex::new(vec![]) }
     }
 
     /// The kits that write, snapshot and roll back (the app passes its own, so snapshots show in "Наборы").
@@ -465,7 +467,15 @@ impl Market {
         if asked > 0 && page.items.is_empty() && page.offline.len() == asked && page.offline.iter().all(|o| o.cached_at.is_none()) {
             return Err(first_err.unwrap_or_else(|| MarketError::NotFound(query.into())));
         }
+        // an id met twice (two entries of one marketplace...) keeps its first item, as the window does: the card shown
+        // and the item installed are one; a next portion never replaces what the window already lists
         let mut seen = self.seen.lock().unwrap();
+        let mut listed = self.listed.lock().unwrap();
+        let tag = format!("{kind:?}/");
+        if cursor.is_none() {
+            listed.retain(|x| !x.starts_with(&tag));
+        }
+        page.items.retain(|it| listed.insert(format!("{tag}{}", it.id)));
         for it in &page.items {
             seen.insert(it.id.clone(), it.clone());
         }
@@ -498,7 +508,10 @@ impl Market {
     pub fn install(&self, item: &Item, env: &str, scope: Scope) -> Result<InstallPlan> {
         let kits = self.kits()?;
         let built = build::build(self, item, env)?;
-        let kit = kits.preview_built(env, &item.name, built.source, built.commit.clone(), &scope, built.files, built.env_vars)?;
+        // the snapshot names the catalog item, not an address: "Проверить обновление" in "Наборы" would clone it as a kit
+        // (a homepage is any text from the source); the catalog checks its own updates
+        let source = crate::kits::KitSource::Repo(format!("{}{}", crate::kits::CATALOG_SOURCE, item.id));
+        let kit = kits.preview_built(env, &item.name, source, built.commit.clone(), &scope, built.files, built.env_vars)?;
         let mut item = item.clone();
         if let Some(v) = built.version {
             item.version = Some(v);
