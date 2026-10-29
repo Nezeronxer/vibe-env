@@ -154,7 +154,9 @@
     const call = NS.api.call, toast = (m, bad) => NS.shell.toast(m, bad);
     try {
       const r = await call('chat_terminal', { id: chatId, fresh: !!o.fresh, cols: 100, rows: 30 });
-      if (NS.term && NS.term.open) NS.term.open({ termId: r.termId, env: r.env, argv: r.argv || [], cwd: r.cwd, title: r.title, chat: chatId }, o.where || 'h');
+      const spec = { termId: r.termId, env: r.env, argv: r.argv || [], cwd: r.cwd, title: r.title, chat: chatId };
+      if (o.place) o.place(spec);                     // v10: «Терминал» in the chat's head - the CLI shows in the same pane
+      else if (NS.term && NS.term.open) NS.term.open(spec, o.where || 'h');
       const env = NS.store.env(r.env);
       if (r.resumed && !r.checked) toast(t('shell.by_docs', { env: env ? env.name : r.env }));
       return r;

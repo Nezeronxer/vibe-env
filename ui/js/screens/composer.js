@@ -313,7 +313,8 @@
     qSw = makeSwitch(t('composer.quality'), true, (v) => { quality.on = v; save(); if (!tunePanel.hidden) drawTune(); }, t('composer.quality_d'));
     sSw = makeSwitch(t('composer.swarm'), false, (v) => { swarm = v ? { mode: 'race', n: 3 } : null; save(); drawHint(); if (!tunePanel.hidden) drawTune(); }, t('composer.swarm_d'));
     form.append(plate, modebar, attStrip, h('div', { class: 'cmp-line' }, ta, tabTag),
-      h('div', { class: 'comp-row' }, pickBtn, qSw, sSw, tuneBtn, h('span', { class: 'comp-gap' }), clipBtn, stopBtn, nowBtn, sendBtn),
+      // v10 (Agentation 29.10): Рой / Качество live in the middle of the bar; here only «Настроить» for this message - no duplicate switches
+      h('div', { class: 'comp-row' }, pickBtn, tuneBtn, h('span', { class: 'comp-gap' }), clipBtn, stopBtn, nowBtn, sendBtn),
       hint, swhint, modelPop, tunePanel);
     // under the field, quiet: the keys, and in a new chat where the terminal is
     const box = h('div', { class: 'cmpbox' }, form, h('p', { class: 'cmp-keys', text: t('composer.keys') }), chat === 'new' || !chat ? h('p', { class: 'cmp-note', text: t('composer.note_new') }) : null);

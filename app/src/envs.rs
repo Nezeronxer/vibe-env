@@ -120,6 +120,14 @@ pub fn badge(n: usize) -> String {
     }
 }
 
+/// How the window installs an env in its own terminal: the line to show, the words to run when it is plain words
+/// (`term::hint_words`), else `argv: null` and `piped: true` (a pipe, quotes, `;`, `$`: the app never runs it itself).
+pub fn install_json(hint: Option<&str>) -> Value {
+    let Some(hint) = hint else { return Value::Null };
+    let argv = term::hint_words(hint);
+    json!({ "line": hint.split(" (").next().unwrap_or(hint).trim(), "piped": argv.is_none(), "argv": argv })
+}
+
 fn env_json(e: &EnvInfo, tasks: &[Task]) -> Value {
     let mine = || tasks.iter().filter(|t| t.agent == e.id);
     let waiting = mine().filter(|t| waits_for_human(t)).count();
@@ -128,7 +136,7 @@ fn env_json(e: &EnvInfo, tasks: &[Task]) -> Value {
     json!({
         "id": e.id, "name": e.name, "installed": e.installed, "needs_login": needs_login, "error": e.error,
         "version": e.version, "install_hint": e.install_hint, "kit_dir": e.kit_dir, "custom": e.custom, "configured": e.configured,
-        "sandbox": e.sandbox, "path": e.path,
+        "sandbox": e.sandbox, "path": e.path, "install": install_json(e.install_hint.as_deref()),
         "waiting": waiting, "badge": badge(waiting), "working": mine().any(|t| is_active(&t.status)),
     })
 }
@@ -159,7 +167,7 @@ mod tests {
     }
 
     #[test]
-    fn the_list_has_the_six_envs_and_the_own_command_with_what_waits_and_what_works() {
+    fn the_list_has_the_builtin_envs_and_the_own_command_with_what_waits_and_what_works() {
         let s = Scratch::new("envs");
         let mut store = Store::open(&s.0.join("data")).unwrap();
         let mut st = store.settings();
@@ -182,7 +190,10 @@ mod tests {
 
         let envs = hub.list_envs();
         let ids: Vec<&str> = envs.iter().map(|e| e["id"].as_str().unwrap()).collect();
-        assert_eq!(ids, ["claude", "codex", "gemini", "opencode", "cursor", "qwen", "custom:mine", "custom:empty"]);
+        assert_eq!(
+            ids,
+            ["claude", "codex", "gemini", "opencode", "cursor", "qwen", "kimi", "copilot", "crush", "amp", "goose", "droid", "aider", "grok", "custom:mine", "custom:empty"]
+        );
         let by = |id: &str| envs.iter().find(|e| e["id"] == id).unwrap().clone();
         let claude = by("claude");
         assert_eq!((claude["waiting"].as_u64(), claude["working"].as_bool(), claude["needs_login"].as_bool()), (Some(2), Some(true), Some(true)));
@@ -258,6 +269,41 @@ mod tests {
         assert!(hub.recheck_envs());
         assert_eq!(qwen(&hub)["installed"], false);
         assert!(!hub.recheck_envs(), "nothing changed since");
+    }
+
+    #[test]
+    fn install_is_the_line_and_its_words_or_null_words_for_a_pipe() {
+        assert_eq!(
+            install_json(Some("npm i -g @openai/codex (не сверено)")),
+            json!({ "line": "npm i -g @openai/codex", "argv": ["npm", "i", "-g", "@openai/codex"], "piped": false })
+        );
+        assert_eq!(
+            install_json(Some("curl -fsSL https://x.ai/cli/install.sh | bash (не сверено)")),
+            json!({ "line": "curl -fsSL https://x.ai/cli/install.sh | bash", "argv": null, "piped": true })
+        );
+        for bad in ["a; b", "a $(id)", "echo 'x'", "a && b"] {
+            assert_eq!(install_json(Some(bad))["piped"], true, "{bad}");
+        }
+        assert!(install_json(None).is_null());
+        // in the list: every built-in env has one, the own command has none
+        let s = Scratch::new("envs-install");
+        let store = Store::open(&s.0.join("data")).unwrap();
+        let kits = nightshift_core::kits::Kits::new(s.0.join("home"), s.0.join("kits")).with_secret_store(Box::new(MemKeyring::default()));
+        let mut st = store.settings();
+        st.custom_agents = vec![CustomAgent { id: "custom:mine".into(), name: "Mine".into(), run: "echo {prompt}".into(), resume: None }];
+        let mut store = store;
+        store.set_settings(st.clone()).unwrap();
+        let hub = Hub::new(store, agent::adapters(&st), Arc::new(NullNotifier), kits, s.0.join("data"), Arc::new(chrono::Local::now));
+        for e in hub.list_envs() {
+            let i = &e["install"];
+            if e["custom"] == true {
+                assert!(i.is_null(), "{e}");
+                continue;
+            }
+            assert!(i["line"].as_str().is_some_and(|l| !l.is_empty() && !l.contains("(не сверено)")), "{e}");
+            assert_eq!(i["piped"], i["argv"].is_null(), "{e}");
+            assert!(!i["line"].as_str().unwrap().contains("sudo"), "{e}");
+        }
     }
 
     #[test]

@@ -46,10 +46,11 @@ eq('a postponed failure is not a call', L.envCounts(ts, 'claude', new Set(['c'])
 
 // --- limits (stories 96-101) ---
 const win = (name, pct, resets, extra) => Object.assign({ name, model: null, used_pct: pct, remaining: null, resets_at: resets, exhausted: false, source: 'cli', seen_at: at(2026, 10, 21, 14, 10) }, extra);
-eq('limit line, same day (spec: "5 ч · 54% · сброс в 19:00")', L.formatLimit(win('five_hour', 54, at(2026, 10, 21, 19, 0)), NOW, t), '5 ч · 54% · сброс в 19:00');
-eq('limit line, another day (spec: "Неделя · 16% · пн 10:00")', L.formatLimit(win('seven_day', 16, at(2026, 10, 26, 10, 0)), NOW, t), 'Неделя · 16% · пн 10:00');
+eq('limit line, same day (spec: "5 ч · осталось 46% · сброс в 19:00")', L.formatLimit(win('five_hour', 54, at(2026, 10, 21, 19, 0)), NOW, t), '5 ч · осталось 46% · сброс в 19:00');
+eq('limit line, another day (spec: "Неделя · осталось 84% · пн 10:00")', L.formatLimit(win('seven_day', 16, at(2026, 10, 26, 10, 0)), NOW, t), 'Неделя · осталось 84% · пн 10:00');
 eq('exhausted line (spec: "исчерпан · сброс в 19:00")', L.formatLimit(win('five_hour', 100, at(2026, 10, 21, 19, 0), { exhausted: true }), NOW, t), '5 ч · исчерпан · сброс в 19:00');
-eq('window reset since last seen (spec: "окно сброшено в 19:00, новых данных нет")', L.formatLimit(win('five_hour', 54, at(2026, 10, 21, 13, 0), { seen_at: at(2026, 10, 21, 12, 0) }), NOW, t), '5 ч · 54% · окно сброшено в 13:00, новых данных нет');
+eq('left share: used 54 -> 46, exhausted -> 0, unknown -> null', [L.leftPct(win('five_hour', 54)), L.leftPct(win('five_hour', 100, null, { exhausted: true })), L.leftPct(win('five_hour', null))], [46, 0, null]);
+eq('window reset since last seen (spec: "окно сброшено в 19:00, новых данных нет")', L.formatLimit(win('five_hour', 54, at(2026, 10, 21, 13, 0), { seen_at: at(2026, 10, 21, 12, 0) }), NOW, t), '5 ч · осталось 46% · окно сброшено в 13:00, новых данных нет');
 const five = [win('a', 10), win('b', 54), win('c', 85), win('d', 30), win('e', 16)];
 const picked = L.pickWindows(five, 2);
 eq('two most used windows, the rest only as a count ("ещё 3")', [picked.shown.map((w) => w.name), picked.rest.length, t('lim.more', { n: picked.rest.length })], [['c', 'b'], 3, 'ещё 3']);
@@ -494,6 +495,20 @@ eq('v3 words exist in ru and en', Object.keys(NSI18n.dicts.ru).filter((k) => /^(
 // bugs of the Playwright walk (ticket 17, criteria 10 and 12)
 const tEn = (k, p) => { NSI18n.setLang('en'); const r = NSI18n.t(k, p); NSI18n.setLang('ru'); return r; };
 eq('budget in en reads "of", in ru "из" (bug 10)', [L.formatBudget(14.89, 40, tEn), L.formatBudget(14.89, 40, t)], ['$14.89 of $40', '$14.89 из $40']);
+// v8: the agents column (envrail.js) and the window names without the model
+{
+  const R = NSEnvRail;
+  eq('v8: short names under the marks: Codex is ChatGPT, "Claude Code" and "Gemini CLI" lose the tail', ['codex', 'claude', 'gemini', 'qwen'].map((id) => R.shortName({ id, name: { codex: 'Codex', claude: 'Claude Code', gemini: 'Gemini CLI', qwen: 'Qwen Code' }[id] })), ['ChatGPT', 'Claude', 'Gemini', 'Qwen']);
+  const o = R.railOrder([{ id: 'a', state: 'ok' }, { id: 'b', state: 'missing' }, { id: 'c', state: 'login' }, { id: 'custom:x', state: 'missing', custom: true }]);
+  eq('v8: installed (and custom) agents on top, the missing ones go under «Добавить»', [o.ok.map((e) => e.id), o.add.map((e) => e.id)], [['a', 'c', 'custom:x'], ['b']]);
+  eq('v8: an install with argv runs it as is', R.installPlan({ install: { line: 'npm i -g x', argv: ['npm', 'i', '-g', 'x'], piped: false } }), { argv: ['npm', 'i', '-g', 'x'], typed: null, line: 'npm i -g x' });
+  eq('v8: a piped install is only typed into a shell, never run', R.installPlan({ install: { line: 'curl -fsSL https://x | sh', argv: null, piped: true } }), { argv: [], typed: 'curl -fsSL https://x | sh', line: 'curl -fsSL https://x | sh' });
+  eq('v8: the old install_hint is the fallback, its "(не сверено)" tail cut', R.installPlan({ hint: 'npm i -g y (не сверено)' }).typed, 'npm i -g y');
+  eq('v8: no command - no plan', R.installPlan({ id: 'z' }), null);
+  eq('v8: the checks of a PR in one word: a failure wins, then running, then ok, none is empty', [[{ conclusion: 'SUCCESS' }, { conclusion: 'FAILURE' }], [{ conclusion: 'SUCCESS' }, { status: 'IN_PROGRESS' }], [{ conclusion: 'SUCCESS' }], []].map(NSGh8.checks), ['fail', 'run', 'ok', '']);
+  eq('v8: the corner mark: someone waits > someone works > free', [['run', 'wait'], ['talk', 'run'], ['talk'], []].map(NSAgentMark.markState), ['wait', 'run', 'idle', 'idle']);
+  eq('v8: a per-model window is named without the model', L.windowName({ name: 'seven_day_opus', model: 'opus' }, t), 'Неделя');
+}
 eq('the "day" limit window is a word in ru and en, not the raw name (bug 12)', [L.windowName({ name: 'day' }, t), L.windowName({ name: 'day' }, tEn)], ['День', 'Day']);
 }
 // ================= v4 shell (task 22): panes, registry, palette, theme, words =================
@@ -588,10 +603,10 @@ eq('theme: xterm gets the terminal table (warm ground off the panel, soft text, 
 // F7: contrast of the default terminal palette, WCAG: text >= 7:1, colours 1-6 >= 4.5:1 to the ground, both themes
 const lumOf = (hex) => { const n = parseInt(hex.slice(1), 16); return [n >> 16, (n >> 8) & 255, n & 255].map((v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); }).reduce((a, v, i) => a + v * [0.2126, 0.7152, 0.0722][i], 0); };
 const ratio = (a, b) => { const x = lumOf(a), y = lumOf(b); return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05); };
-eq('v7 theme: each env has its own accent in both themes, readable on the panel (>= 4.5:1); no env -> the theme accent', ['claude', 'codex', 'gemini', 'qwen', 'opencode', 'cursor'].every((e) => ['dark', 'light'].every((nm) => { const v = NSTheme.vars(nm, {}, e); return v['--accent'] !== NSTheme.THEMES[nm].accent && ratio(v['--accent'], NSTheme.THEMES[nm].panel) >= 4.5; })), true);
-for (const nm of ['dark', 'light']) { const X = NSTheme.THEMES[nm].term; eq('F7 terminal palette ' + nm + ': text >= 7:1, colours 1-6 >= 4.5:1', [ratio(X.foreground, X.background) >= 7, X.ansi.slice(1, 7).every((c) => ratio(c, X.background) >= 4.5)], [true, true]); }
-// F10: the studio look - text >= 7:1 and quiet text >= 4.5:1 on every surface of both themes; the dark ground is warm, the light one cream
-for (const nm of ['dark', 'light']) {
+eq('v7 theme: each env has its own accent in every ready theme (look8: all eight), readable on the panel (>= 4.5:1); no env -> the theme accent', ['claude', 'codex', 'gemini', 'qwen', 'opencode', 'cursor', 'kimi', 'copilot', 'crush', 'amp', 'goose', 'droid', 'aider', 'grok'].every((e) => NSTheme.BUILTIN.every((nm) => { const v = NSTheme.vars(nm, {}, e); return v['--accent'] !== NSTheme.THEMES[nm].accent && ratio(v['--accent'], NSTheme.THEMES[nm].panel) >= 4.5; })), true);
+for (const nm of NSTheme.BUILTIN) { const X = NSTheme.THEMES[nm].term; eq('F7 terminal palette ' + nm + ': text >= 7:1, colours 1-6 >= 4.5:1', [ratio(X.foreground, X.background) >= 7, X.ansi.slice(1, 7).every((c) => ratio(c, X.background) >= 4.5)], [true, true]); }
+// F10: the studio look - text >= 7:1 and quiet text >= 4.5:1 on every surface of every ready theme (look8: all eight)
+for (const nm of NSTheme.BUILTIN) {
   const T = NSTheme.THEMES[nm], grounds = [T.canvas, T.panel, T.raised, T.raised2];
   eq('F10 ' + nm + ': ink >= 7:1 and ink2/ink3 >= 4.5:1 on canvas, panel, raised, raised2', [grounds.every((g) => ratio(T.ink, g) >= 7), grounds.every((g) => ratio(T.ink2, g) >= 4.5 && ratio(T.ink3, g) >= 4.5)], [true, true]);
   eq('F10 ' + nm + ': the status words (ok, bad, calling amber) read >= 4.5:1 on the panel', [T.ok, T.bad, T.human, T.accent].every((c) => ratio(c, T.panel) >= 4.5), true);
@@ -600,6 +615,52 @@ const coolOrNeutral = (hex) => { const n = parseInt(hex.slice(1), 16); return (n
 eq('v7 dark ground is graphite (B >= R, near black) on canvas, panel and raised; the light ground is near white', [['canvas', 'panel', 'raised'].every((k) => coolOrNeutral(NSTheme.THEMES.dark[k])), lumOf(NSTheme.THEMES.light.panel) > 0.9, lumOf(NSTheme.THEMES.dark.canvas) < 0.01], [true, true, true]);
 eq('theme: system follows the OS; out-of-range choices fall back', [NSTheme.resolve('system', true), NSTheme.resolve('system', false), NSTheme.resolve('light', true), ((l) => [l.gap, l.font_px, l.radius, l.accent])(NSTheme.look({ gap: 99, font_px: 'x', radius: 'blob', accent: 'red' }))],
   ['dark', 'light', 'light', [16, 13, 'soft', 'env']]);
+// look8: the ready themes, own themes (5 colours -> a full table), JSON import / export, window transparency, accent gradients
+{
+  const K0 = Object.keys(NSTheme.THEMES.dark).sort().join();
+  eq('look8 + v9: fifteen ready themes (v9: designer palettes), each a full table (the keys of Dark, 16 ANSI, a 16-colour terminal); own themes stay off the ready list',
+    [NSTheme.BUILTIN.join(), NSTheme.BUILTIN.every((nm) => { const T = NSTheme.THEMES[nm]; return Object.keys(T).filter((k) => k !== 'grad' && k !== 'flat' && k !== 'adapt').sort().join() === K0 && T.ansi.length === 16 && T.term.ansi.length === 16; })],
+    ['dark,light,oled,midnight,graphite,dimmed,mocha,warm,tokyo,rosepine,nord,dracula,gruvbox,latte,dawn', true]);
+  const O = NSTheme.vars('oled', {}, 'claude');
+  eq('look8: OLED is true black - canvas, ground and terminal #000, no accent lamp; panes one hair above', [O['--canvas'], O['--bg'], NSTheme.THEMES.oled.term.background, O['--window-fx'], O['--panel'] !== '#000000'], ['#000000', '#000000', '#000000', 'none', true]);
+  eq('look8: a ready theme with its own gradient paints it under the lamp (Полночь); Dark has none', [/radial-gradient.*linear-gradient\(155deg, rgba\(28, 42, 92, 1\)/.test(NSTheme.vars('midnight', {})['--window-fx']), NSTheme.vars('dark', {})['--theme-fx']], [true, 'none']);
+  eq('look8: data-theme stays the scheme - every ready theme is dark or light', NSTheme.BUILTIN.map((nm) => NSTheme.THEMES[nm].scheme), ['dark', 'light', 'dark', 'dark', 'dark', 'dark', 'dark', 'light', 'dark', 'dark', 'dark', 'dark', 'dark', 'light', 'light']);
+  // own theme: only #rrggbb colours pass, the name is plain text; nothing else reaches CSS
+  const S = NSTheme.customSpec;
+  eq('look8: an own theme takes only #rrggbb colours and accent "env"; CSS, url(), named colours and short hex are refused',
+    [S({ id: 'u1', bg: '#101014', panel: '#16161c', ink: '#f0f0f4', accent: 'env' }) !== null, S({ id: 'u1', bg: 'red', panel: '#16161c', ink: '#f0f0f4' }), S({ id: 'u1', bg: '#101014;}body{x', panel: '#16161c', ink: '#f0f0f4' }),
+      S({ id: 'u1', bg: '#101014', panel: '#16161c', ink: '#f0f0f4', accent: 'url(x)' }), S({ id: 'u1', bg: '#000', panel: '#16161c', ink: '#f0f0f4' }), S({ id: 'u1', bg: '#101014', panel: '#16161c', ink: '#f0f0f4', grad: 'linear-gradient(red, blue)' })],
+    [true, null, null, null, null, null]);
+  eq('look8: an own theme name is plain text (no markup, no control characters, <= 40 chars); a bad id is dropped', ((s) => [s.name, s.id])(S({ id: 'x"><b', name: '<b>Ночь</b>\u0007' + 'я'.repeat(60), bg: '#101014', panel: '#16161c', ink: '#f0f0f4' })), ['bНочь/b' + 'я'.repeat(33), null]);
+  // five colours -> a full readable table, for dark and light grounds, even when the person picks a mid-grey panel
+  const specs = [{ bg: '#0e1116', panel: '#151a21', ink: '#e8edf3', accent: 'env' }, { bg: '#f2efe8', panel: '#ffffff', ink: '#1a1712', accent: '#2a5bd7', grad: '#f0d8c0' }, { bg: '#3a3f47', panel: '#4a505a', ink: '#ffffff', accent: 'env' }];
+  const derived = specs.map((s) => NSTheme.custom(S(Object.assign({ id: 'u9' }, s))));
+  eq('look8: an own theme becomes a full table (the keys of Dark) with the scheme from its ground', [derived.every((T) => Object.keys(T).filter((k) => !['grad', 'flat', 'custom', 'ownAccent'].includes(k)).sort().join() === K0), derived.map((T) => T.scheme)], [true, ['dark', 'light', 'dark']]);
+  eq('look8: an own theme keeps quiet text (ink2, ink3), statuses and env colours readable (>= 4.5:1) on its surfaces', derived.every((T) => {
+    const G = [T.canvas, T.panel, T.raised, T.raised2], V = NSTheme.vars('u9', { themes: [Object.assign({ id: 'u9' }, specs[derived.indexOf(T)])], theme: 'u9' }, 'claude');
+    return G.every((g) => ratio(T.ink2, g) >= 4.5 && ratio(T.ink3, g) >= 4.5) && [T.ok, T.bad, T.human].every((c) => ratio(c, T.panel) >= 4.5)
+      && Object.keys(NSTheme.ENV_ACCENT.dark).every((e) => ratio(V['--env-' + e], T.panel) >= 4.5) && T.term.ansi.slice(1, 7).every((c) => ratio(c, T.term.background) >= 4.5);
+  }), true);
+  const own = { id: 'u7', name: 'Моя', bg: '#0e1116', panel: '#151a21', ink: '#e8edf3', accent: '#ff8800', grad: '#20304a' };
+  const VO = NSTheme.vars('u7', { themes: [own], theme: 'u7' }, 'gemini'), VE = NSTheme.vars('u7', { themes: [Object.assign({}, own, { accent: 'env' })], theme: 'u7' }, 'gemini');
+  eq('look8: an own accent wins over the env colour; accent "env" (the default) follows the env in focus; the gradient reaches --window-fx',
+    [VO['--accent'], VE['--accent'], /linear-gradient\(155deg, rgba\(32, 48, 74, 1\)/.test(VO['--window-fx']), VO['--canvas']], ['#ff8800', '#5b9cff', true, '#0e1116']);
+  eq('look8: look() keeps an own theme only while it exists; an unknown id falls back to the system theme; at most 24 own themes',
+    [NSTheme.look({ theme: 'u7', themes: [own] }).theme, NSTheme.look({ theme: 'u7', themes: [] }).theme, NSTheme.look({ theme: 'oled' }).theme, NSTheme.look({ theme: 'nope' }).theme,
+      NSTheme.look({ themes: Array.from({ length: 30 }, (_, i) => Object.assign({}, own, { id: 'u' + i })) }).themes.length], ['u7', 'system', 'oled', 'system', 24]);
+  const ex = NSTheme.exportTheme(own), im = NSTheme.importTheme(ex);
+  eq('look8: export -> import gives the same colours back (id dropped); not JSON, no marker, a bad colour are refused with a reason',
+    [im.ok && [im.spec.name, im.spec.bg, im.spec.panel, im.spec.ink, im.spec.accent, im.spec.grad, im.spec.id].join(), NSTheme.importTheme('{oops').why, NSTheme.importTheme('{"bg":"#000000"}').why,
+      NSTheme.importTheme(JSON.stringify({ nightshift_theme: 1, bg: 'expression(alert(1))', panel: '#151a21', ink: '#e8edf3' })).why],
+    ['Моя,#0e1116,#151a21,#e8edf3,#ff8800,#20304a,', 'json', 'format', 'colors']);
+  // window transparency: 0 by default (nothing changes), the canvas lets more through than the surfaces; the terminal keeps alpha
+  const G0 = NSTheme.vars('dark', {}), G45 = NSTheme.vars('dark', { glass: 45 }), X45 = NSTheme.xterm('dark', { glass: 45 });
+  eq('look8: glass 0 (the default) changes nothing - solid canvas share, the panel hex as pane ground, an opaque terminal', [NSTheme.LOOK0.glass, G0['--glass'], G0['--pane-bg'], /^#/.test(NSTheme.xterm('dark', {}).background)], [0, '100%', '#111216', true]);
+  eq('look8: glass 45 -> canvas 55%, surfaces 55% of their own on it (80% together, denser than the canvas), pane and terminal grounds translucent; out of range clamps to 0..60',
+    [G45['--glass'], G45['--glass-s'], G45['--pane-bg'], X45.background, NSTheme.look({ glass: 99 }).glass, NSTheme.look({ glass: -5 }).glass, NSTheme.look({ glass: 'x' }).glass], ['55%', '55%', 'rgba(17, 18, 22, 0.55)', 'rgba(13, 14, 17, 0.55)', 60, 0, 0]);
+  eq('look8: blur defaults on (used only while the window is see-through), gradients off; both are plain booleans', [NSTheme.LOOK0.blur, NSTheme.LOOK0.fx, NSTheme.look({ blur: 0 }).blur, NSTheme.look({ fx: 'yes' }).fx, NSTheme.look({ fx: true }).fx], [true, false, true, false, true]);
+  eq('look8 words exist in ru and en, every ready theme has a name', [Object.keys(NSI18n.dicts.ru).filter((k) => /^look8\./.test(k)).filter((k) => !(k in NSI18n.dicts.en)), NSTheme.BUILTIN.filter((nm) => !['dark', 'light'].includes(nm)).every((nm) => !!NSI18n.dicts.ru['look8.t_' + nm] && !!NSI18n.dicts.en['look8.t_' + nm])], [[], true]);
+}
 
 // --- words (story 289): the ru dictionary uses the technical terms ---
 const OLD = /(^|[^а-яё])(ворот|влив|влит|влить|влей|набор|копи[яиюей] задачи|очеред[ьи] слияния|финиш|наружу)/i;
@@ -788,6 +849,8 @@ if (typeof NSMockLimits !== 'undefined') {
   eq('dev-mock limits: Claude Code shows windows with percentages', [view('claude'), NSLogic.limitsView(ml.claude).windows.every((w) => typeof w.used_pct === 'number')], ['known', true]);
   eq('dev-mock limits: the "no data" text exists in ru and en', ['ru', 'en'].map((l) => !!NSI18n.dicts[l]['lim.no_data']), [true, true]);
 } else eq('dev-mock limits script is loaded', 'missing', 'loaded');
+// spread: the settings line "Скиллы и MCP во всех агентах" has all its words in ru and en
+eq('spread: the switch, the last-spread line and both buttons have ru and en words', ['ru', 'en'].map((l) => ['spread.title', 'spread.desc', 'spread.none', 'spread.last', 'spread.undone', 'spread.now', 'spread.undo', 'spread.undo_done'].every((k) => !!NSI18n.dicts[l][k])), [true, true]);
 
 // ================= v7: agents as terminals (agents7.js, term.js) =================
 if (typeof NSAgents !== 'undefined') {

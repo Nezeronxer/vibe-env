@@ -588,6 +588,14 @@ pub fn gh_status(repo: &Path) -> Result<String, GitError> {
     }
 }
 
+/// v8: the open pull requests of the repo for the GitHub panel (`gh pr list`), as gh gives them: number, title, head and
+/// base branch, draft, url, author, updatedAt, reviewDecision, statusCheckRollup. Read-only.
+pub fn pr_list(repo: &Path) -> Result<serde_json::Value, GitError> {
+    let fields = "number,title,headRefName,baseRefName,isDraft,url,author,updatedAt,reviewDecision,statusCheckRollup";
+    let out = gh(repo, &["pr", "list", "--state", "open", "--limit", "30", "--json", fields])?;
+    serde_json::from_str(&out).map_err(|e| GitError::Gh(format!("bad gh output: {e}")))
+}
+
 /// "open" | "merged" | "closed"
 pub fn pr_state(repo: &Path, url: &str) -> Result<String, GitError> {
     Ok(gh(repo, &["pr", "view", url, "--json", "state", "-q", ".state"])?.to_lowercase())

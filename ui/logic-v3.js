@@ -416,7 +416,7 @@
   }
 
   // ---------- first run (stories 237-238) ----------
-  const ENV_ORDER = ['claude', 'codex', 'opencode', 'gemini', 'qwen', 'cursor'];
+  const ENV_ORDER = ['claude', 'codex', 'opencode', 'gemini', 'qwen', 'cursor', 'copilot', 'kimi', 'grok', 'amp', 'droid', 'goose', 'crush', 'aider'];
   function pickEnv(envs) {
     const byOrder = ENV_ORDER.map((id) => (envs || []).find((e) => e.id === id)).filter(Boolean);
     const ok = byOrder.find((e) => e.state === 'ok');

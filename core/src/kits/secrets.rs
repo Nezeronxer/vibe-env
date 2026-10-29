@@ -11,6 +11,10 @@ pub const SERVICE: &str = "nightshift";
 pub trait SecretStore: Send + Sync {
     fn set(&self, service: &str, user: &str, value: &str) -> Result<(), String>;
     fn get(&self, service: &str, user: &str) -> Result<Option<String>, String>;
+    /// Forget a value (the spread's undo). A store that cannot forget keeps it; the name leaves the index either way.
+    fn delete(&self, _service: &str, _user: &str) -> Result<(), String> {
+        Ok(())
+    }
 }
 
 /// macOS Keychain / Secret Service, through the `keyring` crate.
@@ -19,6 +23,12 @@ pub struct SystemKeyring;
 impl SecretStore for SystemKeyring {
     fn set(&self, service: &str, user: &str, value: &str) -> Result<(), String> {
         keyring::Entry::new(service, user).and_then(|e| e.set_password(value)).map_err(|e| e.to_string())
+    }
+    fn delete(&self, service: &str, user: &str) -> Result<(), String> {
+        match keyring::Entry::new(service, user).and_then(|e| e.delete_credential()) {
+            Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
+            Err(e) => Err(e.to_string()),
+        }
     }
     fn get(&self, service: &str, user: &str) -> Result<Option<String>, String> {
         match keyring::Entry::new(service, user).and_then(|e| e.get_password()) {
@@ -89,7 +99,8 @@ pub fn env_value_ok(name: &str, value: &str) -> bool {
     let path = |p: &str| std::path::Path::new(p).is_absolute() && !p.contains(['=', ':']);
     match name {
         "PATH" => value.split(':').all(path),
-        "HOME" | "TMPDIR" | "CODEX_HOME" | "CLAUDE_CONFIG_DIR" | "XDG_RUNTIME_DIR" => path(value),
+        "HOME" | "TMPDIR" | "CODEX_HOME" | "CLAUDE_CONFIG_DIR" | "XDG_RUNTIME_DIR" | "KIMI_CODE_HOME" | "COPILOT_HOME" | "GROK_HOME"
+        | "GOOSE_PATH_ROOT" => path(value),
         // XDG_DATA_DIRS / XDG_CONFIG_DIRS are lists like PATH; XDG_*_HOME one folder
         n if n.starts_with("XDG_") && n.ends_with("_DIRS") => value.split(':').all(path),
         n if n.starts_with("XDG_") && n.ends_with("_HOME") => path(value),
@@ -148,6 +159,21 @@ impl Secrets {
         };
         self.add_name(env, name)?;
         Ok(saved)
+    }
+
+    /// The value goes from the keyring and the fallback file, the name from the index: runs of `env` stop getting it.
+    pub fn forget(&self, store: &dyn SecretStore, env: &str, name: &str) -> Result<(), KitError> {
+        let user = format!("{env}/{name}");
+        let _ = store.delete(SERVICE, &user);
+        let mut m = self.file_map();
+        if m.remove(&user).is_some() {
+            write_private(&self.file_path(), &serde_json::to_vec_pretty(&m).unwrap())?;
+        }
+        let mut all = self.names();
+        if let Some(v) = all.get_mut(env) {
+            v.retain(|x| x != name);
+        }
+        super::snap::write_atomic(&self.names_path(), &serde_json::to_vec_pretty(&all).unwrap(), None)
     }
 
     pub fn get(&self, store: &dyn SecretStore, env: &str, name: &str) -> Option<String> {

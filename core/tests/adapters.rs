@@ -199,6 +199,140 @@ fn cursor_crash_without_result_is_a_failed_done() {
     assert_eq!(evs, vec![AgentEvent::Done { session: None, text: "error: boom".into(), is_error: true }]);
 }
 
+// ---- v8 envs: outputs assembled from each vendor's docs or source (research-clis §7-14), not from runs ----
+
+#[test]
+fn amp_grok_and_droid_speak_the_claude_result_shape() {
+    let evs = no_tokens(replay(&Amp::new(), "amp-from-docs.jsonl", true));
+    let id = "toolu_019cyniPYrSgaJitUSMyxyNV";
+    let sess = "T-d2fc4acc-dd1d-497f-9609-ed0da22a7c95";
+    assert_eq!(
+        evs,
+        vec![
+            start(id, "Bash", bash("ls")),
+            end(id, "Bash", bash("ls"), Some("index.js README.md"), true),
+            text("Two files: index.js and README.md"),
+            done(sess, "Two files: index.js and README.md")
+        ]
+    );
+    let read = ActionInput::Read { path: "src/main.rs".into() };
+    let evs = no_tokens(replay(&Grok::new(), "grok-from-docs.jsonl", true));
+    assert_eq!(
+        evs,
+        vec![
+            text("Let me read the file."),
+            start("call_1", "read_file", read.clone()),
+            end("call_1", "read_file", read, None, true), // a read keeps no output (the Tracker)
+            text("Here's a summary..."),
+            done("abc123", "Here's a summary...")
+        ]
+    );
+    // droid exec -o json: one result line, with its tokens (cache read + written count as input)
+    let evs = replay(&Droid::new(), "droid-from-docs.jsonl", true);
+    assert_eq!(
+        evs,
+        vec![
+            AgentEvent::Tokens { input: 4 + 13528 + 17913, output: 18 },
+            done("8af22e0a-d222-42c6-8c7e-7a059e391b0b", "A TypeScript monorepo with an API and a UI package.")
+        ]
+    );
+    // a crash without a result line is a failed Done
+    assert!(matches!(Droid::new().finish(false, "boom\n").as_slice(), [AgentEvent::Done { is_error: true, .. }]));
+}
+
+#[test]
+fn kimi_copilot_and_goose_streams_have_no_result_line_and_done_is_built_at_the_end() {
+    let evs = no_tokens(replay(&Kimi::new(), "kimi-from-docs.jsonl", true));
+    assert_eq!(
+        evs,
+        vec![text("Let me look."), start("tc_1", "Bash", bash("ls")), end("tc_1", "Bash", bash("ls"), Some("a b"), true), text("ok"), done("kimi-sess-1", "ok")]
+    );
+    let evs = replay(&Copilot::new(), "copilot-from-docs.jsonl", true);
+    assert_eq!(
+        evs,
+        vec![
+            text("Let me look."),
+            start("tc_1", "bash", bash("ls")),
+            end("tc_1", "bash", bash("ls"), Some("a b"), true),
+            delta("ok"),
+            text("ok"),
+            AgentEvent::Tokens { input: 120, output: 7 },
+            done("cop-sess-1", "ok")
+        ]
+    );
+    let shell = ActionInput::Other { summary: "ls".into() };
+    let evs = replay(&Goose::new(), "goose-from-docs.jsonl", true);
+    assert_eq!(
+        evs,
+        vec![
+            text("Let me look."),
+            start("tr_1", "developer__shell", shell.clone()),
+            end("tr_1", "developer__shell", shell, Some("a b"), true),
+            text("ok"),
+            AgentEvent::Tokens { input: 120, output: 10 },
+            AgentEvent::Done { session: None, text: "ok".into(), is_error: false }
+        ]
+    );
+}
+
+#[test]
+fn crush_and_aider_print_text_and_their_login_complaints_are_auth_required() {
+    for a in [&Crush::new() as &dyn Adapter, &Aider::new()] {
+        assert_eq!(a.parse("\x1b[1mHello\x1b[0m"), vec![text("Hello")], "{}", a.id());
+        assert!(a.parse("   ").is_empty());
+        assert_eq!(a.finish(true, "line 1\nline 2\n"), vec![AgentEvent::Done { session: None, text: "line 1\nline 2".into(), is_error: false }]);
+        assert!(matches!(a.finish(false, "boom\n").as_slice(), [AgentEvent::Done { is_error: true, .. }]), "{}", a.id());
+    }
+    // the texts are from the sources (internal/cmd/run.go, aider/onboarding.py): // unverified as CLI output
+    let crush = "Error: no providers configured - please run 'crush' to set up a provider interactively";
+    assert_eq!(Crush::new().finish(false, crush), auth(crush));
+    let aider = "No LLM model was specified and no API keys were provided.";
+    assert_eq!(Aider::new().finish(false, aider), auth(aider));
+}
+
+#[test]
+fn kimi_copilot_and_goose_login_and_limit_errors_from_docs() {
+    // // unverified: shapes from the vendors' docs / source, this checks OUR reading of them
+    assert_eq!(replay(&Copilot::new(), "copilot-auth-from-docs.jsonl", false), auth("authentication required: 401 Bad credentials"));
+    let quota = r#"{"type":"session.error","data":{"errorType":"quota","message":"monthly premium requests used up"}}"#;
+    assert!(matches!(Copilot::new().finish(false, quota).as_slice(), [AgentEvent::Limit { .. }]));
+    assert_eq!(replay(&Goose::new(), "goose-auth-from-docs.jsonl", false), auth("No api key passed in"));
+    assert_eq!(Kimi::new().finish(false, "Error: OAuth login expired, run /login\n"), auth("Error: OAuth login expired, run /login"));
+}
+
+#[test]
+fn v8_commands_put_each_option_where_the_cli_takes_it() {
+    let mut r = run(Role::Worker);
+    r.resume = Some("s-1".into());
+    let v = args(&Kimi::new(), &r);
+    assert_eq!((arg_after(&v, "--output-format").as_str(), arg_after(&v, "--session").as_str()), ("stream-json", "s-1"));
+    assert_eq!(v.last().unwrap(), "--prompt=no push\n\ndo it");
+    let v = args(&Copilot::new(), &r);
+    assert!(v.contains(&"--output-format=json".into()) && v.contains(&"--no-ask-user".into()) && v.contains(&"--resume=s-1".into()), "{v:?}");
+    assert_eq!(v.last().unwrap(), "--prompt=no push\n\ndo it");
+    let v = args(&Crush::new(), &r);
+    assert_eq!(v[..2], ["run", "--quiet"]);
+    assert_eq!(arg_after(&v, "--session"), "s-1");
+    let v = args(&Amp::new(), &r);
+    assert_eq!(v[..3], ["threads", "continue", "s-1"]);
+    assert_eq!(v[v.len() - 2..], ["--execute=no push\n\ndo it", "--stream-json"]);
+    let mut m = run(Role::Worker);
+    m.model = Some("smart".into());
+    assert!(!args(&Amp::new(), &m).iter().any(|x| x == "smart" || x.contains("model")), "amp has no model flag");
+    let v = args(&Goose::new(), &r);
+    assert_eq!(v[..3], ["run", "--output-format", "stream-json"]);
+    assert!(!v.contains(&"s-1".into()), "goose runs are never resumed: {v:?}");
+    let v = args(&Droid::new(), &r);
+    assert_eq!((v[0].as_str(), arg_after(&v, "-o").as_str(), arg_after(&v, "--session-id").as_str()), ("exec", "json", "s-1"));
+    assert!(!v.contains(&"high".into()), "never --auto high (it allows git push)");
+    let v = args(&Aider::new(), &r);
+    assert_eq!(v[..3], ["--yes-always", "--no-pretty", "--no-stream"]);
+    assert!(!v.contains(&"s-1".into()), "aider has no sessions: {v:?}");
+    let v = args(&Grok::new(), &r);
+    assert_eq!((arg_after(&v, "--output-format").as_str(), arg_after(&v, "--resume").as_str()), ("streaming-messages-json", "s-1"));
+    assert_eq!(v.last().unwrap(), "--single=no push\n\ndo it");
+}
+
 fn claude_error_result(msg: &str) -> Vec<AgentEvent> {
     let line = serde_json::json!({"type":"result","subtype":"success","is_error":true,"session_id":"s1","result":msg}).to_string();
     Claude::new().parse(&line)
@@ -303,7 +437,8 @@ fn prompt_with_a_leading_dash_reaches_every_builtin_cli_as_text() {
     r.prompt = "--help me".into();
     for a in adapters(&Settings::default()) {
         let v = args(a.as_ref(), &r);
-        let ok = v.iter().any(|x| x == "--prompt=--help me")
+        // `--<flag>=<prompt>` (one word) or `-- <prompt>`
+        let ok = v.iter().any(|x| x.starts_with("--") && x.split_once('=').is_some_and(|(_, p)| p == "--help me"))
             || v.iter().position(|x| x == "--").is_some_and(|i| v.get(i + 1).is_some_and(|p| p == "--help me"));
         assert!(ok, "{}: {v:?}", a.id());
     }
@@ -337,9 +472,9 @@ fn codex_worker_writes_only_in_workspace_and_reviewer_reads_only() {
 #[test]
 fn every_engine_hands_the_system_rules_to_the_model() {
     // engines without a system-prompt flag get the rules in front of the prompt
-    for a in [&OpenCode::new() as &dyn Adapter, &Codex::new(), &Gemini::new(), &Cursor::new(), &Qwen::new()] {
-        let v = args(a, &run(Role::Worker));
-        assert!(v.iter().any(|x| x == "no push\n\ndo it" || x == "--prompt=no push\n\ndo it"), "{} -> {v:?}", a.id());
+    for a in adapters(&Settings::default()).iter().filter(|a| a.id() != "claude") {
+        let v = args(a.as_ref(), &run(Role::Worker));
+        assert!(v.iter().any(|x| x == "no push\n\ndo it" || x.split_once('=').is_some_and(|(f, p)| f.starts_with("--") && p == "no push\n\ndo it")), "{} -> {v:?}", a.id());
     }
 }
 
@@ -352,6 +487,14 @@ fn missing_engine_reports_an_install_hint() {
         (Box::new(Gemini::with_bin("ns-no-such-bin")), "npm i -g @google/gemini-cli"),
         (Box::new(Cursor::with_bin("ns-no-such-bin")), "cursor.com/install"),
         (Box::new(Qwen::with_bin("ns-no-such-bin")), "npm i -g @qwen-code/qwen-code"),
+        (Box::new(Kimi::with_bin("ns-no-such-bin")), "code.kimi.com/kimi-code/install.sh"),
+        (Box::new(Copilot::with_bin("ns-no-such-bin")), "gh.io/copilot-install"),
+        (Box::new(Crush::with_bin("ns-no-such-bin")), "npm install -g @charmland/crush"),
+        (Box::new(Amp::with_bin("ns-no-such-bin")), "ampcode.com/install.sh"),
+        (Box::new(Goose::with_bin("ns-no-such-bin")), "aaif-goose/goose/releases/download/stable/download_cli.sh"),
+        (Box::new(Droid::with_bin("ns-no-such-bin")), "app.factory.ai/cli"),
+        (Box::new(Aider::with_bin("ns-no-such-bin")), "aider.chat/install.sh"),
+        (Box::new(Grok::with_bin("ns-no-such-bin")), "x.ai/cli/install.sh"),
     ];
     for (a, hint) in cases {
         let e = a.available().unwrap_err();
@@ -361,11 +504,11 @@ fn missing_engine_reports_an_install_hint() {
 }
 
 #[test]
-fn adapters_lists_six_builtin_engines_then_the_custom_ones() {
+fn adapters_lists_the_builtin_engines_then_the_custom_ones() {
     let s = Settings { custom_agents: vec![CustomAgent { id: "mine".into(), name: "Mine".into(), run: "echo {prompt}".into(), resume: None }], ..Settings::default() };
     let ids: Vec<String> = adapters(&s).iter().map(|a| a.id().to_string()).collect();
-    assert_eq!(ids, ["claude", "codex", "gemini", "opencode", "cursor", "qwen", "mine"]);
-    assert_eq!(adapters(&Settings::default()).len(), 6);
+    assert_eq!(ids, ["claude", "codex", "gemini", "opencode", "cursor", "qwen", "kimi", "copilot", "crush", "amp", "goose", "droid", "aider", "grok", "mine"]);
+    assert_eq!(adapters(&Settings::default()).len(), 14);
 }
 
 #[test]
@@ -375,7 +518,7 @@ fn custom_command_cannot_shadow_a_builtin_engine() {
     s.custom_agents = vec![c("claude"), c("mine"), c("mine")];
     let list = adapters(&s);
     let ids: Vec<&str> = list.iter().map(|a| a.id()).collect();
-    assert_eq!(ids, ["claude", "codex", "gemini", "opencode", "cursor", "qwen", "mine"]);
+    assert_eq!(ids, ["claude", "codex", "gemini", "opencode", "cursor", "qwen", "kimi", "copilot", "crush", "amp", "goose", "droid", "aider", "grok", "mine"]);
     assert_eq!(list[0].name(), "Claude Code");
 }
 
@@ -598,13 +741,20 @@ fn claude_budget_schema_and_model_reach_the_command() {
 
 #[test]
 fn model_flag_is_the_envs_own_and_absent_without_a_model() {
-    let flags: [(Box<dyn Adapter>, &str); 6] = [
+    let flags: [(Box<dyn Adapter>, &str); 13] = [
         (Box::new(Claude::new()), "--model"),
         (Box::new(Codex::new()), "-m"),
         (Box::new(Gemini::new()), "-m"),
         (Box::new(OpenCode::new()), "-m"),
         (Box::new(Cursor::new()), "--model"),
         (Box::new(Qwen::new()), "-m"),
+        (Box::new(Kimi::new()), "-m"),
+        (Box::new(Copilot::new()), "--model"),
+        (Box::new(Crush::new()), "-m"),
+        (Box::new(Goose::new()), "--model"),
+        (Box::new(Droid::new()), "-m"),
+        (Box::new(Aider::new()), "--model"),
+        (Box::new(Grok::new()), "-m"),
     ];
     for (a, flag) in flags {
         let mut r = run(Role::Worker);
@@ -617,11 +767,12 @@ fn model_flag_is_the_envs_own_and_absent_without_a_model() {
 #[test]
 fn read_only_flag_is_set_where_the_env_has_one() {
     // (adapter, flag, value after it, has a native read-only mode)
-    let cases: [(Box<dyn Adapter>, &str, &str, bool); 4] = [
+    let cases: [(Box<dyn Adapter>, &str, &str, bool); 5] = [
         (Box::new(Claude::new()), "--permission-mode", "plan", true),
         (Box::new(Codex::new()), "--sandbox", "read-only", true),
         (Box::new(Gemini::new()), "--approval-mode", "plan", true),
         (Box::new(Cursor::new()), "--mode", "ask", true),
+        (Box::new(Grok::new()), "--permission-mode", "dontAsk", true),
     ];
     for (a, flag, value, native) in cases {
         let mut r = run(Role::Worker);
@@ -639,9 +790,20 @@ fn read_only_flag_is_set_where_the_env_has_one() {
     r.read_only = true;
     let q = args(&Qwen::new(), &r);
     assert!(!q.contains(&"--yolo".to_string()), "a read-only Qwen run is not auto-approved: {q:?}");
-    for a in [&OpenCode::new() as &dyn Adapter, &Qwen::new(), &custom("true", None)] {
+    for a in [&OpenCode::new() as &dyn Adapter, &Qwen::new(), &custom("true", None), &Kimi::new(), &Copilot::new(), &Crush::new(), &Amp::new(), &Goose::new()] {
         assert!(!a.read_only_native(), "{}", a.id());
     }
+    // Copilot like Qwen: a reader is not auto-approved
+    assert!(!args(&Copilot::new(), &r).contains(&"--allow-all-tools".to_string()));
+    assert!(args(&Copilot::new(), &run(Role::Worker)).contains(&"--allow-all-tools".to_string()));
+    // Droid: `droid exec` reads only by itself, a writer gets `--auto medium` (never `high`: that allows git push)
+    assert!(Droid::new().read_only_native() && !args(&Droid::new(), &r).contains(&"--auto".to_string()));
+    assert_eq!(arg_after(&args(&Droid::new(), &run(Role::Worker)), "--auto"), "medium");
+    // Aider: --dry-run for a reader only
+    assert!(Aider::new().read_only_native() && args(&Aider::new(), &r).contains(&"--dry-run".to_string()));
+    assert!(!args(&Aider::new(), &run(Role::Worker)).contains(&"--dry-run".to_string()));
+    // Grok: a writer runs with --yolo, a reader never
+    assert!(args(&Grok::new(), &run(Role::Worker)).contains(&"--yolo".to_string()) && !args(&Grok::new(), &r).contains(&"--yolo".to_string()));
 }
 
 #[test]
@@ -655,8 +817,8 @@ fn json_schema_goes_only_to_claude_and_codex() {
     assert_eq!(std::fs::read_to_string(&schema_path).unwrap(), "{\"type\":\"object\"}", "Codex takes a file");
     assert!(std::path::Path::new(&schema_path).starts_with(priv_dir.path()), "in the app's private folder");
     assert_ne!(schema_path, arg_after(&args(&codex, &r), "--output-schema"), "a file of its own per run");
-    for a in [&Gemini::new() as &dyn Adapter, &OpenCode::new(), &Cursor::new(), &Qwen::new()] {
-        let v = args(a, &r);
+    for a in adapters(&Settings::default()).iter().filter(|a| a.id() != "claude" && a.id() != "codex") {
+        let v = args(a.as_ref(), &r);
         assert!(!v.iter().any(|x| x.contains("schema")), "{}: {v:?}", a.id());
     }
 }
@@ -670,10 +832,8 @@ fn extra_args_are_separate_arguments_and_extra_env_reaches_the_process() {
         let c = a.command(&r);
         let v: Vec<String> = c.get_args().map(|s| s.to_string_lossy().into_owned()).collect();
         let i = v.iter().position(|x| x == "a value; touch PWNED");
-        if a.id() == "claude" || a.id() == "codex" || a.id() == "gemini" || a.id() == "opencode" || a.id() == "cursor" || a.id() == "qwen" {
-            let i = i.unwrap_or_else(|| panic!("{}: {v:?}", a.id()));
-            assert_eq!(v[i - 1], "--flag", "{}: two arguments, not one string", a.id());
-        }
+        let i = i.unwrap_or_else(|| panic!("{}: {v:?}", a.id()));
+        assert_eq!(v[i - 1], "--flag", "{}: two arguments, not one string", a.id());
         let env: Vec<_> = c.get_envs().filter(|(k, _)| *k == "NS_TEST_SECRET").collect();
         assert_eq!(env.len(), 1, "{}", a.id());
         assert_eq!(env[0].1.unwrap(), "s3");
@@ -846,6 +1006,13 @@ fn interactive_resume_is_an_argument_list_and_checks_the_session_id() {
         (Box::new(Qwen::new()), vec!["--resume", "abc-123"]),
         (Box::new(Cursor::new()), vec!["--resume", "abc-123"]),
         (Box::new(OpenCode::new()), vec!["-s", "abc-123"]),
+        (Box::new(Kimi::new()), vec!["--session", "abc-123"]),
+        (Box::new(Copilot::new()), vec!["--resume=abc-123"]),
+        (Box::new(Crush::new()), vec!["--session", "abc-123"]),
+        (Box::new(Amp::new()), vec!["threads", "continue", "abc-123"]),
+        (Box::new(Goose::new()), vec!["session", "--resume", "--session-id", "abc-123"]),
+        (Box::new(Droid::new()), vec!["--resume", "abc-123"]),
+        (Box::new(Grok::new()), vec!["--resume", "abc-123"]),
     ];
     for (a, v) in want {
         let c = a.interactive_resume("abc-123", cwd);
@@ -857,6 +1024,7 @@ fn interactive_resume_is_an_argument_list_and_checks_the_session_id() {
         }
     }
     assert!(Codex::new().interactive_resume("abc-123", cwd).is_none());
+    assert!(Aider::new().interactive_resume("abc-123", cwd).is_none(), "aider has no sessions");
     assert!(custom("echo {prompt}", Some("echo {session}")).interactive_resume("abc-123", cwd).is_none());
 }
 

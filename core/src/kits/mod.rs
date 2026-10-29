@@ -11,6 +11,7 @@ use crate::scrub;
 mod secrets;
 mod snap;
 mod source;
+mod spread;
 mod toml_lite;
 mod units;
 
@@ -18,6 +19,7 @@ pub(crate) use scrub::is_secret_file;
 pub(crate) use source::{read_tree, safe_rel, scratch_dir, sha256_hex, with_clone};
 pub use secrets::{env_name_allowed, env_value_ok, SecretSaved, SecretStore, SystemKeyring};
 pub use snap::SnapshotState;
+pub use spread::{SpreadItem, SpreadReport, SpreadSkip};
 
 use chrono::{DateTime, Local};
 use layout::Layout;

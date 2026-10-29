@@ -104,7 +104,8 @@ fn failed_save_leaves_disk_and_memory_on_the_old_state() {
 
 fn open_fixture(name: &str) -> (tempfile::TempDir, Store) {
     let d = tempfile::tempdir().unwrap();
-    std::fs::copy(format!("{}/tests/fixtures/{name}", env!("CARGO_MANIFEST_DIR")), d.path().join("state.json")).unwrap();
+    // read + write, not `fs::copy`: copy takes the file's extended attributes too, and a Dropbox folder's ones may not be set elsewhere
+    std::fs::write(d.path().join("state.json"), std::fs::read(format!("{}/tests/fixtures/{name}", env!("CARGO_MANIFEST_DIR"))).unwrap()).unwrap();
     let s = Store::open(d.path()).unwrap();
     (d, s)
 }

@@ -99,10 +99,10 @@
         if (alive()) { load(); loadHist(); }
       } }) : null;
       clear(cli).append(
-        K.row(t('upd.version'), s.path ? t('upd.path') + ': ' + s.path : '', h('b', { class: 'ver4', text: s.installed || t('upd.none') })),
-        K.row(t('upd.latest'), s.major && newer ? t('upd.major', { v: s.latest }) : '', h('span', { class: 'ver4' + (newer ? ' newer' : ''), text: s.latest || t('upd.unknown') }), !newer && s.installed && s.latest ? h('small', { class: 'hint', text: t('upd.fresh') }) : null),
-        K.row(t('upd.method'), s.cmd && s.cmd.length ? t('upd.cmd') + ': ' + s.cmd.join(' ') : '', h('span', { text: t('upd.m.' + (s.method || 'unknown')) })),
-        K.row(t('upd.mode'), t('upd.mode_d'), K.segment([['auto', t('upd.auto')], ['notify', t('upd.notify')], ['off', t('upd.off')]], s.mode || 'auto', t('upd.mode'), (v) => call('cli_update_mode', { env: env.id, mode: v }))),
+        K.row({ text: t('upd.version'), icon: 'l-package' }, s.path ? t('upd.path') + ': ' + s.path : '', h('b', { class: 'ver4', text: s.installed || t('upd.none') })),
+        K.row({ text: t('upd.latest'), icon: 'l-sparkles' }, s.major && newer ? t('upd.major', { v: s.latest }) : '', h('span', { class: 'ver4' + (newer ? ' newer' : ''), text: s.latest || t('upd.unknown') }), !newer && s.installed && s.latest ? h('small', { class: 'hint', text: t('upd.fresh') }) : null),
+        K.row({ text: t('upd.method'), icon: 'l-wrench' }, s.cmd && s.cmd.length ? t('upd.cmd') + ': ' + s.cmd.join(' ') : '', h('span', { text: t('upd.m.' + (s.method || 'unknown')) })),
+        K.row({ text: t('upd.mode'), icon: 'l-refresh-cw' }, t('upd.mode_d'), K.segment([['auto', t('upd.auto')], ['notify', t('upd.notify')], ['off', t('upd.off')]], s.mode || 'auto', t('upd.mode'), (v) => call('cli_update_mode', { env: env.id, mode: v }))),
         K.row('', '', check, upd));
       if (fresh) NS.shell.toast(newer ? t('upd.available', { env: env.name, from: s.installed, to: s.latest }) : t('upd.fresh'));
     }

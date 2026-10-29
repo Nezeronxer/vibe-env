@@ -206,7 +206,7 @@
 
     // ---- import ----
     const file = h('input', { type: 'file', class: 'sr-only', accept: '.itermcolors,.conf,.config,.txt,text/plain,application/xml', 'aria-label': t('termset.import') });
-    const importRow = k.row(t('termset.import'), t('termset.import_d'), h('button', { type: 'button', class: 'btn', text: t('termset.import_btn'), onclick: () => file.click() }), file);
+    const importRow = k.row({ text: t('termset.import'), icon: 'l-package' }, t('termset.import_d'), h('button', { type: 'button', class: 'btn', text: t('termset.import_btn'), onclick: () => file.click() }), file);
     file.addEventListener('change', () => {
       const f = file.files && file.files[0];
       if (!f) return;
@@ -225,7 +225,7 @@
     const num = (title, desc, value, rule, key, unit) => k.numRow({ title, desc, value, unit: unit || '', int: !!rule.int, rule, apply: (v) => save({ [key]: v }) });
     const toggle = (title, desc, key) => k.toggleRow({ title, desc, on: L0[key], apply: (v) => save({ [key]: v }) });
     const fontList = h('datalist', { id: 'tfonts' }, Object.values(T.FONTS).map((f) => h('option', { value: f.split(',')[0].replace(/"/g, '') })));
-    const fontRow = k.textRow({ title: t('termset.font'), desc: t('termset.font_d'), value: L0.font, placeholder: t('termset.font_ph'), extra: fontList, apply: (v) => save({ font: v }) });
+    const fontRow = k.textRow({ icon: 'l-type', title: t('termset.font'), desc: t('termset.font_d'), value: L0.font, placeholder: t('termset.font_ph'), extra: fontList, apply: (v) => save({ font: v }) });
     fontRow.input.setAttribute('list', 'tfonts');
     return [
       h('div', { class: 'basic4' },
@@ -238,7 +238,7 @@
             num(t('termset.size'), t('termset.size_d'), L0.size, { min: 0, max: 28, int: true }, 'size', 'px'),
             num(t('termset.line'), '', L0.line_height, { min: 1, max: 2 }, 'line_height'),
             toggle(t('termset.lig'), t('termset.lig_d'), 'ligatures'),
-            k.row(t('termset.cursor'), '', k.segment([['block', t('termset.cur_block')], ['bar', t('termset.cur_bar')], ['underline', t('termset.cur_under')]], L0.cursor, t('termset.cursor'), (v) => save({ cursor: v }))),
+            k.row({ text: t('termset.cursor'), icon: 'l-text-cursor-input' }, '', k.segment([['block', t('termset.cur_block')], ['bar', t('termset.cur_bar')], ['underline', t('termset.cur_under')]], L0.cursor, t('termset.cursor'), (v) => save({ cursor: v }))),
             toggle(t('termset.blink'), '', 'blink'),
             num(t('termset.scroll'), t('termset.scroll_d'), L0.scrollback, { min: 1000, max: 100000, int: true }, 'scrollback', t('termset.lines')),
             num(t('termset.pad'), '', L0.padding, { min: 0, max: 24, int: true }, 'padding', 'px'),
@@ -248,8 +248,8 @@
             toggle(t('termset.osc52'), t('termset.osc52_d'), 'osc52'),
             num(t('termset.notify'), t('termset.notify_d'), L0.notify_secs, { min: 0, max: 3600, int: true }, 'notify_secs', t('termset.sec')),
             toggle(t('termset.external'), t('termset.external_d'), 'external'),
-            k.textRow({ title: t('termset.global'), desc: t('termset.global_d'), value: L0.global_key, placeholder: 'Ctrl+`', apply: (v) => save({ global_key: v }) }),
-            k.textRow({ title: t('termset.prefix'), desc: t('termset.prefix_d'), value: L0.prefix, placeholder: 'ctrl+b',
+            k.textRow({ icon: 'l-keyboard', title: t('termset.global'), desc: t('termset.global_d'), value: L0.global_key, placeholder: 'Ctrl+`', apply: (v) => save({ global_key: v }) }),
+            k.textRow({ icon: 'l-keyboard', title: t('termset.prefix'), desc: t('termset.prefix_d'), value: L0.prefix, placeholder: 'ctrl+b',
               check: (v) => (!v.trim() || /^(ctrl|alt)\+[a-z]$/i.test(v.trim()) ? { ok: true, value: v.trim().toLowerCase() } : { ok: false, hint: t('termset.prefix_bad') }), apply: (v) => save({ prefix: v }) }),
           ])),
         h('div', { class: 'preview4 tpreview' }, h('small', { text: t('look4.preview') }), preview)),

@@ -157,6 +157,17 @@
       return 'https://github.com/dev/' + name;
     },
     git_log_page: async ({ path, skip, limit }) => { await sleep(60); return history(projectOf(path)).slice(skip, skip + Math.min(limit, 1000)); },
+    // v8: the GitHub panel - open PRs as `gh pr list --json` gives them; ?gh=nologin shows the gh hint
+    gh_prs: async () => {
+      await sleep(120);
+      if (q.get('gh') === 'nologin') throw 'gh: gh_not_logged_in: run `gh auth login`';
+      const at = (h) => new Date(Date.now() - h * 3600000).toISOString();
+      return [
+        { number: 42, title: 'Колонка агентов и вкладки сессий', headRefName: 'ns/term-agents', baseRefName: 'main', isDraft: false, url: 'https://github.com/dev/nightshift/pull/42', author: { login: 'dev' }, updatedAt: at(1), reviewDecision: 'APPROVED', statusCheckRollup: [{ conclusion: 'SUCCESS' }, { conclusion: 'SUCCESS' }] },
+        { number: 41, title: 'Kimi и Copilot как среды', headRefName: 'ns/envs-more', baseRefName: 'main', isDraft: false, url: 'https://github.com/dev/nightshift/pull/41', author: { login: 'dev' }, updatedAt: at(5), reviewDecision: 'REVIEW_REQUIRED', statusCheckRollup: [{ status: 'IN_PROGRESS' }, { conclusion: 'SUCCESS' }] },
+        { number: 39, title: 'Расписание без cron', headRefName: 'fix/schedule', baseRefName: 'main', isDraft: true, url: 'https://github.com/dev/nightshift/pull/39', author: { login: 'bot' }, updatedAt: at(30), reviewDecision: '', statusCheckRollup: [{ conclusion: 'FAILURE' }] },
+      ];
+    },
     git_revert_commit: ({ sha }) => ({ sha: 'c0ffee' + sha.slice(6, 12), pushed: sha.charCodeAt(0) % 2 === 0 }),
     commit_stat: () => FILES.map(([path, insertions, deletions]) => ({ path, insertions, deletions })),
     commit_file_diff: () => ({ lines: DIFF_LINES, binary: false }),

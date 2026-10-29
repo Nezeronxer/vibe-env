@@ -43,6 +43,14 @@
     'lim.why.after_first_run': 'данные появятся после первого запуска', 'lim.why.not_reported': 'среда не сообщает лимиты', 'lim.why.no_auth': 'данные появятся после входа в среду',
     'lim.why.unsupported': 'эта среда лимиты не показывает',
     'fmt.of': 'из', 'lim.wday': 'День', 'lim.wmonth': 'Месяц',
+    // spread: skills and MCP of one CLI in every other installed one (settings, "Основное")
+    'spread.title': 'Скиллы и MCP во всех агентах', 'spread.desc': 'Что стоит в одном CLI, при запуске появляется в остальных установленных. Их своё не трогается.',
+    'spread.none': 'Раскладки ещё не было', 'spread.last': '{date}: разложено {n}, пропущено {skip}', 'spread.undone': '{date}: раскладка откачена',
+    'spread.now': 'Разложить сейчас', 'spread.undo': 'Откатить последнюю', 'spread.undo_done': 'Раскладка откачена', 'spread.why': 'Что пропущено и почему', 'spread.all_skill': 'все скиллы', 'spread.all_mcp': 'все MCP',
+    'spread.r_conflict': 'имя уже занято другим', 'spread.r_layout_unverified': 'у этого агента место не подтверждено', 'spread.r_unparsed': 'конфиг не читается (комментарии?)',
+    'spread.r_unsupported_field': 'настройка есть только у этого агента', 'spread.r_secret_inline': 'секрет прямо в команде или адресе', 'spread.r_secret_name': 'неподходящее имя переменной',
+    'spread.r_secret_conflict': 'под этим именем уже другой секрет', 'spread.r_secret_file': 'файл с секретом не копируется', 'spread.r_symlink_outside': 'ссылка за пределы скилла', 'spread.r_symlink_dir': 'папка-ссылка внутри скилла не копируется',
+    'spread.r_too_large': 'слишком большой', 'spread.r_not_applied': 'агент перезаписал свой конфиг - повторю при следующем запуске',
   };
   const en = {
     'live.thinking': 'Thinking…', 'live.writing': 'Writing code…', 'live.running': 'Running a command…', 'live.reading': 'Reading…', 'live.reviewing': 'Reviewing…', 'live.web': 'Searching the web…',
@@ -79,6 +87,13 @@
     'lim.why.after_first_run': 'data will appear after the first run', 'lim.why.not_reported': 'the environment does not report limits', 'lim.why.no_auth': 'data will appear after signing in',
     'lim.why.unsupported': 'this environment does not show limits',
     'fmt.of': 'of', 'lim.wday': 'Day', 'lim.wmonth': 'Month',
+    'spread.title': 'Skills and MCP in every agent', 'spread.desc': 'What one CLI has shows up in the other installed ones at start. Nothing of theirs is replaced.',
+    'spread.none': 'Nothing spread yet', 'spread.last': '{date}: {n} added, {skip} skipped', 'spread.undone': '{date}: spread undone',
+    'spread.now': 'Spread now', 'spread.undo': 'Undo the last one', 'spread.undo_done': 'Spread undone', 'spread.why': 'What was skipped and why', 'spread.all_skill': 'all skills', 'spread.all_mcp': 'all MCP',
+    'spread.r_conflict': 'the name is taken by something else', 'spread.r_layout_unverified': 'this agent has no confirmed place for it', 'spread.r_unparsed': 'its config does not parse (comments?)',
+    'spread.r_unsupported_field': 'a setting only this agent has', 'spread.r_secret_inline': 'a secret right in the command or address', 'spread.r_secret_name': 'the variable name is not allowed',
+    'spread.r_secret_conflict': 'another secret already has this name', 'spread.r_secret_file': 'a secret file is not copied', 'spread.r_symlink_outside': 'a link outside the skill', 'spread.r_symlink_dir': 'a linked folder inside the skill is not copied',
+    'spread.r_too_large': 'too large', 'spread.r_not_applied': 'the agent rewrote its config - again at the next start',
   };
   Object.assign(root.NSI18n.dicts.ru, ru);
   Object.assign(root.NSI18n.dicts.en, en);

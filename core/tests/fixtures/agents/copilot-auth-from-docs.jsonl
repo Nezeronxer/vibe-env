@@ -1,0 +1,1 @@
+{"id":"e1","timestamp":"2026-10-28T10:00:00Z","parentId":null,"type":"session.error","data":{"errorType":"authentication","message":"401 Bad credentials","statusCode":401}}

@@ -1,0 +1,4 @@
+{"type":"message","message":{"id":null,"role":"assistant","created":1793000000,"content":[{"type":"text","text":"Let me look."},{"type":"toolRequest","id":"tr_1","toolCall":{"status":"success","value":{"name":"developer__shell","arguments":{"command":"ls"}}}}],"metadata":{}}}
+{"type":"message","message":{"id":null,"role":"user","created":1793000001,"content":[{"type":"toolResponse","id":"tr_1","toolResult":{"status":"success","value":{"content":[{"type":"text","text":"a b"}],"isError":false}}}],"metadata":{}}}
+{"type":"message","message":{"id":null,"role":"assistant","created":1793000002,"content":[{"type":"text","text":"ok"}],"metadata":{}}}
+{"type":"complete","total_tokens":130,"input_tokens":120,"output_tokens":10}

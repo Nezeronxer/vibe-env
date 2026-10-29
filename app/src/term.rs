@@ -23,7 +23,23 @@ pub use nightshift_core::agent::adapters::common::valid_session_id;
 /// The only variables that go from an adapter's command into the terminal: where things are and the language, plus the
 /// folders a CLI keeps its sessions in. Anything else (API keys, tokens, kit secrets from `Run.extra_env`) is dropped: it would
 /// land in the process arguments and, on macOS, in a file on disk. The person's own shell has their login anyway.
-pub const CARRIED_ENV: [&str; 10] = ["PATH", "HOME", "LANG", "LC_ALL", "TMPDIR", "CODEX_HOME", "CLAUDE_CONFIG_DIR", "XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_CACHE_HOME"];
+pub const CARRIED_ENV: [&str; 14] = [
+    "PATH",
+    "HOME",
+    "LANG",
+    "LC_ALL",
+    "TMPDIR",
+    "CODEX_HOME",
+    "CLAUDE_CONFIG_DIR",
+    "XDG_CONFIG_HOME",
+    "XDG_DATA_HOME",
+    "XDG_CACHE_HOME",
+    // the home folders of Kimi Code, Copilot CLI, Grok Build and goose (research-clis §7, §8, §14, §11)
+    "KIMI_CODE_HOME",
+    "COPILOT_HOME",
+    "GROK_HOME",
+    "GOOSE_PATH_ROOT",
+];
 
 /// A variable goes into the terminal when its name is carried and its value keeps the shape of that name
 /// (`kits::env_value_ok`: a kit may have put it there). The log gets the name of a rejected one, never the value.
@@ -275,7 +291,16 @@ mod tests {
 
     #[test]
     fn the_variables_of_the_adapters_command_go_into_the_terminal_as_env_words_but_only_the_allowed_ones() {
-        assert_eq!(CARRIED_ENV, ["PATH", "HOME", "LANG", "LC_ALL", "TMPDIR", "CODEX_HOME", "CLAUDE_CONFIG_DIR", "XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_CACHE_HOME"], "the list is fixed");
+        assert_eq!(
+            CARRIED_ENV,
+            [
+                "PATH", "HOME", "LANG", "LC_ALL", "TMPDIR", "CODEX_HOME", "CLAUDE_CONFIG_DIR", "XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_CACHE_HOME",
+                "KIMI_CODE_HOME", "COPILOT_HOME", "GROK_HOME", "GOOSE_PATH_ROOT"
+            ],
+            "the list is fixed"
+        );
+        // a home folder must be an absolute path (kits::env_value_ok), so it cannot smuggle a flag or a list
+        assert!(carried("GROK_HOME", "/h/.grok") && !carried("GROK_HOME", "relative") && !carried("KIMI_CODE_HOME", "/a:/b"));
         let mut c = Command::new("/opt/bin/codex");
         c.current_dir("/tmp").arg("resume").env("CODEX_HOME", "/h o m e").env_remove("GONE").env("ANTHROPIC_API_KEY", "sk-secret-123").env("FAKE_TOKEN", "tok-456");
         let l = from_command(&c);

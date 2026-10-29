@@ -62,7 +62,8 @@ impl Hub {
         if name.is_empty() || name == "." || name == ".." || name.contains(['/', '\\', '\0']) {
             return Err("bad_project_name".into());
         }
-        let parent = std::fs::canonicalize(parent).map_err(|_| format!("path_missing: {parent}"))?;
+        let home = std::env::var_os("HOME").map(std::path::PathBuf::from);
+        let parent = parent_folder(parent, home.as_deref())?;
         let dir = parent.join(name);
         // a dangling link counts as existing too
         if dir.symlink_metadata().is_ok() {
@@ -70,6 +71,10 @@ impl Hub {
         }
         std::fs::create_dir(&dir).map_err(|e| format!("{}: {e}", dir.display()))?;
         git::init_repo(&dir).map_err(e2s)?;
+        #[cfg(not(test))] // tests make projects too: they must not touch the real ~/.claude.json
+        if let Some(h) = std::env::var_os("HOME") {
+            crate::claudetrust::created(Path::new(&h), &dir);   // the human just made this empty folder: Claude need not ask
+        }
         self.add_project(&dir.to_string_lossy())
     }
 
@@ -165,6 +170,37 @@ impl Hub {
     }
 }
 
+/// The folder a new project goes into. The window offers "~/Projects" before any choice: `~` and `~/…` are the home,
+/// and a missing folder there is made - only inside the home, after links are resolved. Anything else must be an
+/// absolute folder that exists (`~user`, a relative path or a missing folder elsewhere is refused, never made).
+fn parent_folder(parent: &str, home: Option<&Path>) -> Res<std::path::PathBuf> {
+    let missing = || format!("path_missing: {parent}");
+    let under_home = parent == "~" || parent.starts_with("~/");
+    let wanted = match (under_home, home) {
+        (true, Some(h)) if h.is_absolute() => h.join(parent.trim_start_matches('~').trim_start_matches('/')),
+        (true, _) => return Err(missing()),
+        (false, _) if Path::new(parent).is_absolute() => std::path::PathBuf::from(parent),
+        _ => return Err(missing()),
+    };
+    if under_home && !wanted.exists() {
+        let h = home.and_then(|h| std::fs::canonicalize(h).ok()).ok_or_else(missing)?;
+        if wanted.components().any(|c| c == std::path::Component::ParentDir) {
+            return Err(missing());
+        }
+        // the deepest folder that already exists must resolve inside the home: a link there out of it makes nothing
+        let base = wanted.ancestors().find(|a| a.exists()).and_then(|a| std::fs::canonicalize(a).ok()).ok_or_else(missing)?;
+        if !base.starts_with(&h) {
+            return Err(missing());
+        }
+        std::fs::create_dir_all(&wanted).map_err(|e| format!("{}: {e}", wanted.display()))?;
+    }
+    let real = std::fs::canonicalize(&wanted).map_err(|_| missing())?;
+    if under_home && !home.and_then(|h| std::fs::canonicalize(h).ok()).is_some_and(|h| real.starts_with(h)) {
+        return Err(missing());
+    }
+    Ok(real)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -257,6 +293,27 @@ mod tests {
         assert!(r.hub.create_project(&parent, "fresh").unwrap_err().starts_with("folder_exists"));
         assert!(r.hub.create_project(&format!("{parent}/nope"), "x").unwrap_err().starts_with("path_missing"));
         assert!(!r.s.0.join("x").exists());
+        // "~/…" is the home (a scratch one here: the real home is never touched); a missing folder there is made
+        let home = r.s.0.join("home");
+        std::fs::create_dir_all(&home).unwrap();
+        let made = parent_folder("~/Projects/deep", Some(&home)).unwrap();
+        assert!(made.ends_with("Projects/deep") && made.is_dir());
+        assert_eq!(parent_folder("~", Some(&home)).unwrap(), home.canonicalize().unwrap());
+        for bad in ["~user/x", "rel/x", "~/../outside", "~/nope/../../x"] {
+            assert!(parent_folder(bad, Some(&home)).unwrap_err().starts_with("path_missing"), "{bad}");
+        }
+        assert!(parent_folder("~/x", None).is_err(), "no home, nothing made");
+        // a link inside the home that leads out of it: nothing is made behind it
+        let out = r.s.0.join("outside");
+        std::fs::create_dir_all(&out).unwrap();
+        #[cfg(unix)]
+        {
+            std::os::unix::fs::symlink(&out, home.join("link")).unwrap();
+            assert!(parent_folder("~/link/new", Some(&home)).is_err());
+            assert!(!out.join("new").exists());
+        }
+        assert!(parent_folder(&format!("{}/missing", r.s.0.display()), Some(&home)).is_err(), "a missing absolute folder is not made");
+        assert!(!r.s.0.join("missing").exists());
     }
 
     #[test]

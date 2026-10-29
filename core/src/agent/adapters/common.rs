@@ -15,7 +15,8 @@ pub fn find_bin(bin: &str) -> Option<PathBuf> {
     }
     let mut dirs: Vec<PathBuf> = std::env::var_os("PATH").map(|p| std::env::split_paths(&p).collect()).unwrap_or_default();
     if let Some(h) = std::env::var_os("HOME").map(PathBuf::from) {
-        dirs.extend([h.join(".local/bin"), h.join(".npm-global/bin"), h.join(".cargo/bin")]);
+        // `.kimi-code/bin` and `.amp/bin`: where the Kimi Code and Amp install scripts put the binary
+        dirs.extend([h.join(".local/bin"), h.join(".npm-global/bin"), h.join(".cargo/bin"), h.join(".kimi-code/bin"), h.join(".amp/bin")]);
     }
     dirs.extend(["/opt/homebrew/bin", "/usr/local/bin"].map(PathBuf::from));
     dirs.into_iter().map(|d| d.join(bin)).find(|p| p.is_file())
@@ -145,9 +146,11 @@ pub fn failure_event(msg: &str) -> AgentEvent {
 /// Phrases that only a CLI's own login / model complaint contains. Searched in the error event and
 /// in the log / stderr tail. Real samples: Qwen (`No auth type is selected`), opencode
 /// (`ProviderModelNotFoundError`), Claude (`issue with the selected model`); the rest is unverified.
+/// From sources, not runs: Crush `no providers configured` (internal/cmd/run.go), Aider `no API keys were provided`
+/// (aider/onboarding.py), Kimi Code `OAuth login expired` (docs changelog), goose `No api key passed in` (config-files.md).
 fn strong_auth() -> &'static Regex {
     static R: OnceLock<Regex> = OnceLock::new();
-    re(&R, r"(?i)not logged in|please (?:run )?[`'/]*(?:\w+ )?log ?in|log ?in required|login required|no auth type is selected|authentication (?:required|failed)|api key (?:not found|is missing|required|not set)|set an auth method")
+    re(&R, r"(?i)not logged in|please (?:run )?[`'/]*(?:\w+ )?log ?in|log ?in required|login required|no auth type is selected|authentication (?:required|failed)|api key (?:not found|is missing|required|not set)|set an auth method|no providers configured|no api keys were provided|login expired|no api key passed in")
 }
 fn strong_model() -> &'static Regex {
     static R: OnceLock<Regex> = OnceLock::new();
@@ -375,6 +378,25 @@ pub fn synth_done(scan: impl Fn(&str) -> Scan, exit_ok: bool, all_text: &str) ->
         }];
     }
     vec![AgentEvent::Done { session, text: text.trim().to_string(), is_error: false }]
+}
+
+/// A CLI without a JSON mode: each stdout line is a piece of text (colours stripped).
+pub fn text_line(line: &str) -> Vec<AgentEvent> {
+    let l = strip_ansi(line);
+    if l.trim().is_empty() {
+        vec![]
+    } else {
+        vec![AgentEvent::Text(l)]
+    }
+}
+
+/// EOF of a plain-text CLI: the whole output is the answer; a failure is read from its last lines (with stderr).
+pub fn text_done(exit_ok: bool, all_text: &str) -> Vec<AgentEvent> {
+    let all = strip_ansi(all_text);
+    if exit_ok {
+        return vec![AgentEvent::Done { session: None, text: all.trim().to_string(), is_error: false }];
+    }
+    vec![classify_failure(&tail(&all), "")]
 }
 
 /// EOF handler for engines that report their own result event: only covers a crash without one.

@@ -25,7 +25,7 @@ const MAX_ENTRIES: usize = 20_000;
 
 type Files = BTreeMap<String, Vec<u8>>;
 /// (type `streamable-http` | `sse`, url, headers)
-type Remote = (String, String, Vec<(String, String)>);
+pub(crate) type Remote = (String, String, Vec<(String, String)>);
 
 /// Unpack a zip in memory. Every name is checked (absolute, `..`, backslash → refused); only entries `keep` wants are
 /// read, and of those a symlink is refused and the bytes are counted against `MAX_UNPACKED` while reading (declared
@@ -382,8 +382,9 @@ fn server_key(name: &str) -> String {
     }
 }
 
+/// A TOML basic string. JSON escaping is TOML's except for DEL (0x7f), which TOML refuses raw.
 fn toml_str(s: &str) -> String {
-    serde_json::to_string(s).unwrap_or_else(|_| "\"\"".into())
+    serde_json::to_string(s).unwrap_or_else(|_| "\"\"".into()).replace('\u{7f}', "\\u007F")
 }
 
 /// `{VAR}` alone, or `Bearer {VAR}`.
@@ -393,77 +394,106 @@ fn header_var(v: &str) -> Option<(bool, String)> {
     Some((c.get(1).is_some(), var_name(&c[2])))
 }
 
-/// (kit file, its bytes) for `env`.
-fn render(env: &str, key: &str, server: &Value) -> Result<(String, Vec<u8>, Spec)> {
-    let unsupported = || MarketError::EnvUnsupported { kind: Kind::Mcp, env: env.into() };
-    let var_ref: Box<dyn Fn(&str) -> String> = match env {
-        "claude" | "gemini" | "qwen" => Box::new(|v: &str| format!("${{{v}}}")),
-        "opencode" => Box::new(|v: &str| format!("{{env:{v}}}")),
-        "codex" => Box::new(|v: &str| format!("\u{0}{v}")), // Codex does not expand variables in args: marked, refused below
-        _ => return Err(unsupported()),
-    };
-    let sp = spec(server, var_ref.as_ref())?;
-    let headers_json = |hs: &[(String, String)]| -> Map<String, Value> {
-        let mut vars = vec![];
-        hs.iter().map(|(n, v)| (n.clone(), Value::String(subst(v, true, &mut vars, var_ref.as_ref())))).collect()
-    };
-    let env_map = |f: &dyn Fn(&str) -> String| -> Map<String, Value> { sp.pass.iter().map(|n| (n.clone(), Value::String(f(n)))).collect() };
+/// A server ready to be written in some environment's format. Every string may hold `{VAR}` placeholders: each
+/// environment's reference to that variable is put in by `render_server` (the value is never in the file).
+pub(crate) struct Server {
+    pub local: Option<(String, Vec<String>)>,
+    pub remote: Option<Remote>,
+    /// Variables of a local server's process: (name, value); a value `{NAME}` alone passes the run's own variable.
+    pub env: Vec<(String, String)>,
+}
+
+fn placeholder() -> &'static Regex {
+    static RE: std::sync::OnceLock<Regex> = std::sync::OnceLock::new();
+    RE.get_or_init(|| Regex::new(r"\{([A-Za-z_][A-Za-z0-9_\-]*)\}").unwrap())
+}
+
+/// `{VAR}` → the reference `env` expands (`${VAR}`, `{env:VAR}`); Codex expands nothing.
+fn fill(env: &str, s: &str) -> String {
+    match env {
+        "opencode" => placeholder().replace_all(s, "{env:$1}").to_string(),
+        "codex" => s.to_string(),
+        _ => placeholder().replace_all(s, "$${$1}").to_string(),
+    }
+}
+
+/// (kit file, its bytes) for `env`: the file a kit carries for that environment's MCP servers.
+pub(crate) fn render_server(env: &str, key: &str, s: &Server) -> Result<(String, Vec<u8>)> {
+    if !matches!(env, "claude" | "gemini" | "qwen" | "opencode" | "codex") {
+        return Err(MarketError::EnvUnsupported { kind: Kind::Mcp, env: env.into() });
+    }
+    let f = |x: &str| fill(env, x);
+    let map = |hs: &[(String, String)]| -> Map<String, Value> { hs.iter().map(|(n, v)| (n.clone(), Value::String(f(v)))).collect() };
     let cfg = |v: Value, wrap: &str, file: &str| -> Result<(String, Vec<u8>)> {
         let mut s = serde_json::to_string_pretty(&json!({ wrap: { key: v } })).map_err(|e| MarketError::Io(e.to_string()))?;
         s.push('\n');
         Ok((file.into(), s.into_bytes()))
     };
-    let (file, bytes) = match (env, &sp.local, &sp.remote) {
+    let has_var = |x: &str| placeholder().is_match(x);
+    Ok(match (env, &s.local, &s.remote) {
         ("claude" | "gemini" | "qwen", Some((cmd, args)), _) => {
-            let mut v = json!({ "command": cmd, "args": args });
-            if !sp.pass.is_empty() {
-                v["env"] = Value::Object(env_map(var_ref.as_ref()));
+            let mut v = json!({ "command": f(cmd), "args": args.iter().map(|a| f(a)).collect::<Vec<_>>() });
+            if !s.env.is_empty() {
+                v["env"] = Value::Object(map(&s.env));
             }
             cfg(v, "mcpServers", if env == "claude" { ".mcp.json" } else { "settings.json" })?
         }
         ("claude", None, Some((t, url, hs))) => {
-            let mut v = json!({ "type": if t == "sse" { "sse" } else { "http" }, "url": url });
+            let mut v = json!({ "type": if t == "sse" { "sse" } else { "http" }, "url": f(url) });
             if !hs.is_empty() {
-                v["headers"] = Value::Object(headers_json(hs));
+                v["headers"] = Value::Object(map(hs));
             }
             cfg(v, "mcpServers", ".mcp.json")?
         }
         ("gemini" | "qwen", None, Some((t, url, hs))) => {
             // never `trust: true` (research rule 10)
-            let mut v = if t == "sse" { json!({ "url": url }) } else { json!({ "httpUrl": url }) };
+            let mut v = if t == "sse" { json!({ "url": f(url) }) } else { json!({ "httpUrl": f(url) }) };
             if !hs.is_empty() {
-                v["headers"] = Value::Object(headers_json(hs));
+                v["headers"] = Value::Object(map(hs));
             }
             cfg(v, "mcpServers", "settings.json")?
         }
         ("opencode", Some((cmd, args)), _) => {
-            let mut command = vec![cmd.clone()];
-            command.extend(args.iter().cloned());
+            let command: Vec<String> = std::iter::once(cmd).chain(args.iter()).map(|a| f(a)).collect();
             let mut v = json!({ "type": "local", "command": command, "enabled": true });
-            if !sp.pass.is_empty() {
-                v["environment"] = Value::Object(env_map(var_ref.as_ref()));
+            if !s.env.is_empty() {
+                v["environment"] = Value::Object(map(&s.env));
             }
             cfg(v, "mcp", "opencode.json")?
         }
         ("opencode", None, Some((_, url, hs))) => {
-            let mut v = json!({ "type": "remote", "url": url, "enabled": true });
+            let mut v = json!({ "type": "remote", "url": f(url), "enabled": true });
             if !hs.is_empty() {
-                v["headers"] = Value::Object(headers_json(hs));
+                v["headers"] = Value::Object(map(hs));
             }
             cfg(v, "mcp", "opencode.json")?
         }
         ("codex", Some((cmd, args)), _) => {
-            if args.iter().any(|a| a.contains('\u{0}')) {
+            // Codex does not expand variables in a command or its args
+            if has_var(cmd) || args.iter().any(|a| has_var(a)) {
                 return Err(MarketError::Unsupported("codex_arg_variable".into()));
             }
             let mut t = format!("[mcp_servers.{key}]\ncommand = {}\nargs = [{}]\n", toml_str(cmd), args.iter().map(|a| toml_str(a)).collect::<Vec<_>>().join(", "));
-            if !sp.pass.is_empty() {
-                t.push_str(&format!("env_vars = [{}]\n", sp.pass.iter().map(|a| toml_str(a)).collect::<Vec<_>>().join(", ")));
+            let (mut pass, mut fixed) = (vec![], vec![]);
+            for (n, v) in &s.env {
+                if *v == format!("{{{n}}}") {
+                    pass.push(toml_str(n));
+                } else if !has_var(v) {
+                    fixed.push(format!("{} = {}", toml_str(n), toml_str(v)));
+                } else {
+                    return Err(MarketError::Unsupported("codex_env_variable".into()));
+                }
+            }
+            if !pass.is_empty() {
+                t.push_str(&format!("env_vars = [{}]\n", pass.join(", ")));
+            }
+            if !fixed.is_empty() {
+                t.push_str(&format!("env = {{ {} }}\n", fixed.join(", ")));
             }
             ("config.toml".to_string(), t.into_bytes())
         }
         ("codex", None, Some((_, url, hs))) => {
-            if url.contains('\u{0}') {
+            if has_var(url) {
                 return Err(MarketError::Unsupported("codex_url_variable".into()));
             }
             let mut t = format!("[mcp_servers.{key}]\nurl = {}\n", toml_str(url));
@@ -484,8 +514,23 @@ fn render(env: &str, key: &str, server: &Value) -> Result<(String, Vec<u8>, Spec
             }
             ("config.toml".to_string(), t.into_bytes())
         }
-        _ => return Err(unsupported()),
-    };
+        _ => return Err(MarketError::EnvUnsupported { kind: Kind::Mcp, env: env.into() }),
+    })
+}
+
+/// (kit file, its bytes) for `env`, and the server as the plan shows it (in the environment's own words).
+fn render(env: &str, key: &str, server: &Value) -> Result<(String, Vec<u8>, Spec)> {
+    let ph = |v: &str| format!("{{{v}}}");
+    let mut sp = spec(server, &ph)?;
+    let remote = sp.remote.as_ref().map(|(t, u, hs)| (t.clone(), u.clone(), hs.iter().map(|(n, v)| (n.clone(), subst(v, true, &mut vec![], &ph))).collect()));
+    let s = Server { local: sp.local.clone(), remote, env: sp.pass.iter().map(|n| (n.clone(), ph(n))).collect() };
+    let (file, bytes) = render_server(env, key, &s)?;
+    if let Some((_, args)) = &mut sp.local {
+        args.iter_mut().for_each(|a| *a = fill(env, a));
+    }
+    if let Some((_, url, _)) = &mut sp.remote {
+        *url = fill(env, url);
+    }
     Ok((file, bytes, sp))
 }
 

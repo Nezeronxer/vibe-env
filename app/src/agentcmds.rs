@@ -35,7 +35,15 @@ async fn blocking<T: Send + 'static>(f: impl FnOnce() -> Res<T> + Send + 'static
 pub async fn agent_worktree(s: State<'_, App>, project_id: String, name: String) -> Res<Value> {
     // the task text names the branch: a key typed into it must not reach git
     let (hub, name) = (s.hub.clone(), clean(name));
-    blocking(move || hub.engine.agent_worktree(&project_id, &name).map(|(path, branch)| json!({ "path": path.to_string_lossy(), "branch": branch }))).await
+    blocking(move || {
+        let (path, branch) = hub.engine.agent_worktree(&project_id, &name)?;
+        // a fresh copy would stop Claude Code on «trust this folder?» with nobody looking: it inherits the project's answer
+        if let Ok(p) = hub.project(&project_id) {
+            crate::claudetrust::inherit(Path::new(&home()), &p.path, &path);
+        }
+        Ok(json!({ "path": path.to_string_lossy(), "branch": branch }))
+    })
+    .await
 }
 
 /// `{branch_deleted}`. Only the root of a copy made by `agent_worktree`. Err: `bad_path`, `not_a_repo`,

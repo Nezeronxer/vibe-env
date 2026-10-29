@@ -83,6 +83,7 @@
   // an env picked in the bar, the palette or by ⌥⌘n: a full screen that belongs to an env (settings, factory) follows it
   function pickEnv(envId) {
     const keep = current && current.def.keepEnv;
+    if (!keep && current && current.def.id === 'tabs' && NS.envrail) { NS.envrail.setFilter(envId); return; }   // v8: the agents column
     if (keep) nav(typeof keep === 'string' ? keep : current.def.id, Object.assign({}, current.params, { env: envId }));
     else nav('env', { env: envId });
   }
@@ -97,110 +98,46 @@
     if (!bar) return;
     for (const m of barInst.values()) if (m && m.destroy) m.destroy();
     barInst.clear();
-    const left = h('div', { class: 'bar-l' }), right = h('div', { class: 'bar-r' });
+    // v10: a middle slot (side: 'center') - the modes sit in the middle of the bar, bigger (Agentation 29.10)
+    const left = h('div', { class: 'bar-l' }), mid = h('div', { class: 'bar-c' }), right = h('div', { class: 'bar-r' });
     for (const def of NS.registry.points('bar')) {
       const el = h('div', { class: 'mod mod-' + def.id, dataset: { mod: def.id } });
-      (def.side === 'right' ? right : left).append(el);
+      (def.side === 'right' ? right : def.side === 'center' ? mid : left).append(el);
       barInst.set(def.id, def.render(el, ctxFor({})) || null);
     }
-    clear(bar).append(left, right);
+    clear(bar).append(left, mid, right);
     bar.setAttribute('aria-label', t('bar.label'));
     patchTitle();
   }
-  function barUpdate(evt, payload) { for (const m of barInst.values()) if (m && m.update) m.update(evt, payload); }
-  const envNow = () => NS.store.env(s.route.env) || NS.store.env(s.lastEnv) || s.envs[0] || null;
+  function barUpdate(evt, payload) { for (const m of barInst.values()) if (m && m.update) m.update(evt, payload); if (['task', 'envs', 'focus', 'route'].includes(evt)) patchTitle(); }
+  const envNow = () => (NS.envrail && NS.store.env(NS.envrail.filter)) || NS.store.env(s.route.env) || NS.store.env(s.lastEnv) || s.envs[0] || null;   // v8: the agent picked in the column first
   const btn = (cls, label, kids, onclick) => h('button', { type: 'button', class: 'bm ' + cls, title: label, 'aria-label': label, onclick }, kids);
-  let envMenu = null;
-  const closeEnvMenu = () => { if (envMenu) { envMenu.remove(); envMenu = null; document.removeEventListener('click', onDocEnv); } };
-  const onDocEnv = (e) => { if (envMenu && !envMenu.contains(e.target)) closeEnvMenu(); };
-  function openEnvMenu(anchor) {
-    closeEnvMenu();
-    const mod = plat() === 'mac' ? '⌥⌘' : 'Ctrl+Alt+';
-    envMenu = h('div', { class: 'menu barmenu', role: 'menu' }, s.envs.map((e, i) => {
-      const c = L.envCounts(NS.store.envTasks(e.id), e.id, s.snoozed);
-      const missing = e.state === 'missing' || e.state === 'unavailable';
-      return h('button', { type: 'button', role: 'menuitem', class: e.id === (envNow() || {}).id ? 'on' : '', onclick: () => { closeEnvMenu(); pickEnv(e.id); } },
-        envIcon(e.custom ? 'custom' : e.id), h('span', { class: 'grow', text: e.name }), missing ? h('small', { text: t('env.missing_short') }) : null,
-        c.calls ? h('b', { class: 'bn', text: L.badgeText(c.calls) }) : null, i < 7 ? h('kbd', { text: mod + (i + 1) }) : null);
-    }));
-    const r = anchor.getBoundingClientRect();
-    NS.setVars(envMenu, { '--x': r.left + 'px', '--yb': (window.innerHeight - r.top + 6) + 'px' });
-    document.body.append(envMenu);
-    setTimeout(() => document.addEventListener('click', onDocEnv), 0);
-  }
   const R = NS.registry;
-  R.extend('bar', { id: 'env', side: 'left', order: 10, render(el) {
-    const draw = () => {
-      const e = envNow();
-      if (!e) { clear(el); return; }
-      const n = callsTotal();
-      clear(el).append(btn('bm-env', t('bar.env'), [envIcon(e.custom ? 'custom' : e.id), h('span', { text: e.name }), n ? h('b', { class: 'bn', title: t('bar.calls', { n }), text: L.badgeText(n) }) : null], (ev) => { ev.stopPropagation(); openEnvMenu(ev.currentTarget); }));
-      patchTitle();
-    };
-    draw();
-    return { update: (evt) => { if (['route', 'envs', 'task', 'focus', 'lang'].includes(evt)) draw(); }, destroy: closeEnvMenu };
-  } });
-  R.extend('bar', { id: 'model', side: 'left', order: 20, render(el) {
-    const draw = () => {
-      const e = envNow();
-      if (e && e.state === 'ok' && !s.catalogs.has(e.id)) NS.store.loadCatalog(e.id).then(() => s.catalogs.has(e.id) && draw());
-      const m = e && e.state === 'ok' ? NS.models.label(e.id) : '';
-      clear(el).append(m ? btn('bm-model', t('bar.model'), [h('span', { class: 'bm-k', text: '◆' }), h('span', { text: m })], () => { const p = document.querySelector('.pane.focus .envpick'); if (p) p.click(); }) : '');
-    };
-    draw();
-    return { update: (evt) => { if (['route', 'catalog', 'settings', 'envs', 'focus'].includes(evt)) draw(); } };
-  } });
-  R.extend('bar', { id: 'branch', side: 'left', order: 30, render(el) {
-    const draw = () => {
-      const chat = s.route.chat && s.route.chat !== 'new' ? NS.store.findChat(s.route.chat) : null;
-      const fp = NS.tabs && NS.tabs.active, fpid = fp && fp.kind === 'term' && NS.agents ? NS.agents.projectOf(fp) : '';   // v7: the agent in focus
-      const pid = fpid || (chat && chat.project_id) || NS.projects.current();
-      const p = NS.store.project(pid);
-      if (!p) { clear(el).append(h('span', { class: 'bm-t mute', text: t('bar.no_project') })); return; }
-      const repo = s.repos.get(p.id);
-      if (!s.repos.has(p.id)) NS.store.loadRepo(p.id).then(draw);
-      const br = fp && fp.branch ? fp.branch : repo ? (repo.current_branch || p.base_branch) + (repo.ahead ? ' ↑' + repo.ahead : '') + (repo.behind ? ' ↓' + repo.behind : '') : p.base_branch || '';
-      clear(el).append(h('span', { class: 'bm-t', title: t('bar.branch') }, ic('i-branch'), h('span', { text: p.name }), br ? h('span', { class: 'mute', text: br }) : null));
-    };
-    draw();
-    return { update: (evt) => { if (['route', 'project', 'focus', 'chats'].includes(evt)) draw(); } };
-  } });
-  // a limit as a VU meter: a cream face, an arc, a red zone at the end and a needle; --n (0..1) is the used share, the numbers beside it stay
-  let vuSeq = 0;
-  function vuMeter(pct) {
-    const SV = 'http://www.w3.org/2000/svg', id = 'vug' + (vuSeq++);
-    const e = (tag, a, kids) => { const x = document.createElementNS(SV, tag); for (const k in a) x.setAttribute(k, a[k]); for (const c of kids || []) x.append(c); return x; };
-    const ticks = [-52, -26, 0, 26, 52].map((deg) => { const r = deg * Math.PI / 180, sx = Math.sin(r), cx = Math.cos(r);
-      return e('line', { class: 'vu-tick', x1: (19 + 11 * sx).toFixed(2), y1: (19 - 11 * cx).toFixed(2), x2: (19 + 13.2 * sx).toFixed(2), y2: (19 - 13.2 * cx).toFixed(2) }); });
-    const svg = e('svg', { class: 'vu', viewBox: '0 0 38 22', 'aria-hidden': 'true', focusable: 'false' }, [
-      e('defs', {}, [e('linearGradient', { id, x1: '0', y1: '0', x2: '0', y2: '1' }, [e('stop', { offset: '0', class: 'vu-s0' }), e('stop', { offset: '1', class: 'vu-s1' })])]),
-      e('rect', { class: 'vu-face', x: '.5', y: '.5', width: '37', height: '21', rx: '3.5', fill: 'url(#' + id + ')' }),
-      e('path', { class: 'vu-zone', d: 'M26.77 6.18A15 15 0 0 1 30.82 9.76' }),
-      e('path', { class: 'vu-arc', d: 'M7.18 9.76A15 15 0 0 1 30.82 9.76', pathLength: '100' }),
-      ...ticks,
-      e('g', { class: 'vu-needle' }, [e('line', { x1: '19', y1: '19', x2: '19', y2: '6.2' })]),
-      e('circle', { class: 'vu-pivot', cx: '19', cy: '19', r: '1.8' })]);
-    svg.style.setProperty('--n', String(Math.max(0, Math.min(1, pct / 100))));
-    return svg;
-  }
-  R.extend('bar', { id: 'limits', side: 'right', order: 10, render(el) {
+  // v8 (Agentation notes): the bar is the limits of the agent in focus, named by the agent, as bars; the env and model chips are
+  // gone (the agents column picks the agent, the project sits under the mark of the column)
+  R.extend('bar', { id: 'limits', side: 'left', order: 10, render(el) {
     const draw = () => {
       const e = envNow();
       clear(el);
       if (!e) return;
+      const name = window.NSEnvRail ? window.NSEnvRail.shortName(e) : e.name;
+      const who = h('span', { class: 'lim8-who', title: t('lim8.of', { env: e.name }) }, envIcon(e.custom ? 'custom' : e.id), h('span', { text: name }));
       const v = L.limitsView(s.limits.get(e.id));
-      if (v.kind !== 'known' || !v.windows.length) { el.append(h('span', { class: 'bm-t mute', text: t('bar.no_limits') })); return; }
+      if (v.kind !== 'known' || !v.windows.length) { el.append(who, h('span', { class: 'bm-t mute', text: t('lim8.none') })); return; }
       const warnAt = ((s.settings || {}).limits || {}).warn_pct;
-      for (const w of L.pickWindows(v.windows, 2).shown) {
-        const lvl = L.limitLevel(w, warnAt), pct = w.exhausted ? 100 : Math.round(w.used_pct || 0);
-        el.append(h('span', { class: 'bm-lim ' + lvl, title: L.formatLimit(w, Date.now(), t) }, h('span', { class: 'mute', text: L.windowName(w, t) }),
-          vuMeter(pct), h('span', { text: pct + '%' })));
-      }
+      const general = v.windows.filter((w) => !w.model);           // a per-model window would read as a second "Неделя"
+      el.append(who, ...L.pickWindows(general.length ? general : v.windows, 2).shown.map((w) => {
+        const lvl = L.limitLevel(w, warnAt), pct = L.leftPct(w) == null ? 100 : L.leftPct(w);
+        const fill = h('i', { class: 'lim8-fill' });
+        NS.setVars(fill, { '--p': String(pct / 100) });
+        return h('span', { class: 'bm-lim lim8 ' + lvl, title: L.formatLimit(w, Date.now(), t), role: 'meter', 'aria-valuemin': '0', 'aria-valuemax': '100', 'aria-valuenow': String(pct), 'aria-label': L.windowName(w, t) },
+          h('span', { class: 'lim8-w', text: L.windowName(w, t) }), h('span', { class: 'lim8-bar', 'aria-hidden': 'true' }, fill), h('span', { class: 'lim8-p', text: t('lim.left_pct', { n: pct }), dataset: { short: pct + '%' } }));
+      }));
     };
     draw();
     const e0 = envNow();
     if (e0 && !s.limits.has(e0.id)) NS.store.loadLimits(e0.id).then(draw);
-    return { update: (evt) => { if (['route', 'limits', 'focus'].includes(evt)) { const e = envNow(); if (e && !s.limits.has(e.id)) NS.store.loadLimits(e.id).then(draw); else draw(); } } };
+    return { update: (evt) => { if (['route', 'limits', 'focus', 'envs', 'lang'].includes(evt)) { const e = envNow(); if (e && !s.limits.has(e.id)) NS.store.loadLimits(e.id).then(draw); else draw(); } } };
   } });
   R.extend('bar', { id: 'clock', side: 'right', order: 80, render(el) {
     const span = h('time', { class: 'bm-t', title: t('bar.clock') });
@@ -212,11 +149,6 @@
   } });
   R.extend('bar', { id: 'palette', side: 'right', order: 90, render(el) {
     el.append(btn('bm-pal', t('bar.palette'), [h('kbd', { text: plat() === 'mac' ? '⌘K' : 'Ctrl+K' })], () => NS.palette.open()));
-  } });
-  R.extend('bar', { id: 'chats', side: 'right', order: 95, render(el) {
-    const b = btn('bm-side', t('bar.chats'), [ic('i-chat')], () => toggleSide());
-    el.append(b);
-    return { update: (evt) => { if (evt === 'side') b.classList.toggle('on', document.body.classList.contains('side-on')); } };
   } });
 
   // ---------- chat list (hidden side panel, ⌘B) ----------
@@ -288,13 +220,11 @@
     }
     for (const id of [...rowCache.keys()]) if (!seen.has(id)) rowCache.delete(id);
   }
-  // ⌘B: the chat list is shown by default since F9 (a user who hid it keeps it hidden: ns.side = 0)
-  function toggleSide(force) {
-    const v = force === undefined ? !document.body.classList.contains('side-on') : !!force;
-    document.body.classList.toggle('side-on', v);
-    NS.storage.set('ns.side7', v ? '1' : '0');
-    if (v) renderSide();
-    barUpdate('side');
+  // v10 (Agentation 29.10): the chat list repeated the sessions column and is gone - no button, no ⌘B; a layout preset that asks for it
+  // (settings-v4 "Classic") gets nothing. Kept as a function so its callers stay valid.
+  function toggleSide() {
+    document.body.classList.remove('side-on');
+    NS.storage.set('ns.side7', '0');
   }
   const sideNeeded = (envId) => document.body.classList.contains('side-on') && s.route.env === envId;
 
@@ -336,7 +266,6 @@
     const code = e.code || '';
     if (mod && !e.altKey && !e.shiftKey && (code === 'KeyK' || /^[kл]$/i.test(e.key))) { e.preventDefault(); NS.palette.open(); return; }
     if (mod && !e.altKey && !e.shiftKey && (code === 'Comma' || e.key === ',' || e.key === 'б')) { e.preventDefault(); nav('settings', { env: s.lastEnv, section: 'basic' }); return; }
-    if (mod && !e.altKey && !e.shiftKey && (code === 'KeyB' || /^[bи]$/i.test(e.key)) && !document.body.classList.contains('is-empty')) { e.preventDefault(); toggleSide(); return; }
     if (e.key === 'Escape' && current && (current.def.layout || 'full') === 'full' && !document.querySelector('dialog[open]') && !(NS.palette && NS.palette.isOpen)
       && !(e.target && e.target.closest && e.target.closest('input, textarea, select, .pop, .menu'))) { e.preventDefault(); back(); return; }
     const pattern = window.NSLive.migrateSwitchEnv(((s.settings || {}).keys || {}).switch_env, plat());
@@ -357,7 +286,6 @@
     { id: 'pane.zoom', labelKey: 'cmd.zoom', group: 'cmd.g.layout', keys: mk('Shift+Cmd+Enter'), order: 22, run: toWs(() => NS.tabs.zoom()) },
     { id: 'pane.equalize', labelKey: 'cmd.equalize', group: 'cmd.g.layout', order: 23, run: toWs(() => NS.tabs.equalize()) },
     { id: 'pane.close', labelKey: 'cmd.close_pane', group: 'cmd.g.layout', keys: mk('Cmd+W'), order: 24, run: toWs(() => NS.tabs.closePane()) },
-    { id: 'shell.side', labelKey: 'cmd.side', group: 'cmd.g.view', keys: mk('Cmd+B'), order: 30, run: () => toggleSide() },
     { id: 'shell.settings', labelKey: 'cmd.settings', order: 60, keys: mk('Cmd+,'), run: () => nav('settings', { env: s.lastEnv, section: 'basic' }) },
     { id: 'shell.settings_adv', labelKey: 'cmd.settings_adv', order: 61, run: () => nav('settings', { env: s.lastEnv, section: 'advanced' }) },
   ].forEach((c) => R.extend('command', c));
@@ -376,6 +304,6 @@
     mountScreen: (id, params) => mount(id, params),
     get current() { return current; } };
   NS.nav = nav;
-  // v7: the agents column took the place of the chat list; ⌘B still brings the list back (a new key: the v5 default is gone)
-  { const saved = NS.storage.get('ns.side7'); if (saved === '1') document.body.classList.add('side-on'); }
+  // v10: a window that had the chat list on (ns.side7 = 1) opens without it
+  toggleSide();
 })();

@@ -1,0 +1,2 @@
+{"type":"message","message":{"id":null,"role":"assistant","created":1793000000,"content":[{"type":"error","kind":"authentication","message":"No api key passed in"}],"metadata":{}}}
+{"type":"error","error":"No api key passed in"}

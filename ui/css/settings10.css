@@ -1,0 +1,80 @@
+/* v10 (Agentation notes 29.10.2026): settings like macOS - a short menu with coloured tiles and a search, tabs inside an item,
+   icons in the rows; sliders with a filled track for the whole app. Colours are tokens only (tokens.css). */
+
+/* ---------- the menu ---------- */
+.snav { gap: 1px; padding: 14px 10px 18px; }
+.snav-s { position: relative; display: flex; align-items: center; margin: 0 4px 10px; }
+.snav-s > .ic { position: absolute; left: 10px; width: 14px; height: 14px; color: var(--ink3); pointer-events: none; }
+.snav .snav-q { width: 100%; height: 32px; padding: 0 10px 0 31px; border: 0; border-radius: 9px; background: color-mix(in srgb, var(--ink) 6%, transparent);
+  color: var(--ink); font: 400 13px var(--sans); box-shadow: inset 0 0 0 1px var(--line); }
+.snav-q::placeholder { color: var(--ink3); }
+.snav .snav-q:focus-visible { border: 0; outline: none; box-shadow: inset 0 0 0 1px var(--accent), 0 0 0 3px color-mix(in srgb, var(--accent) 25%, transparent); }
+.snav-q::-webkit-search-cancel-button { filter: grayscale(1); opacity: .6; }
+.snav .snav-i { gap: 11px; min-height: 36px; padding: 0 10px 0 6px; border-radius: 9px; font-weight: 500; color: var(--ink); }
+.snav .snav-i[hidden] { display: none; }
+.snav .snav-i.on, .snav .snav-i.on:hover { background: color-mix(in srgb, var(--accent) 22%, var(--panel)); font-weight: 600; }
+.snav-l { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.snav-adv { min-height: 32px; font-size: 12.5px; }
+.snav-adv .snav-tile { width: 22px; height: 22px; border-radius: 6px; }
+.snav-adv .snav-tile .ic { width: 13px; height: 13px; }
+.snav-none { margin: 6px 10px; font-size: 12px; color: var(--ink3); }
+
+/* the tile: a rounded square of one colour with a white mark, like the sidebar of macOS settings */
+.snav-tile { flex: none; width: 26px; height: 26px; display: grid; place-items: center; border-radius: 7px; background: var(--tile, var(--tile-gray));
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--knob) 22%, transparent), 0 1px 2px color-mix(in srgb, var(--bg) 40%, transparent); }
+.snav-tile .ic { width: 15px; height: 15px; color: var(--knob); }
+.snav .snav-i > .snav-tile .ic, .snav .snav-i.on > .snav-tile .ic { color: var(--knob); }
+[data-tile="gray"] { --tile: var(--tile-gray); } [data-tile="pink"] { --tile: var(--tile-pink); } [data-tile="ink"] { --tile: var(--tile-ink); }
+[data-tile="blue"] { --tile: var(--tile-blue); } [data-tile="green"] { --tile: var(--tile-green); } [data-tile="violet"] { --tile: var(--tile-violet); }
+[data-tile="orange"] { --tile: var(--tile-orange); } [data-tile="red"] { --tile: var(--tile-red); } [data-tile="teal"] { --tile: var(--tile-teal); }
+
+/* ---------- the head of a page: name, the agent, the tabs ---------- */
+.shead { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; max-width: 920px; }
+.sbody h1 { display: flex; align-items: center; gap: 12px; }
+.sbody h1 > .snav-tile { width: 32px; height: 32px; border-radius: 9px; }
+.sbody h1 > .snav-tile .ic { width: 18px; height: 18px; }
+.senv { display: flex; gap: 4px; padding: 3px; border-radius: 11px; background: color-mix(in srgb, var(--ink) 5%, transparent); box-shadow: inset 0 0 0 1px var(--line); }
+.senv > button { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; border: 0; border-radius: 8px; background: none; color: var(--ink2);
+  font: 500 12.5px var(--sans); cursor: pointer; transition: background var(--t) var(--ease), color var(--t) var(--ease); }
+.senv > button .ic, .senv > button img { width: 15px; height: 15px; }
+.senv > button:hover { color: var(--ink); background: color-mix(in srgb, var(--ink) 6%, transparent); }
+.senv > button.on { color: var(--ink); background: var(--raised2); box-shadow: inset 0 0 0 1px var(--line2); }
+.stabs { max-width: 920px; margin: 14px 0 18px; }
+.stabs .seg { display: inline-flex; }
+.stabs .seg > button { height: 30px; padding: 0 14px; font-size: 13px; }
+
+/* ---------- a row with an icon (row({ text, icon })) ---------- */
+.srow > .stl { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.srow .srow-ic { flex: none; width: 30px; height: 30px; display: grid; place-items: center; margin-top: 1px; border-radius: 8px;
+  background: color-mix(in srgb, var(--ink) 6%, transparent); }
+.srow .srow-ic .ic { width: 16px; height: 16px; color: var(--ink2); }
+
+/* ---------- sliders: a filled track and a round knob (--p = 0..1 from the script) ---------- */
+input[type=range] { -webkit-appearance: none; appearance: none; width: 180px; height: 22px; margin: 0; background: none; cursor: pointer; --p: .5;
+  --fill: linear-gradient(90deg, var(--accent) 0 calc(var(--p) * 100%), color-mix(in srgb, var(--ink) 12%, transparent) calc(var(--p) * 100%) 100%); }
+input[type=range]::-webkit-slider-runnable-track { height: 6px; border-radius: 3px; background: var(--fill); }
+input[type=range]::-moz-range-track { height: 6px; border-radius: 3px; background: color-mix(in srgb, var(--ink) 12%, transparent); }
+input[type=range]::-moz-range-progress { height: 6px; border-radius: 3px; background: var(--accent); }
+input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 18px; height: 18px; margin-top: -6px; border: 0; border-radius: 50%; background: var(--knob);
+  box-shadow: 0 1px 3px color-mix(in srgb, var(--bg) 60%, transparent), 0 0 0 1px color-mix(in srgb, var(--bg) 18%, transparent); transition: transform var(--t) var(--ease), box-shadow var(--t) var(--ease); }
+input[type=range]::-moz-range-thumb { width: 18px; height: 18px; border: 0; border-radius: 50%; background: var(--knob);
+  box-shadow: 0 1px 3px color-mix(in srgb, var(--bg) 60%, transparent), 0 0 0 1px color-mix(in srgb, var(--bg) 18%, transparent); transition: transform var(--t) var(--ease); }
+input[type=range]:hover::-webkit-slider-thumb { transform: scale(1.08); }
+input[type=range]:active::-webkit-slider-thumb { transform: scale(1.15); box-shadow: 0 0 0 6px color-mix(in srgb, var(--accent) 22%, transparent); }
+input[type=range]:active::-moz-range-thumb { transform: scale(1.15); }
+input[type=range]:focus-visible { outline: none; }
+input[type=range]:focus-visible::-webkit-slider-thumb { box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 45%, transparent); }
+input[type=range]:focus-visible::-moz-range-thumb { box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 45%, transparent); }
+.srow input[type=range] + output, .rng-out { min-width: 48px; height: 26px; padding: 0 8px; display: inline-grid; place-items: center; border-radius: 7px;
+  background: color-mix(in srgb, var(--ink) 6%, transparent); font: 500 12px var(--mono); color: var(--ink2); font-variant-numeric: tabular-nums; }
+
+/* ---------- a session pane: «Чат | Терминал» (tabs.js viewSwitch) ---------- */
+.seg.view10 { flex: none; display: inline-flex; margin-left: 8px; }
+.seg.view10 > button { height: 24px; padding: 0 10px; font-size: 12px; }
+.seg.view10 > button:disabled { opacity: .45; cursor: default; }
+.view10-h { display: flex; align-items: center; gap: 8px; }
+.view10-h .pane-t { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; color: var(--ink); }
+.view10-h .pane-gap { flex: 1; }
+.view10-body { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.view10-body > .t-pane { flex: 1; min-height: 0; }
+.view10-body .t-head { display: none; }     /* the session's head above says what this is */

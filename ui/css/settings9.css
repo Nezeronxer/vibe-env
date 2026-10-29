@@ -1,0 +1,71 @@
+/* v9 (Agentation 28.10): settings in a Material 3 manner - an icon list whose selected item is a tonal pill in the person's
+   selection colour (--accent), sections as surface cards one tone above the page, no shadows, no lines between groups */
+.settings { grid-template-columns: 252px minmax(0, 1fr); }
+.snav { display: flex; flex-direction: column; gap: 2px; padding: 12px 12px 18px; border-right: 0; background: transparent; }
+.snav h2 { padding: 18px 14px 6px; font-size: 12px; font-weight: 600; color: var(--ink3); }
+.snav h2:first-child { padding-top: 6px; }
+.snav a, .snav button { gap: 12px; flex: none; min-height: 34px; padding: 0 14px; border-radius: 17px; color: var(--ink2); font-weight: 500;
+  transition: background var(--t) var(--ease), color var(--t) var(--ease); }
+.snav button > .ic { flex: none; width: 16px; height: 16px; color: var(--ink3); transition: color var(--t) var(--ease); }
+.snav button > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.snav a:hover, .snav button:hover { background: color-mix(in srgb, var(--ink) 6%, transparent); color: var(--ink); }
+.snav .on, .snav .on:hover { background: color-mix(in srgb, var(--accent) 24%, var(--panel)); color: var(--ink); font-weight: 600; }
+.snav .on > .ic { color: var(--accent); }
+.snav button:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.snav-gap { height: 10px; margin: 0; border: 0; }
+
+.sbody { padding: 28px 40px 48px; }
+.sbody > h1 { font-size: 24px; }
+.sbody > .lead { margin-bottom: 20px; }
+.sbody .sgrp { max-width: 920px; margin-bottom: 16px; padding: 18px 20px 4px; background: var(--raised); border-radius: 16px; }
+.sbody .sgrp:not(:has(> h2)) { padding-top: 4px; }
+.sbody .sgrp > h2 { margin-bottom: 4px; font-size: 15px; font-weight: 650; }
+.sbody .sgrp > h2 .hint { display: block; margin: 4px 0 0; font-size: 12.5px; font-weight: 400; color: var(--ink3); }
+.sbody .sgrp > .srows, .sbody .sgrp > h2 + * { margin-top: 10px; }
+.sbody .srows { background: none; border: 0; border-radius: 0; }
+.sbody .srow { padding: 14px 0; border-bottom: 0; border-top: 1px solid color-mix(in srgb, var(--ink) 8%, transparent); }
+.sbody .srows > .srow:first-child { border-top: 0; }
+.sbody .sgrp > :last-child:not(.srows) { margin-bottom: 16px; }
+.basic4 .sgrp { max-width: none; }
+.sbody .card4 { background: var(--panel); border-color: transparent; border-radius: 14px; }
+.sbody .card4.on { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+
+/* "Основное" -> "Внешний вид": one wide row, like a list item of its own */
+.goto9 { display: flex; align-items: center; gap: 14px; width: 100%; margin-bottom: 16px; padding: 16px 20px; border: 0; border-radius: 16px;
+  background: var(--raised); color: var(--ink); text-align: left; cursor: pointer; transition: background var(--t) var(--ease); }
+.goto9:hover { background: var(--raised2); }
+.goto9:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.goto9 > .ic { flex: none; width: 20px; height: 20px; color: var(--accent); }
+.goto9 > .ic:last-child { width: 14px; height: 14px; color: var(--ink3); }
+.goto9 > span { flex: 1; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.goto9 b { font-weight: 600; }
+.goto9 small { font-size: 12.5px; color: var(--ink3); }
+
+/* the selection colour: round swatches, "По агенту" as a chip, an own colour behind the "+" */
+.acc9 { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 4px 0 18px; }
+.acc9-s { position: relative; width: 34px; height: 34px; padding: 0; border: 0; border-radius: 50%; background: var(--c); cursor: pointer;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ink) 16%, transparent); transition: transform var(--t) var(--ease), box-shadow var(--t) var(--ease); }
+.acc9-s:hover { transform: scale(1.08); }
+.acc9-s.on { box-shadow: 0 0 0 3px var(--raised), 0 0 0 5px var(--c); }
+.acc9-s.env { --c: var(--accent); width: auto; padding: 0 16px; border-radius: 17px; background: color-mix(in srgb, var(--ink) 8%, transparent); color: var(--ink); font: 500 12.5px var(--sans); }
+.acc9-s.env.on { background: color-mix(in srgb, var(--accent) 24%, var(--raised)); }
+.acc9-plus { display: grid; place-items: center; overflow: hidden; background: color-mix(in srgb, var(--ink) 8%, transparent); color: var(--ink2); }
+.acc9-plus.on { background: var(--c); }
+.acc9-plus .ic { width: 14px; height: 14px; }
+.acc9-own { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
+.acc9-s:focus-visible, .acc9-plus:focus-within { outline: 2px solid var(--ink); outline-offset: 4px; }
+@media (prefers-reduced-motion: reduce) { .acc9-s:hover { transform: none; } }
+
+@media (max-width: 899px) {
+  .snav { flex-direction: row; flex-wrap: wrap; }
+  .snav a, .snav button { width: auto; }
+  .sbody { padding: 18px 14px 32px; }
+  .sbody .sgrp { padding: 14px 14px 2px; }
+}
+.sbody .sgrp > h2 > .ic { width: 15px; height: 15px; margin-right: 8px; vertical-align: -2px; color: var(--ink3); }
+
+/* «Что пропущено и почему» under the last spread */
+.spread-why { margin-top: 4px; font-size: 12px; color: var(--ink2); }
+.spread-why summary { cursor: pointer; color: var(--ink2); }
+.spread-why ul { margin: 4px 0 0; padding-left: 16px; max-height: 160px; overflow: auto; }
+.spread-why li b { font-weight: 600; color: var(--ink); }

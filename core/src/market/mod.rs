@@ -4,6 +4,7 @@
 //! Everything from the network is data: it is shown and written as files, never run here.
 
 mod build;
+pub(crate) use build::{render_server, Remote, Server};
 mod sources;
 
 use crate::kits::{ImportPlan, KitError, Kits, ScriptText, SnapshotInfo, SnapshotState};

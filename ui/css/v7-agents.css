@@ -7,6 +7,14 @@
 .tab[data-env="qwen"], .launch7 [data-env="qwen"] { --env: var(--env-qwen); }
 .tab[data-env="opencode"], .launch7 [data-env="opencode"] { --env: var(--env-opencode); }
 .tab[data-env="cursor"], .launch7 [data-env="cursor"] { --env: var(--env-cursor); }
+.tab[data-env="kimi"], .launch7 [data-env="kimi"] { --env: var(--env-kimi); }
+.tab[data-env="copilot"], .launch7 [data-env="copilot"] { --env: var(--env-copilot); }
+.tab[data-env="crush"], .launch7 [data-env="crush"] { --env: var(--env-crush); }
+.tab[data-env="amp"], .launch7 [data-env="amp"] { --env: var(--env-amp); }
+.tab[data-env="goose"], .launch7 [data-env="goose"] { --env: var(--env-goose); }
+.tab[data-env="droid"], .launch7 [data-env="droid"] { --env: var(--env-droid); }
+.tab[data-env="aider"], .launch7 [data-env="aider"] { --env: var(--env-aider); }
+.tab[data-env="grok"], .launch7 [data-env="grok"] { --env: var(--env-grok); }
 
 /* ---------- the frame: the column | the panes ---------- */
 .ws.ws7 { flex-direction: row; gap: var(--gap); }

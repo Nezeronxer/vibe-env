@@ -5,7 +5,8 @@ use std::path::PathBuf;
 
 pub type TaskId = String;
 pub type ProjectId = String;
-/// "claude" | "codex" | "gemini" | "opencode" | "cursor" | "qwen" | "custom:<id>"
+/// "claude" | "codex" | "gemini" | "opencode" | "cursor" | "qwen" | "kimi" | "copilot" | "crush" | "amp" | "goose" |
+/// "droid" | "aider" | "grok" | "custom:<id>"
 pub type EnvId = String;
 pub type ChatId = String;
 
@@ -430,6 +431,8 @@ pub struct Settings {
     /// v6 (G69): the address of the app's latest release (GitHub API `releases/latest`); None = the check is off
     /// ("адрес обновлений не задан") until the repository is published.
     pub release_feed: Option<String>,
+    /// Skills and MCP servers of every installed CLI go into the others at start (`Kits::spread`).
+    pub spread_kits: bool,
 }
 #[derive(Serialize, Deserialize, Clone, Debug, Default)]
 pub struct TelegramSettings {
@@ -569,6 +572,7 @@ impl Default for Settings {
             compress_output: true,
             role_tools: BTreeMap::new(),
             release_feed: None,
+            spread_kits: true,
         }
     }
 }

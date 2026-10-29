@@ -2,6 +2,7 @@
 //! (see `hub.rs` and its neighbours, where the logic and its tests live).
 mod agentcmds;
 mod auto;
+mod claudetrust;
 mod config;
 mod custom;
 mod diag;
@@ -397,6 +398,10 @@ fn start_timers(app: &AppHandle, hub: &Arc<Hub>) {
                 // every 5 minutes (tick = 30 s)
                 hb.recheck_envs();
                 check_tray_host(&h);
+                if tick == 0 {
+                    // the envs are known now: what one CLI has goes into the others (Settings.spread_kits)
+                    hb.spread_at_start();
+                }
             }
             if tick.is_multiple_of(2880) {
                 // at start and then once a day; the CLIs answer slowly, so not on this thread
@@ -457,6 +462,26 @@ fn register_keys(app: &AppHandle, old: Option<&Settings>, new: &Settings) -> Res
 }
 
 // ---------- commands ----------
+
+/// look8: the blur under a see-through window (window transparency in Settings -> «Окно и материалы»). The window is created
+/// transparent (tauri.conf.json); the page decides how much of it to fill. macOS: Tauri's own `set_effects` puts an
+/// NSVisualEffectView (material UnderWindowBackground, always active) under the web view, or takes it away. Elsewhere there is
+/// nothing to add: a compositor (Hyprland, KWin, ...) shows what is behind as it is. Returns whether the blur is on.
+#[tauri::command]
+fn window_glass(window: tauri::WebviewWindow, blur: bool) -> Result<bool, String> {
+    #[cfg(target_os = "macos")]
+    {
+        use tauri::window::{Effect, EffectState, EffectsBuilder};
+        let fx = blur.then(|| EffectsBuilder::new().effect(Effect::UnderWindowBackground).state(EffectState::Active).build());
+        window.set_effects(fx).map_err(|e| e.to_string())?;
+        Ok(blur)
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = (window, blur);
+        Ok(false)
+    }
+}
 
 #[tauri::command]
 async fn list_projects(s: State<'_, App>) -> Res<Vec<Project>> {
@@ -663,6 +688,13 @@ async fn start_fresh(app: AppHandle, s: State<'_, App>, token: String) -> Res<()
 
 #[tauri::command]
 async fn list_envs(s: State<'_, App>) -> Res<Vec<Value>> {
+    Ok(s.hub.list_envs())
+}
+
+/// The envs asked again (a CLI was just installed in the window's terminal): `list_envs` alone answers from its cache.
+#[tauri::command]
+async fn recheck_envs(s: State<'_, App>) -> Res<Vec<Value>> {
+    s.hub.recheck_envs();
     Ok(s.hub.list_envs())
 }
 
@@ -1302,13 +1334,14 @@ fn main() {
             github_info, delete_merged_branches, pr_state, get_diffstat,
             open_path, open_editor, open_terminal,
             task_snapshots, restore_snapshot, todo_add, todo_set, todo_remove, take_to_main, give_to_agent,
-            list_envs, get_catalog, refresh_catalog, get_limits, check_custom, install_env, login_env,
+            window_glass,
+            list_envs, recheck_envs, get_catalog, refresh_catalog, get_limits, check_custom, install_env, login_env,
             list_chats, get_chat, send_chat, retry_chat, side_ask, remove_chat, open_chat_terminal,
             chat_queue, chat_queue_add, chat_queue_edit, chat_queue_drop, chat_stop, ui_hints,
             shellcmds::chat_shell, shellcmds::chat_attach, shellcmds::chat_attach_path, shellcmds::chat_detach, shellcmds::chat_terminal,
             note, answer_outward, resume_failed, pick_variant, stop_swarm, nudge, switch_model, freeze,
             hand_off, take_back, start_now, not_a_task, submit_convoy, summary_since, diff_file,
-            kits_inventory, kits_export, kits_preview, kits_install, kits_enable, kits_snapshots, kits_rollback, kits_check_update, set_secret,
+            kits_inventory, kits_export, kits_preview, kits_install, kits_enable, kits_snapshots, kits_rollback, kits_check_update, set_secret, kitcmds::kits_spread, kitcmds::kits_spread_last, kitcmds::kits_spread_undo,
             data_state, open_data_folder, start_fresh,
             ptycmds::term_open, ptycmds::term_write, ptycmds::term_resize, ptycmds::term_close, ptycmds::term_attach,
             ptycmds::term_detach, ptycmds::term_ack, ptycmds::term_list,
@@ -1319,7 +1352,7 @@ fn main() {
             market::market_search, market::market_item, market::market_plan, market::market_apply, market::market_installed,
             market::market_remove, market::market_sources, market::market_set_sources,
             updates::cli_status, updates::cli_update, updates::updates_history, updates::cli_update_mode,
-            gitcmds::gh_publish, gitcmds::git_log_page, gitcmds::git_revert_commit, gitcmds::startup_tax, gitcmds::compact, gitcmds::commit_stat, gitcmds::commit_file_diff,
+            gitcmds::gh_publish, gitcmds::gh_prs, gitcmds::git_log_page, gitcmds::git_revert_commit, gitcmds::startup_tax, gitcmds::compact, gitcmds::commit_stat, gitcmds::commit_file_diff,
             config::config_open, config::config_errors,
             auto::auto_get, auto::auto_schedule_save, auto::auto_schedule_remove, auto::auto_schedule_toggle, auto::auto_suggest_scan,
             auto::auto_issue_answer, sessions::sessions_list, sessions::session_continue, auto::auto_suggest_do, auto::auto_suggest_dismiss, auto::auto_suggest_nightly, auto::auto_ci_set, auto::auto_ci_poll,

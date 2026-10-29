@@ -34,7 +34,11 @@ pub fn fix_path() {
         .and_then(|o| String::from_utf8_lossy(&o.stdout).lines().find_map(|l| l.strip_prefix("NSPATH=").map(str::to_string)))
         .unwrap_or_default();
     let home = std::env::var("HOME").unwrap_or_default();
-    let extra = ["/opt/homebrew/bin", "/usr/local/bin"].map(String::from).into_iter().chain([format!("{home}/.local/bin"), format!("{home}/.cargo/bin")]);
+    // `.kimi-code/bin`, `.amp/bin`: where the Kimi Code and Amp install scripts put their CLI
+    let extra = ["/opt/homebrew/bin", "/usr/local/bin"]
+        .map(String::from)
+        .into_iter()
+        .chain([".local/bin", ".cargo/bin", ".kimi-code/bin", ".amp/bin"].map(|d| format!("{home}/{d}")));
     let cur = std::env::var("PATH").unwrap_or_default();
     let mut seen = vec![];
     for p in from_shell.split(':').map(String::from).chain(extra).chain(cur.split(':').map(String::from)) {

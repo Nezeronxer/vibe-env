@@ -1,17 +1,33 @@
 //! Concrete CLI adapters, one file per engine. Shared helpers live in `common`.
+mod aider;
+mod amp;
 mod claude;
 mod codex;
 pub mod common;
+mod copilot;
+mod crush;
 mod cursor;
 mod custom;
+mod droid;
 mod gemini;
+mod goose;
+mod grok;
+mod kimi;
 mod opencode;
 mod qwen;
 
+pub use aider::Aider;
+pub use amp::Amp;
 pub use claude::Claude;
 pub use codex::Codex;
+pub use copilot::Copilot;
+pub use crush::Crush;
 pub use cursor::Cursor;
 pub use custom::Custom;
+pub use droid::Droid;
 pub use gemini::Gemini;
+pub use goose::Goose;
+pub use grok::Grok;
+pub use kimi::Kimi;
 pub use opencode::OpenCode;
 pub use qwen::Qwen;

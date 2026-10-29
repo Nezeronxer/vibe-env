@@ -15,6 +15,20 @@ Most tools in this space are a remote control for several agents running in para
 merge. Nightshift is the opposite: you describe the work, the agents do it in a separate git copy, check it
 with tests and an independent reviewer, merge it, and **call you only when something needs you**.
 
+## Quick start
+
+1. Install at least one agent CLI (Claude Code, Codex, opencode, Qwen Code, Gemini…). The left column shows the
+   installed ones; the rest sit under "Add" and install from there in the built-in terminal.
+2. A project: the column head → "Create project…" (a name is enough: a folder in `~/Projects`, git and a first commit)
+   or "Open folder…".
+3. "New agent": environment, model, project and where to work - "In its own copy" (its own `ns/term-*` branch, your
+   files untouched) or right in the folder. Write the task → "Run".
+4. The agent works in the terminal of its CLI. Done or asking - the card says "waits for you", a system notification
+   fires, ⌘J jumps to it. "Chat | Terminal" in the session head shows the same talk as a chat or in the CLI itself.
+5. "Changes" - what the agent changed (diff, undo a file) and "Merge into main".
+6. Skills and MCP servers set up in one CLI show up in the others at start (Settings → General → "Skills and MCP in
+   every agent"; "What was skipped and why" and the undo are there too).
+
 ## How the loop works
 
 1. **Ask.** In the chat of an environment you ask the model a question, or write "Do ..." and it becomes a task in the same feed.

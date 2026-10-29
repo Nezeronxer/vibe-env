@@ -87,7 +87,7 @@
         return row;
       });
       clear(body).append(
-        K.row(t('pr.tax'), t('pr.tax_d'), h('b', { class: 'tax4-total', text: t('pr.tax_total', { n: num(x.total_tokens) }) })),
+        K.row({ text: t('pr.tax'), icon: 'l-wallet' }, t('pr.tax_d'), h('b', { class: 'tax4-total', text: t('pr.tax_total', { n: num(x.total_tokens) }) })),
         ...(rules.length ? rules : [K.row(t('pr.tax_rules'), '', h('span', { class: 'hint', text: t('pr.tax_none') }))]),
         K.row(t('pr.tax_skills', { n: x.skills || 0 }), '', h('span', { class: 'tok4', text: t('pr.tax_tok', { n: num(x.skill_tokens) }) })),
         K.row(t('pr.tax_agents', { n: x.agents || 0 }), '', h('span', { class: 'tok4', text: t('pr.tax_tok', { n: num(x.agent_tokens) }) })),
@@ -131,7 +131,7 @@
     const projects = (S.projects || []).map((p) => K.toggleRow({ title: p.name, desc: t('pr.isolate_d'), on: !!p.isolate_ports, apply: (v) => save(p, v) }));
     return [
       h('p', { class: 'lead', text: t('pr.save_lead') }),
-      K.group('', [K.toggleRow({ title: t('pr.compress'), desc: t('pr.compress_d'), on: S.settings.compress_output !== false, apply: (v) => K.commit({ compress_output: v }) })]),
+      K.group('', [K.toggleRow({ icon: 'l-piggy-bank', title: t('pr.compress'), desc: t('pr.compress_d'), on: S.settings.compress_output !== false, apply: (v) => K.commit({ compress_output: v }) })]),
       K.group(t('pr.isolate'), projects.length ? projects : [h('p', { class: 'hint', text: t('pr.no_projects') })]),
     ];
   }

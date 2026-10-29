@@ -31,7 +31,16 @@
     { id: 'gemini', name: 'Gemini', installed: true, version: '0.9', path: '/opt/homebrew/bin/gemini', sandbox: { sandboxed: false, push_blocked: false, network_open: true, writes_outside_copy: true, note: '' } },
     { id: 'opencode', name: 'opencode', installed: true, version: '0.15', path: '/usr/local/bin/opencode', sandbox: { sandboxed: false, push_blocked: false, network_open: true, writes_outside_copy: true, note: '' } },
     { id: 'cursor', name: 'Cursor', installed: false, install_hint: 'curl https://cursor.com/install -fsS | bash' },
-    { id: 'qwen', name: 'Qwen Code', installed: false, install_hint: 'npm install -g @qwen-code/qwen-code' },
+    { id: 'qwen', name: 'Qwen Code', installed: false, install_hint: 'npm install -g @qwen-code/qwen-code', install: { line: 'npm install -g @qwen-code/qwen-code', argv: ['npm', 'install', '-g', '@qwen-code/qwen-code'], piped: false } },
+    // v8 envs: two installed, the rest with the install line the core sends (`install`: argv null = a pipe, typed by the person)
+    { id: 'kimi', name: 'Kimi Code', installed: true, version: '2.4.0', path: '/Users/me/.kimi-code/bin/kimi', sandbox: { sandboxed: false, push_blocked: false, network_open: true, writes_outside_copy: true, note: '' } },
+    { id: 'copilot', name: 'GitHub Copilot CLI', installed: false, install_hint: 'curl -fsSL https://gh.io/copilot-install | bash', install: { line: 'curl -fsSL https://gh.io/copilot-install | bash', argv: null, piped: true } },
+    { id: 'crush', name: 'Crush', installed: false, install_hint: 'npm install -g @charmland/crush', install: { line: 'npm install -g @charmland/crush', argv: ['npm', 'install', '-g', '@charmland/crush'], piped: false } },
+    { id: 'amp', name: 'Amp', installed: false, install_hint: 'curl -fsSL https://ampcode.com/install.sh | bash', install: { line: 'curl -fsSL https://ampcode.com/install.sh | bash', argv: null, piped: true } },
+    { id: 'goose', name: 'goose', installed: false, install_hint: 'curl -fsSL https://github.com/aaif-goose/goose/releases/download/stable/download_cli.sh | bash', install: { line: 'curl -fsSL https://github.com/aaif-goose/goose/releases/download/stable/download_cli.sh | bash', argv: null, piped: true } },
+    { id: 'droid', name: 'Factory Droid', installed: false, install_hint: 'curl -fsSL https://app.factory.ai/cli | sh', install: { line: 'curl -fsSL https://app.factory.ai/cli | sh', argv: null, piped: true } },
+    { id: 'aider', name: 'Aider', installed: false, install_hint: 'curl -LsSf https://aider.chat/install.sh | sh', install: { line: 'curl -LsSf https://aider.chat/install.sh | sh', argv: null, piped: true } },
+    { id: 'grok', name: 'Grok Build', installed: true, version: '0.9.1', path: '/Users/me/.local/bin/grok', sandbox: { sandboxed: false, push_blocked: false, network_open: true, writes_outside_copy: true, note: '' } },
     { id: 'custom:mine', name: 'Своя', custom: true, configured: false },
   ];
   const NOTE = { anthropic: 'Anthropic docs, 2026-10-21; не сверено с CLI', google: 'Google docs, 2026-10-21; не сверено с CLI' };
@@ -111,7 +120,7 @@
     cxl: [M('cxl', 1, 10, 40, 'human', 'Сделай: удалить старые миграции'), M('cxl', 2, 10, 40, 'system', '', { kind: 'task', task_id: 't-cxl' })],
     rev: [M('rev', 1, 9, 50, 'human', 'Сделай: логи запросов в stdout'), M('rev', 2, 9, 50, 'system', '', { kind: 'task', task_id: 't-rev' })],
     hero: [M('hero', 1, 13, 30, 'human', 'Сделай героя на странице цен'), M('hero', 2, 13, 30, 'system', '', { kind: 'task', task_id: 't-hero' })],
-    pf: [M('pf', 1, 13, 10, 'human', 'Сделай поиск на Pagefind'), M('pf', 2, 13, 10, 'system', '', { kind: 'task', task_id: 't-pf' })],
+    pf: [M('pf', 1, 13, 10, 'human', 'Сделай поиск на Pagefind', { at: ago(5) }), M('pf', 2, 13, 10, 'system', '', { kind: 'task', task_id: 't-pf', at: ago(5) })],   // relative: its task log is ago(3), a fixed 13:10 sorted it after the log before 13:10
     acc: [M('acc', 1, 13, 20, 'human', 'Переименуй customer_id в account_id'), M('acc', 2, 13, 20, 'system', '', { kind: 'task', task_id: 't-acc' }),
       M('acc', 3, 13, 40, R('watcher'), 'Исполнитель 15 минут без вывода. Подтолкнул, жду. Если не оживёт за 5 минут - предложу сменить агента.', { model: 'GPT mini 5.1' })],
     avif: [M('avif', 1, 13, 15, 'human', 'Что такое AVIF и стоит ли переходить?'), M('avif', 2, 13, 15, 'model', 'Формат картинок на основе AV1. При том же качестве обычно легче WebP. Браузеры его поддерживают, но кодирование медленнее - для сборки сайта это не проблема.', { model: 'Gemini Pro 3' }), M('avif', 3, 13, 20, 'human', 'А в Safari он работает?'), M('avif', 4, 13, 20, 'system', 'stopped', { kind: 'warn', reply_to: 'avif-3' })],
@@ -134,6 +143,7 @@
 
   const cmds = {
     list_envs: () => (scenario === 'nogit' ? fail('git not found: install git') : envs),
+    recheck_envs: () => cmds.list_envs(),
     list_projects: () => projects, list_tasks: () => tasks, get_settings: () => settings, set_settings: ({ settings: s }) => { settings = withDefaults(s); return null; },
     repo_info: ({ id }) => repos[id], list_agents: () => envs.map((e) => ({ id: e.id, name: e.name, available: !!e.installed, hint: e.install_hint || '' })),
     add_project: ({ path }) => { if (/nogit/.test(path)) fail('not a git repo: ' + path); const p = P('p' + (projects.length + 1), path.split('/').pop(), 'local'); projects.push(p); repos[p.id] = { is_repo: true, base_branch: 'main', current_branch: 'main', ahead: 0, behind: 0 }; return p; },
@@ -293,6 +303,7 @@
         ent('settings:statusLine', 'settings', 'statusLine', 'add', { held: { kind: 'command', event: null, text: '"statusLine": {"type": "command", "command": "~/.claude/statusline.sh"}', scripts: [] } })],
     env_vars: update ? [] : [{ name: 'GITHUB_TOKEN', used_by: ['mcp:github'], missing: true }, { name: 'NOTIFY_URL', used_by: ['hook:Stop'], missing: true }, { name: 'SENTRY_DSN', used_by: ['mcp:sentry'], missing: false }],
     skipped: update ? [] : [{ path: 'config.toml', reason: 'inline_form' }], project_files: [], uncommitted_in_project: !!(scope && scope.project), update_from: update ? '9f8e7d6' : null, kit_sha: 'abc' });
+  let spread = null;   // kits_spread: the last spread (null before the first)
   let snaps = [{ id: 'sn1', env: 'claude', kit_name: 'team-setup', source: { repo: 'https://github.com/acme/team-setup' }, commit: '9f8e7d6', scope: 'global', at: ago(60 * 30), state: 'done', changed: ['~/.claude/settings.json'], project_files: [],
     held: [{ key: 'hooks:Stop', group: 'hooks', kind: 'hook', label: 'Stop · ./notify.sh', enabled: false }, { key: 'settings:statusLine', group: 'settings', kind: 'command', label: 'statusLine (запускает программу)', enabled: false }, { key: 'mcp:github', group: 'mcp', kind: 'mcp', label: 'github', enabled: true }] },
     { id: 'sn0', env: 'claude', kit_name: 'old-kit', source: { folder: '/Users/dev/kits/old' }, commit: null, scope: 'global', at: ago(60 * 70), state: 'interrupted', held: [], changed: [], project_files: [] }];
@@ -335,6 +346,10 @@
     kits_snapshots: () => snaps,
     kits_rollback: ({ id }) => { snaps = snaps.filter((s) => s.id !== id); return { kept_changed: ['~/.claude/settings.json: model'], kept_files: [] }; },
     kits_check_update: ({ installed }) => PLAN(installed.env, installed.source, installed.scope, true),
+    kits_spread: () => (spread = { at: iso(Date.now()), added: [{ env: 'opencode', kind: 'skill', name: 'code-review', from: 'claude' }, { env: 'qwen', kind: 'mcp', name: 'github', from: 'claude' }],
+      skipped: [{ env: 'qwen', kind: 'skill', name: '*', reason: 'layout_unverified' }], snapshots: ['spread1'], secrets: ['qwen/GITHUB_TOKEN'], undone: false }),
+    kits_spread_last: () => spread,
+    kits_spread_undo: () => { if (!spread) kitErr({ kind: 'not_found', detail: 'spread' }); spread = Object.assign({}, spread, { undone: true }); return { kept_changed: [], kept_files: [] }; },
     kits_export: ({ dest }) => ({ dest: Object.values(dest)[0], files: ['kit.json', 'skills/code-review/SKILL.md'], env_vars: [], secrets_replaced: 2, skipped: [], dangerous: ['env'], commit: null }),
     update_project: ({ project }) => { projects = projects.map((p) => (p.id === project.id ? project : p)); if (/nope/.test(project.path)) repos[project.id] = null; else repos[project.id] = repos[project.id] || { is_repo: true, base_branch: 'main', current_branch: 'main', ahead: 0, behind: 0 }; return null; },
     remove_project: ({ id }) => { projects = projects.filter((p) => p.id !== id); return null; },

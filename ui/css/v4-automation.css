@@ -1,47 +1,223 @@
-/* F14 automation: schedule, suggested tasks, CI watchman. Tokens only; the world is the night studio, state is told by lamps. */
-.auto4 { padding: 6px 24px 28px; max-width: 1180px; width: 100%; margin: 0 auto; }
-.a4-h { padding: 8px 0 14px; }
+/* F14 automation: schedule, suggested tasks, CI watchman. Tokens only. One accent (--amber, the env colour in focus):
+   the schedule panel carries a soft accent glow, the nearest run is the one bright surface, everything else is graphite. */
+.auto4 { padding: 8px 24px 32px; max-width: 1180px; width: 100%; margin: 0 auto; }
+.a4-h { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; padding: 10px 0 18px; }
 .a4-h h1 { font-size: 22px; font-weight: 650; letter-spacing: -0.015em; }
-.a4-h .hint { margin-top: 4px; }
-.a4-grid { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: 20px; align-items: start; }
+.a4-h .hint { margin-top: 4px; max-width: 70ch; }
+.a4-grid { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); gap: 20px; align-items: start; }
 .a4-col { display: grid; gap: 20px; min-width: 0; }
-.a4-panel { background: var(--card-fx); border: 1px solid var(--line); border-radius: var(--radius-pane); padding: 14px 16px 16px; min-width: 0; }
-.a4-panel > h2 { font-size: 14px; font-weight: 650; }
-.a4-panel > .hint { margin: 3px 0 12px; max-width: 64ch; }
-.a4-list { list-style: none; margin: 0 0 14px; padding: 0; display: grid; }
-.a4-row, .a4-card { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 4px 12px; align-items: start; padding: 10px 0; border-top: 1px solid var(--line); }
-.a4-card { grid-template-columns: minmax(0, 1fr) auto; }
-.a4-list > :first-child { border-top: 0; }
-.a4-row .lamp { margin-top: 4px; }
-.ci .a4-row { grid-template-columns: auto minmax(0, 1fr); }
-.a4-main { display: grid; gap: 2px; min-width: 0; }
-.a4-main b { font-weight: 600; overflow-wrap: anywhere; }
+
+/* ---------- panels ---------- */
+.a4-panel { background: var(--card-fx); border: 1px solid var(--line); border-radius: var(--radius-pane); padding: 18px 18px 18px; min-width: 0; }
+.a4-ph { margin-bottom: 14px; }
+.a4-ph h2 { font-size: 15px; font-weight: 650; letter-spacing: -0.01em; }
+.a4-ph .hint { margin-top: 4px; max-width: 64ch; }
+#a4-sched {
+  border-color: color-mix(in srgb, var(--amber) 22%, var(--line));
+  background:
+    radial-gradient(120% 60% at 0% 0%, color-mix(in srgb, var(--amber) 15%, transparent), transparent 62%),
+    radial-gradient(90% 40% at 100% 100%, color-mix(in srgb, var(--amber) 7%, transparent), transparent 70%),
+    var(--card-fx);
+}
+
+/* ---------- the nearest run ---------- */
+.a4-next {
+  display: grid; gap: 3px; padding: 14px 16px; margin-bottom: 12px; border-radius: 12px;
+  border: 1px solid color-mix(in srgb, var(--amber) 38%, var(--line));
+  background: linear-gradient(135deg, color-mix(in srgb, var(--amber) 26%, var(--raised)), color-mix(in srgb, var(--amber) 7%, var(--raised)) 75%);
+  box-shadow: 0 8px 24px -14px var(--glow);
+}
+.a4-next-k { font-size: 10.5px; font-weight: 600; letter-spacing: 0.07em; text-transform: uppercase; color: color-mix(in srgb, var(--amber) 70%, var(--ink)); }
+.a4-next-row { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.a4-next-t { font-size: 20px; font-weight: 650; letter-spacing: -0.015em; font-variant-numeric: tabular-nums; }
+.a4-next-in { color: var(--ink2); font-size: 12.5px; }
+.a4-next small { color: var(--ink2); font-size: 12.5px; }
+.a4-next.idle { background: var(--raised); border-color: var(--line); box-shadow: none; }
+.a4-next.idle .a4-next-k { color: var(--ink3); }
+.a4-next.idle .a4-next-t { font-size: 15px; }
+
+/* ---------- lists ---------- */
+.a4-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.a4-row, .a4-card {
+  display: grid; gap: 4px 14px; align-items: center; padding: 12px 14px; border-radius: 10px;
+  border: 1px solid var(--line); background: color-mix(in srgb, var(--ink) 2%, var(--panel));
+  transition: border-color var(--t) ease, background-color var(--t) ease;
+}
+@media (hover: hover) and (pointer: fine) {
+  .a4-row:hover, .a4-card:hover { border-color: var(--line2); }
+}
+.a4-main { display: grid; gap: 3px; min-width: 0; }
+.a4-main b { font-weight: 600; overflow-wrap: anywhere; line-height: 1.35; }
+.a4-main b.mute { color: var(--ink3); font-weight: 500; }
 .a4-main small { color: var(--ink2); font-size: 12px; }
-.a4-main small.mute, .a4-form small.mute, .a4-none { color: var(--ink3); }
-.a4-warn { color: var(--bad); font-size: 12.5px; }
-p.a4-warn { margin: 8px 0 0; }
-.a4-none { padding: 6px 0; }
+.a4-main small.mute, .a4-form small.mute, .a4-set small.mute { color: var(--ink3); }
+.a4-meta { display: flex; flex-wrap: wrap; gap: 2px 8px; }
+.a4-meta > span + span::before { content: '·'; margin-right: 8px; color: var(--ink3); }
 .a4-acts { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: flex-end; }
-.a4-loc { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
-.a4-loc code { font: 12.5px var(--mono); color: var(--ink2); }
-.a4-bar { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin-bottom: 10px; }
+.a4-warn { display: inline-flex; align-items: center; gap: 6px; color: var(--bad); font-size: 12px; }
+.a4-warn .ic { width: 13px; height: 13px; }
+
+/* schedule: an alarm list - the time first, what runs, the switch */
+.sched .a4-row { grid-template-columns: 96px minmax(0, 1fr) auto; }
+.a4-clock { display: grid; gap: 2px; align-self: stretch; align-content: center; padding-right: 14px; border-right: 1px solid var(--line); }
+.a4-hm { font-size: 22px; font-weight: 600; letter-spacing: -0.02em; line-height: 1.05; font-variant-numeric: tabular-nums; color: var(--ink3); }
+.a4-rh { font-size: 11.5px; white-space: nowrap; color: var(--ink3); }
+.sched .a4-row.on { border-color: color-mix(in srgb, var(--amber) 20%, var(--line)); }
+.a4-row.on .a4-hm { color: var(--ink); }
+.a4-row.on .a4-rh { color: color-mix(in srgb, var(--amber) 70%, var(--ink)); }
+.a4-row:not(.on) .a4-main b { color: var(--ink2); }
+.a4-main small.a4-when { color: var(--ink3); }
+.a4-main small.a4-when.a4-live { color: var(--ink); font-weight: 500; }
+.sched .a4-warn { color: var(--human); }
+.sched .a4-acts { flex-direction: column; align-items: flex-end; gap: 4px; }
+.a4-more-acts { display: flex; align-items: center; gap: 6px; }
+
+/* quiet actions */
+.btn.a4-ghost { background: transparent; border-color: transparent; color: var(--ink2); box-shadow: none; }
+.btn.a4-ghost:hover { background: var(--raised2); border-color: var(--line); color: var(--ink); }
+.linkb.a4-del { text-decoration: none; color: var(--ink3); padding: 0 6px; height: 24px; border-radius: var(--r); transition: color var(--t) ease; }
+.linkb.a4-del:hover { color: var(--bad); }
+
+/* empty states */
+.a4-none { display: grid; gap: 4px; justify-items: center; text-align: center; padding: 22px 18px; border: 1px dashed var(--line2); border-radius: 10px; color: var(--ink3); }
+.a4-none b { color: var(--ink2); font-weight: 600; }
+.a4-none small { font-size: 12.5px; max-width: 46ch; }
+
+/* ---------- suggestions ---------- */
+.a4-bar { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin-bottom: 12px; }
 .a4-tg { display: inline-flex; align-items: center; gap: 8px; color: var(--ink2); }
-.a4-line { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 9px 0; border-top: 1px solid var(--line); }
+.a4-count { margin-left: auto; color: var(--ink2); font-size: 12px; font-variant-numeric: tabular-nums; }
+.a4-card { grid-template-columns: minmax(0, 1fr) auto; }
+.a4-loc { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.a4-loc code { font: 12px var(--mono); color: var(--ink2); overflow-wrap: anywhere; }
+.a4-tag { font-size: 10.5px; font-weight: 650; letter-spacing: 0.04em; padding: 2px 6px; border-radius: 5px; color: var(--ink2); background: color-mix(in srgb, var(--ink) 9%, transparent); }
+.a4-tag[data-kind=fixme], .a4-tag[data-kind=xxx] { color: var(--bad); background: color-mix(in srgb, var(--bad) 13%, transparent); }
+.a4-tag[data-kind=hack] { color: var(--human); background: color-mix(in srgb, var(--human) 14%, transparent); }
+.a4-tag[data-kind=issue] { color: color-mix(in srgb, var(--amber) 75%, var(--ink)); background: color-mix(in srgb, var(--amber) 15%, transparent); }
+.a4-card .a4-acts { flex-direction: column; align-items: flex-end; gap: 4px; }
+.a4-card .btn.sm:not(.primary):hover { border-color: color-mix(in srgb, var(--amber) 55%, var(--line2)); }
+.a4-asks { display: grid; gap: 8px; margin-bottom: 12px; }
+.a4-asks h3 { font-size: 12px; font-weight: 600; color: var(--ink2); }
+.a4-ask { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; align-items: center; padding: 12px 14px; border-radius: 10px; border: 1px solid var(--human-line); background: var(--human-bg); }
+.a4-issue-note { margin: 0 0 10px; }
+
+/* ---------- CI watchman ---------- */
+.a4-set { border: 1px solid var(--line); border-radius: 10px; background: color-mix(in srgb, var(--ink) 2%, var(--panel)); padding: 0 14px; }
+.a4-line { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 11px 0; border-top: 1px solid var(--line); }
 .a4-line:first-child { border-top: 0; }
 .a4-line > div { display: grid; gap: 2px; min-width: 0; }
 .a4-line b { font-weight: 600; }
-.a4-line input[type=number] { width: 64px; }
-.a4-ci > .btn { margin-top: 4px; }
-.a4-form { border-top: 1px solid var(--line); padding-top: 14px; display: grid; gap: 10px; }
-.a4-form h3 { font-size: 13px; font-weight: 650; }
+.a4-line small { font-size: 12px; }
+.a4-set.off .a4-line + .a4-line { opacity: .55; }
+.a4-callout { display: flex; align-items: flex-start; gap: 8px; margin: 12px 0 0; padding: 10px 12px; border-radius: 10px; background: var(--bad-bg); font-size: 12.5px; line-height: 1.45; }
+.a4-callout .ic { margin-top: 2px; }
+.a4-subh { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 18px 0 8px; min-height: 24px; }
+.a4-subh h3 { font-size: 10.5px; font-weight: 600; letter-spacing: 0.07em; text-transform: uppercase; color: var(--ink3); }
+.ci .a4-pr { grid-template-columns: auto minmax(0, 1fr); align-items: start; padding: 10px 14px; }
+.a4-dot { width: 8px; height: 8px; margin-top: 6px; border-radius: 50%; background: var(--ink3); }
+.a4-pr[data-tone=ok] .a4-dot { background: var(--ok); box-shadow: 0 0 0 3px color-mix(in srgb, var(--ok) 18%, transparent); }
+.a4-pr[data-tone=bad] .a4-dot { background: var(--bad); box-shadow: 0 0 0 3px color-mix(in srgb, var(--bad) 18%, transparent); }
+.a4-pr[data-tone=wait] .a4-dot { background: var(--amber); box-shadow: 0 0 0 3px color-mix(in srgb, var(--amber) 20%, transparent); }
+.a4-pr[data-tone=warn] .a4-dot { background: var(--human); }
+.a4-state { font-weight: 600; }
+.a4-pr[data-tone=ok] .a4-state { color: var(--ok); }
+.a4-pr[data-tone=bad] .a4-state { color: var(--bad); }
+.a4-pr[data-tone=warn] .a4-state { color: var(--human); }
+
+/* ---------- fields: soft wells, 10px corners, an accent ring on focus (Linear / Raycast) ---------- */
+.auto4 input[type=text], .auto4 input[type=number], .auto4 textarea, .a4-sel select {
+  height: 36px; padding: 0 12px; border-radius: 10px; border: 1px solid var(--line2); color: var(--ink); font: 13px var(--sans);
+  background: color-mix(in srgb, var(--ink) 3%, var(--bg));
+  box-shadow: inset 0 1px 2px color-mix(in srgb, var(--bg) 60%, transparent);
+  transition: border-color var(--t) ease, box-shadow var(--t) ease, background-color var(--t) ease;
+}
+.auto4 textarea { height: auto; min-height: 96px; padding: 10px 12px; line-height: 1.5; resize: vertical; width: 100%; }
+.auto4 input::placeholder, .auto4 textarea::placeholder { color: var(--ink3); opacity: 1; }
+@media (hover: hover) and (pointer: fine) {
+  .auto4 input[type=text]:hover, .auto4 input[type=number]:hover, .auto4 textarea:hover, .a4-sel select:hover { border-color: color-mix(in srgb, var(--ink) 22%, var(--line2)); }
+}
+.auto4 input[type=text]:focus, .auto4 input[type=number]:focus, .auto4 textarea:focus, .a4-sel select:focus {
+  outline: none; border-color: var(--amber); background: var(--bg);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--amber) 22%, transparent);
+}
+.auto4 input.bad { border-color: var(--bad); box-shadow: 0 0 0 3px color-mix(in srgb, var(--bad) 18%, transparent); }
+.auto4 input[type=number] { width: 72px; text-align: center; font-variant-numeric: tabular-nums; padding: 0 6px; }
+.a4-sel { position: relative; display: block; min-width: 0; }
+.a4-sel select { appearance: none; -webkit-appearance: none; width: 100%; padding-right: 34px; cursor: pointer; text-overflow: ellipsis; }
+.a4-sel::after { content: ''; position: absolute; right: 14px; top: 50%; width: 6px; height: 6px; border-right: 1.5px solid var(--ink3); border-bottom: 1.5px solid var(--ink3); transform: translateY(-70%) rotate(45deg); pointer-events: none; }
+.fld { display: grid; gap: 6px; min-width: 0; }
+.fld .field-l, .a4-tplrow .field-l { color: var(--ink2); font-size: 12px; font-weight: 500; }
+.fld input[type=text] { width: 100%; }
+
+/* segmented: preset, quick time, weekday */
+.a4-seg { display: flex; gap: 2px; padding: 3px; border-radius: 10px; border: 1px solid var(--line); background: color-mix(in srgb, var(--ink) 3%, var(--bg)); min-width: 0; }
+.a4-segb {
+  flex: 1 1 0; min-width: 0; height: 30px; padding: 0 10px; border: 0; border-radius: 7px; background: transparent; color: var(--ink2);
+  font: 500 12.5px var(--sans); white-space: nowrap; cursor: pointer;
+  transition: background-color var(--t) ease, color var(--t) ease, box-shadow var(--t) ease, transform 120ms ease-out;
+}
+.a4-segb:hover { color: var(--ink); }
+.a4-segb:active { transform: scale(.97); }
+.a4-segb:focus-visible { outline: 2px solid var(--amber); outline-offset: 1px; }
+.a4-segb[aria-checked=true] {
+  color: var(--ink); background: var(--raised2);
+  box-shadow: 0 1px 2px color-mix(in srgb, var(--bg) 70%, transparent), inset 0 0 0 1px color-mix(in srgb, var(--amber) 45%, transparent);
+}
+.a4-preset .a4-segb { height: 32px; font-size: 13px; }
+.a4-timerow { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.auto4 input.a4-time { width: 84px; text-align: center; font-size: 15px; font-weight: 600; font-variant-numeric: tabular-nums; letter-spacing: 0.01em; }
+.a4-quick { flex: 1 1 220px; }
+.a4-quick .a4-segb { font-variant-numeric: tabular-nums; }
+.a4-days .a4-segb { padding: 0 4px; }
+
+/* the composer */
+.a4-form {
+  display: grid; gap: 20px; margin-top: 16px; padding: 18px; border-radius: 12px;
+  border: 1px solid var(--line); background: color-mix(in srgb, var(--panel) 88%, transparent);
+  transition: border-color var(--t2) var(--ease);
+}
+.a4-form.editing { border-color: color-mix(in srgb, var(--amber) 55%, var(--line)); }
+.a4-form-h { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.a4-form h3 { font-size: 14px; font-weight: 650; overflow-wrap: anywhere; }
+.a4-grp { display: grid; gap: 12px; }
+.a4-grp + .a4-grp { padding-top: 18px; border-top: 1px solid var(--line); }
+.a4-grp-l { font-size: 10.5px; font-weight: 600; letter-spacing: 0.07em; text-transform: uppercase; color: var(--ink3); }
 .a4-tplrow { display: grid; gap: 6px; }
 .a4-tpl { display: flex; gap: 6px; flex-wrap: wrap; }
-.fld { display: grid; gap: 4px; min-width: 0; }
-.fld input[type=text], .fld select { width: 100%; }
-.a4-two { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
-.a4-time { font-variant-numeric: tabular-nums; }
-.a4-foot { display: flex; align-items: center; gap: 14px; }
-.lamp.armed { border-color: transparent; background: radial-gradient(circle at 35% 30%, color-mix(in srgb, var(--amber) 55%, white), var(--amber) 58%); box-shadow: 0 0 0 1px color-mix(in srgb, var(--amber) 45%, transparent), 0 0 8px 1px color-mix(in srgb, var(--amber) 40%, transparent); }
+.a4-chip {
+  height: 28px; padding: 0 11px; border-radius: 8px; border: 1px solid var(--line2); background: transparent; color: var(--ink2);
+  font: 500 12.5px var(--sans); cursor: pointer;
+  transition: border-color var(--t) ease, color var(--t) ease, background-color var(--t) ease, transform 120ms ease-out;
+}
+.a4-chip:hover { color: var(--ink); border-color: color-mix(in srgb, var(--amber) 55%, var(--line2)); background: color-mix(in srgb, var(--amber) 9%, transparent); }
+.a4-chip:active { transform: scale(.97); }
+.a4-chip:focus-visible { outline: 2px solid var(--amber); outline-offset: 2px; }
+.a4-two { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.a4-more summary { display: inline-flex; align-items: center; gap: 6px; color: var(--ink2); font-weight: 500; cursor: pointer; list-style: none; padding: 2px 0; border-radius: var(--r); }
+.a4-more summary::-webkit-details-marker { display: none; }
+.a4-more summary:hover { color: var(--ink); }
+.a4-more summary:focus-visible { outline: 2px solid var(--amber); outline-offset: 2px; }
+.a4-more summary .ic { transition: transform var(--t) var(--ease); }
+.a4-more[open] summary .ic { transform: rotate(90deg); }
+.a4-more-in { display: grid; gap: 12px; padding-top: 12px; }
+.a4-more .a4-line { border-top: 0; padding: 0; }
+.a4-foot { display: flex; align-items: center; gap: 16px; padding-top: 16px; border-top: 1px solid var(--line); }
+.a4-sum { flex: 1; min-width: 0; color: var(--ink2); font-size: 12.5px; line-height: 1.45; }
+.a4-foot .btn.primary { height: 34px; padding: 0 16px; background: var(--amber); color: var(--on-amber); border-color: transparent; box-shadow: 0 6px 18px -8px var(--glow); }
+.a4-foot .btn.primary:hover { background: var(--amber); filter: brightness(1.07); border-color: transparent; }
+
+.lamp.armed { border-color: transparent; background: radial-gradient(circle at 35% 30%, color-mix(in srgb, var(--amber) 55%, var(--knob)), var(--amber) 58%); box-shadow: 0 0 0 1px color-mix(in srgb, var(--amber) 45%, transparent), 0 0 8px 1px color-mix(in srgb, var(--amber) 40%, transparent); }
 .nb-auto .bn { font: 600 11px var(--sans); color: var(--ink2); background: var(--raised2); border-radius: 3px; padding: 0 4px; line-height: 15px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .a4-segb, .a4-chip, .a4-more summary .ic { transition-property: background-color, color, border-color, box-shadow; }
+  .a4-segb:active, .a4-chip:active { transform: none; }
+}
 @media (max-width: 1100px) { .a4-grid { grid-template-columns: minmax(0, 1fr); } }
-@media (max-width: 640px) { .a4-two { grid-template-columns: minmax(0, 1fr); } .auto4 { padding: 6px 14px 24px; } }
+@media (max-width: 640px) {
+  .auto4 { padding: 6px 14px 24px; }
+  .a4-two { grid-template-columns: minmax(0, 1fr); }
+  .sched .a4-row { grid-template-columns: minmax(0, 1fr) auto; }
+  .a4-clock { grid-column: 1 / -1; border-right: 0; padding-right: 0; display: flex; align-items: baseline; gap: 8px; }
+  .a4-foot { flex-direction: column; align-items: stretch; }
+}

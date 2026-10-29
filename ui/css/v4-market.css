@@ -19,7 +19,8 @@
 /* the long list: a spacer of the whole height, rows laid at --y (only the visible window exists) */
 .mk-vl { flex: 1; min-height: 0; overflow: auto; position: relative; outline: 0; }
 .mk-vs { position: relative; height: var(--h, 0px); }
-.mk-row { position: absolute; left: 0; right: 0; top: 0; transform: translateY(var(--y, 0px)); height: 62px; display: grid; grid-template-columns: minmax(150px, 0.8fr) minmax(0, 2fr) 170px; gap: 14px; align-items: center;
+/* virtual rows sit by top, not transform: WebKit accessibility frames ignore transforms (VoiceOver landed a row off) */
+.mk-row { position: absolute; left: 0; right: 0; top: var(--y, 0px); height: 62px; display: grid; grid-template-columns: minmax(150px, 0.8fr) minmax(0, 2fr) 170px; gap: 14px; align-items: center;
   width: 100%; padding: 0 14px; text-align: left; border: 0; border-bottom: 1px solid var(--line); background: transparent; color: var(--ink); border-radius: 0; transition: background var(--t) ease-out; }
 .mk-row:hover { background: var(--raised); }
 .mk-row.on { background: var(--sel); }
@@ -70,7 +71,7 @@
 .hs-proj { max-width: 200px; }
 .hs-repo { display: flex; align-items: center; gap: 10px; margin-left: auto; font: 12px var(--mono); }
 .hs-vl { overflow-x: hidden; }
-.hrow { position: absolute; left: 0; right: 0; top: 0; transform: translateY(var(--y, 0px)); height: 34px; display: grid; grid-template-columns: var(--gw, 0px) minmax(0, 1fr) 120px 84px 64px; gap: 10px; align-items: center; padding: 0 14px 0 14px; cursor: default; transition: background var(--t) ease-out; }
+.hrow { position: absolute; left: 0; right: 0; top: var(--y, 0px); height: 34px; display: grid; grid-template-columns: var(--gw, 0px) minmax(0, 1fr) 120px 84px 64px; gap: 10px; align-items: center; padding: 0 14px 0 14px; cursor: default; transition: background var(--t) ease-out; }
 .hrow:hover { background: var(--raised); }
 .hrow.on { background: var(--sel); }
 .hs-g { position: relative; height: 34px; }

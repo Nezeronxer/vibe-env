@@ -1,7 +1,8 @@
 //! `kits_*` and `set_secret`: thin over `Kits`. Errors are the core's `KitError` as JSON (`{kind, ...}`), shown by the
 //! window with its own words. A secret's value goes to the keyring and nowhere else: not to a log, not to an event, not back.
 use crate::hub::{lk, Hub};
-use nightshift_core::kits::{Choices, ExportDest, HeldRef, ImportPlan, Installed, KitError, KitSource, Recovered, Scope, Selection};
+use crate::App;
+use nightshift_core::kits::{Choices, ExportDest, HeldRef, ImportPlan, Installed, KitError, KitSource, Recovered, Scope, Selection, SpreadReport};
 use serde_json::{json, Value};
 
 /// A refusal as the window gets it: the `KitError` JSON.
@@ -97,10 +98,47 @@ impl Hub {
         self.kits.recover()
     }
 
+    /// "Скиллы и MCP во всех агентах": what one installed CLI has goes into the other installed ones (`Kits::spread`).
+    pub fn kits_spread(&self) -> SpreadReport {
+        if lk(&self.envs).is_empty() {
+            self.refresh_envs();
+        }
+        let ids: Vec<String> = lk(&self.envs).iter().filter(|e| e.installed && !e.custom).map(|e| e.id.clone()).collect();
+        self.kits.spread(&ids.iter().map(String::as_str).collect::<Vec<_>>())
+    }
+
+    /// At start, once the envs are known; off when the settings say so.
+    pub fn spread_at_start(&self) {
+        if self.settings().spread_kits {
+            let r = self.kits_spread();
+            if !r.added.is_empty() {
+                eprintln!("spread: {} added, {} skipped", r.added.len(), r.skipped.len());
+            }
+        }
+    }
+
     /// The answer is where the value went (`keyring`, or a file with a warning), never the value.
     pub fn set_secret(&self, env: &str, name: &str, value: &str) -> KRes<Value> {
         ok(serde_json::to_value(self.kits.set_secret(env, name, value).map_err(kerr)?))
     }
+}
+
+#[tauri::command]
+pub async fn kits_spread(s: tauri::State<'_, App>) -> KRes<Value> {
+    let hub = s.hub.clone();
+    let r = tauri::async_runtime::spawn_blocking(move || hub.kits_spread()).await.map_err(|e| json!({ "kind": "io", "detail": e.to_string() }))?;
+    ok(serde_json::to_value(r))
+}
+
+/// The last spread that wrote something; null before the first one.
+#[tauri::command]
+pub async fn kits_spread_last(s: tauri::State<'_, App>) -> KRes<Value> {
+    ok(serde_json::to_value(s.hub.kits.spread_last()))
+}
+
+#[tauri::command]
+pub async fn kits_spread_undo(s: tauri::State<'_, App>) -> KRes<Value> {
+    ok(serde_json::to_value(s.hub.kits.spread_undo().map_err(kerr)?))
 }
 
 #[cfg(test)]

@@ -4,6 +4,8 @@
 body.side-on:not(.is-empty) .app { grid-template-columns: 240px minmax(0, 1fr); }
 .side { display: none; }
 body.side-on:not(.is-empty) .side { display: flex; }
+body[data-layout="full"] .side { display: none !important; }   /* v10: settings and other full pages - the chats panel only crowds them */
+body.side-on[data-layout="full"] .app { grid-template-columns: minmax(0, 1fr); }
 body.is-empty .app { padding: 0; gap: 0; }
 body.is-empty .bar { display: none; }
 
@@ -58,6 +60,10 @@ body[data-layout="bare"] .screen { background: var(--canvas); }
   background: linear-gradient(180deg, color-mix(in srgb, var(--cream) 5%, var(--panel)), var(--panel)); border: 1px solid var(--line); border-radius: var(--radius-pane); font: 12px var(--sans); color: var(--ink2); font-variant-numeric: tabular-nums; min-width: 0;
   box-shadow: inset 0 1px 0 color-mix(in srgb, var(--cream) 7%, transparent); }
 .bar-l, .bar-r { display: flex; align-items: center; gap: 4px; min-width: 0; }
+.bar:has(> .bar-c:not(:empty)) { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); height: 40px; }
+.bar-c { display: flex; align-items: center; justify-content: center; }
+.bar-c:empty { display: none; }
+.bar:has(> .bar-c:not(:empty)) > .bar-r { justify-content: flex-end; }
 .bar-l { overflow: hidden; }
 .mod { display: flex; align-items: center; min-width: 0; }
 .mod:empty { display: none; }

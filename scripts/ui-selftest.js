@@ -79,13 +79,22 @@ if (process.env.NS_PLAYWRIGHT) (async () => {
   const r = await p.evaluate(() => {
     const clear = (el) => { for (let e = el; e; e = e.parentElement) if (+getComputedStyle(e).opacity === 0) return true; return false; };   // a group faded out whole (the pane tools until hover)
     const vis = (el) => { const s = getComputedStyle(el), b = el.getBoundingClientRect(); return b.width > 0 && b.height > 0 && s.visibility !== 'hidden' && !clear(el); };
-    const buttons = [...document.querySelectorAll('button, [role=button]')].filter((x) => !x.closest('.cfeed, .clawd') && vis(x)); // Clawd is a character in the tab corner, not a control
+    // Clawd is a character in the tab corner, not a control; v8: the agents column is navigation, like the tab strip
+    const buttons = [...document.querySelectorAll('button, [role=button]')].filter((x) => !x.closest('.cfeed, .clawd, .er8-col') && vis(x));
     const rad = (sel) => { const el = document.querySelector(sel); return el ? parseFloat(getComputedStyle(el).borderTopLeftRadius) : -1; };
     return { buttons: buttons.length, names: buttons.map((x) => x.getAttribute('aria-label') || x.textContent.trim()).slice(0, 20), pane: rad('.pane'), card: rad('.tcard'), field: rad('.composer'), bar: rad('.bar') };
   });
   const out = [];
-  out.push((r.buttons <= 21 ? 'PASS ' : 'FAIL ') + 'main view: at most 21 visible buttons outside the feed (14 + the three entrances of F8 + "Новый чат" of the chat list that F9 shows by default + "Спросить" of F12 + "Автоматика" of F14 + "Приложить картинку" of v6 G65.2, shown only for an env that reads images) (' + r.buttons + ')' + (r.buttons <= 21 ? '' : ' ' + JSON.stringify(r.names)));
+  out.push((r.buttons <= 24 ? 'PASS ' : 'FAIL ') + 'main view: at most 24 visible buttons outside the feed and the agents column (14 + the three entrances of F8 + "Новый чат" of the chat list that F9 shows by default + "Спросить" of F12 + "Автоматика" of F14 + "Приложить картинку" of v6 G65.2, shown only for an env that reads images + v8 the project and "+" of the session tabs + v8 the GitHub panel toggle) (' + r.buttons + ')' + (r.buttons <= 24 ? '' : ' ' + JSON.stringify(r.names)));
   out.push((r.pane > 0 && r.card > 0 && r.field > 0 && r.bar > 0 ? 'PASS ' : 'FAIL ') + 'computed border-radius > 0: pane ' + r.pane + ', card ' + r.card + ', field ' + r.field + ', bar ' + r.bar);
+  // v10: the settings menu of ten items holds every section exactly once, and every item has its name in ru and en
+  const nv = await p.evaluate(() => {
+    const N = NS.settingsNav, items = N.NAV.concat(N.NAV_ADV), all = items.flatMap((n) => n.parts), D = NSI18n.dicts;
+    const ids = NSLogic.SETTINGS_SECTIONS.map((x) => x.id).concat(NS.registry.points('settings').map((d) => d.id));
+    return { n: N.NAV.length, dup: all.filter((x, i) => all.indexOf(x) !== i), miss: ids.filter((x) => !all.includes(x)),
+      noStr: items.flatMap((n) => ['ru', 'en'].filter((l) => !D[l]['nav10.' + n.id]).map((l) => l + ':' + n.id)) };
+  });
+  out.push((nv.n === 10 && !nv.dup.length && !nv.miss.length && !nv.noStr.length ? 'PASS ' : 'FAIL ') + 'v10 settings menu: 10 items, every section in exactly one, names in ru and en' + (nv.dup.length || nv.miss.length || nv.noStr.length || nv.n !== 10 ? ' ' + JSON.stringify(nv) : ''));
   await f5(b, 'http://127.0.0.1:' + srv.address().port, out);
   await f7(b, 'http://127.0.0.1:' + srv.address().port, out);
   await b.close(); b = await launch();       // F8 runs in a fresh browser: after F5 and F7 in one browser it died on the next page (headless Chrome on macOS)
@@ -112,6 +121,8 @@ if (process.env.NS_PLAYWRIGHT) (async () => {
   await ops6(b, 'http://127.0.0.1:' + srv.address().port, out);
   await b.close(); b = await launch();       // v6 task 29 (the menu "/", images, the chat in the terminal) in a fresh browser too
   await shell6(b, 'http://127.0.0.1:' + srv.address().port, out);
+  await b.close(); b = await launch();       // look8 (themes, own theme, transparency, gradients) in a fresh browser too
+  await look8(b, 'http://127.0.0.1:' + srv.address().port, out);
   process.stdout.write(out.join('\n') + '\n');
   if (out.some((l) => l.startsWith('FAIL'))) process.exitCode = 1;
   await b.close(); srv.close();
@@ -198,7 +209,7 @@ async function f7(b, base, out) {
   ok('F7 3: "sonnet" in the palette gives "Модель: Sonnet 5.5"; Enter saves it for the env', rows[0] === 'Модель: Sonnet 5.5' && (await fam())[0] === 'sonnet', [rows, await fam()]);
   ok('F7 3: the label in the input field follows a model chosen in the palette', (await p.textContent('.composer .envpick')).trim() === 'Sonnet 5.5', await p.textContent('.composer .envpick'));
   // a long list gets search: opencode has 10 models
-  await p.evaluate(() => { const e = NS.store.s.envs.find((x) => x.id === 'opencode'); if (e) NS.shell.pickEnv('opencode'); }); await p.waitForTimeout(800);
+  await p.evaluate(() => { const e = NS.store.s.envs.find((x) => x.id === 'opencode'); if (e) NS.shell.nav('env', { env: 'opencode' }); }); await p.waitForTimeout(800);   // v8: pickEnv on the workspace picks the agent column
   await p.click('.composer .envpick'); await p.waitForTimeout(300);
   const long = await p.evaluate(() => { const r = document.querySelector('.mmenu').getBoundingClientRect(); return { search: document.activeElement === document.querySelector('.mmenu .msearch'), h: r.height, top: r.top }; });
   ok('F7 1: a long list opens with the focus in the search field, the menu stays <= 360 px and inside the window', long.search && long.h <= 361 && long.top >= 0, long);
@@ -221,26 +232,21 @@ async function f8(b, base, out) {
   const p = await b.newPage({ viewport: { width: 1440, height: 900 } });
   await p.goto(base + '/index.html?lang=ru&platform=mac&first=chat');
   await p.waitForTimeout(1500);
-  // 1: the switches
-  const sw = await p.evaluate(() => [...document.querySelectorAll('.composer .tg')].map((g) => { const r = g.querySelector('.sw').getBoundingClientRect(); return { w: r.width, h: r.height, title: g.title, on: g.getAttribute('aria-checked'), text: g.textContent.trim() }; }));
-  ok('F8 1: the switches "Качество" and "Рой" are drawn (non-zero .sw) and each has a title', sw.length === 2 && sw.every((x) => x.w > 0 && x.h > 0 && x.title.length > 10) && sw[0].text === 'Качество' && sw[1].text === 'Рой', sw);
-  const st = () => p.evaluate(() => { const e = NS.store.envSettings(NS.store.s.lastEnv); return { q: e.last_quality && e.last_quality.on, s: !!e.last_swarm }; });
-  await p.click('.composer .tg >> nth=0'); await p.waitForTimeout(250);
-  await p.click('.composer .tg >> nth=1'); await p.waitForTimeout(250);
-  const after = await p.evaluate(() => [...document.querySelectorAll('.composer .tg')].map((g) => g.getAttribute('aria-checked')));
-  const saved = await st();
-  ok('F8 1: a click flips aria-checked and saves last_quality.on / last_swarm', after[0] !== sw[0].on && after[1] !== sw[1].on && saved.q === (after[0] === 'true') && saved.s === (after[1] === 'true'), { sw, after, saved });
+  // 1 (v10, Agentation 29.10): Рой / Качество are the pills in the middle of the bar, not a second pair of switches in the field
+  const sw = await p.evaluate(() => ({ field: document.querySelectorAll('.composer .comp-row .tg').length, bar: [...document.querySelectorAll('.bar-c .md8-p')].map((x) => x.textContent.trim()) }));
+  ok('v10 F8 1: no Рой / Качество switches in the field; the bar keeps them in its middle', sw.field === 0 && sw.bar.some((x) => /Качество/.test(x)) && sw.bar.some((x) => /Рой/.test(x)), sw);
   const tune = await p.evaluate(() => { const t = document.querySelector('.composer .tune4'); const r = t.getBoundingClientRect(); return { w: r.width, text: t.textContent.trim(), icon: !!t.querySelector('svg'), title: t.title }; });
   ok('F8 1: "⋯" is a gear with the word "Настроить" and a title', tune.text === 'Настроить' && tune.icon && tune.w > 50 && tune.title.length > 10, tune);
   // 2: the entrances (v7: the foot of the agents column keeps ⌘K and the settings; the factory moved to "Новый агент" and ⌘K)
   const here = () => p.evaluate(() => NS.shell.current && NS.shell.current.def.id);
-  const vis = await p.evaluate(() => ['.navb.nb-set', '.navb.nb-pal'].map((q) => { const e = document.querySelector(q); const r = e && e.getBoundingClientRect(); return e ? { w: r.width, text: e.textContent.trim(), label: e.getAttribute('aria-label') } : null; }));
-  ok('v7 F8 2: the settings (gear) and "⌘K Поиск и команды" are in the foot of the agents column', vis.every((x) => x && x.w > 20) && /Настройки/.test(vis[0].label) && /Поиск и команды/.test(vis[1].text), vis);
+  // v10: one way to the settings - the gear at the foot of the agents column; no second "Настройки" by the search
+  const vis = await p.evaluate(() => ['.er8-set', '.navb.nb-pal', '.navb.nb-set'].map((q) => { const e = document.querySelector(q); const r = e && e.getBoundingClientRect(); return e ? { w: r.width, text: e.textContent.trim(), label: e.getAttribute('aria-label') } : null; }));
+  ok('v10 F8 2: the settings gear is under the agents, "⌘K Поиск и команды" by the search, no second settings button', vis[0] && vis[0].w > 20 && /Настройки/.test(vis[0].label) && vis[1] && /Поиск и команды/.test(vis[1].text) && !vis[2], vis);
   await p.click('.rail7-new'); await p.waitForTimeout(300);
   await p.click('.l7-more-b:has-text("Фабрика")'); await p.waitForTimeout(500);
   const fact = await here();
   await p.evaluate(() => NS.shell.back()); await p.waitForTimeout(400);
-  await p.click('.navb.nb-set'); await p.waitForTimeout(500);
+  await p.click('.er8-set'); await p.waitForTimeout(500);
   const set = await here();
   await p.evaluate(() => NS.shell.back()); await p.waitForTimeout(400);
   await p.evaluate(() => document.dispatchEvent(new KeyboardEvent('keydown', { code: 'Comma', key: ',', metaKey: true, bubbles: true, cancelable: true }))); await p.waitForTimeout(500);   // a synthetic key: a real ⌘, would reach the browser itself
@@ -262,7 +268,7 @@ async function f8(b, base, out) {
   await p.click('.l7-more-b:has-text("Чат")'); await p.waitForTimeout(900);
   const chat = await p.evaluate(() => ({ kind: NS.tabs.active.kind, glyph: !!document.querySelector('.tab.on .tab-ic .t-glyph'), img: !!document.querySelector('.tab.on .tab-ic svg, .tab.on .tab-ic img') }));
   ok('F8 3: "Чат с агентом" opens a chat tab with the icon of the environment, not >_', chat.kind === 'agent' && !chat.glyph && chat.img, chat);
-  ok('F8 4: the empty chat carries the hint about the terminal', await p.evaluate(() => /Нужен сам Claude Code в терминале/.test((document.querySelector('.cmp-note') || {}).textContent || '')), null);
+  ok('F8 4: the empty chat carries the hint about the terminal', await p.evaluate(() => /Тот же разговор в CLI - «Терминал» в шапке/.test((document.querySelector('.cmp-note') || {}).textContent || '')), null);
   const barBtn = await p.evaluate(() => { const x = document.querySelector('.t-barbtn'); return x && { text: x.textContent.trim(), title: x.title }; });
   ok('F8 3: the status bar button reads ">_ Терминал" and says what it opens', barBtn && barBtn.text === '>_Терминал' || (barBtn && /Терминал/.test(barBtn.text) && /Claude Code в терминале/.test(barBtn.title)), barBtn);
   await p.close();
@@ -289,18 +295,35 @@ async function f9(b, base, out) {
   const p = await b.newPage({ viewport: { width: 1440, height: 900 } });
   await p.goto(base + '/index.html?lang=ru&platform=mac&first=chat');
   await p.waitForTimeout(1600);
-  // 5 (v7): the agents column took the place of the chat list: hidden on a clean start, ⌘B shows it and a reload remembers
-  const side = () => p.evaluate(() => { const e = document.querySelector('.side'); return { on: document.body.classList.contains('side-on'), w: e ? e.getBoundingClientRect().width : 0, saved: NS.storage.get('ns.side7') }; });
+  // 5 (v10): the chat list repeated the sessions column and is gone - no bar button, ⌘B does nothing, a saved "on" opens off
+  const side = () => p.evaluate(() => { const e = document.querySelector('.side'); return { on: document.body.classList.contains('side-on'), w: e ? e.getBoundingClientRect().width : 0, btn: !!document.querySelector('.bm-side') }; });
   const s0 = await side();
-  ok('v7 F9 5: on a clean start the chat list is hidden and the agents column is there', !s0.on && s0.w === 0 && s0.saved == null && await p.evaluate(() => document.querySelector('.rail7').getBoundingClientRect().width > 200), s0);
-  const key = () => p.evaluate(() => document.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyB', key: 'b', metaKey: true, bubbles: true, cancelable: true })));
-  await key(); await p.waitForTimeout(250);
-  const s1 = await side();
-  await p.reload(); await p.waitForTimeout(1500);
-  const s2 = await side();
-  ok('v7 F9 5: ⌘B shows the chat list (about 240 px) and a reload remembers it', s1.on && s1.w > 200 && s1.w < 290 && s1.saved === '1' && s2.on, { s1, s2 });
-  await key(); await p.waitForTimeout(250);
-  ok('v7 F9 5: ⌘B hides it again', !(await side()).on, null);
+  ok('v10 F9 5: no chat list and no button for it; the agents column is there', !s0.on && s0.w === 0 && !s0.btn && await p.evaluate(() => document.querySelector('.rail7').getBoundingClientRect().width > 200), s0);
+  await p.evaluate(() => document.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyB', key: 'b', metaKey: true, bubbles: true, cancelable: true }))); await p.waitForTimeout(250);
+  await p.evaluate(() => NS.storage.set('ns.side7', '1')); await p.reload(); await p.waitForTimeout(1500);
+  ok('v10 F9 5: ⌘B does not bring it back, nor a saved "on" after a reload', !(await side()).on && (await side()).w === 0, null);
+  // v10: a session is a chat; «Терминал» shows the same talk in the CLI in the same pane, «Чат» brings the feed back
+  await p.evaluate(() => NS.tabs.newTab()); await p.waitForTimeout(500);
+  const k0 = await p.evaluate(() => NS.tabs.active && NS.tabs.active.kind);
+  ok('v10: "+" opens a chat, not a bare terminal', k0 === 'agent', k0);
+  // v10: a layout saved the v7 way (Claude's CLI as a bare terminal) comes back as a chat; a plain shell stays a terminal
+  await p.evaluate(() => { const P = window.NSPanes; let st = { v: 2, tabs: [], active: null };
+    st = P.wsOpen(st, 'tab-a', { id: 'p-cli', kind: 'term', env: 'claude', argv: ['claude'], title: 'Claude Code' });
+    st = P.wsOpen(st, 'tab-b', { id: 'p-sh', kind: 'term', argv: ['zsh'], title: 'zsh' });
+    st = P.wsOpen(st, 'tab-c', { id: 'p-job', kind: 'term', env: 'claude', argv: ['claude'], cwd: '/tmp/wt', branch: 'ns/term-1-x', prompt: 'do it', started: true, title: 'do it' });
+    NS.storage.set('ns.tabs', P.wsSerialize(st)); });
+  await p.reload(); await p.waitForTimeout(1600);
+  const kinds = await p.evaluate(() => Object.fromEntries(window.NSPanes.allPanes(NS.tabs.state).filter((x) => ['p-cli', 'p-sh', 'p-job'].includes(x.pane.id)).map((x) => [x.pane.id, x.pane.kind])));
+  ok('v10: a saved CLI terminal of Claude reopens as a chat, a plain shell stays a terminal', kinds['p-cli'] === 'agent' && kinds['p-sh'] === 'term', kinds);
+  ok('v11: an agent started with a task in its own copy comes back as its terminal, not an empty chat', kinds['p-job'] === 'term', kinds);
+  await p.evaluate(() => NS.storage.del('ns.tabs')); await p.reload(); await p.waitForTimeout(1600);   // the next checks expect the page's own layout
+  await p.evaluate(() => { const x = window.NSPanes.allPanes(NS.tabs.state).find((y) => y.pane.kind === 'agent' && y.pane.chat !== 'new'); if (x) NS.tabs.focusPane(x.pane.id); }); await p.waitForTimeout(500);
+  const v0 = await p.evaluate(() => { const pid = NS.tabs.active.id, el = document.querySelector('.pane[data-pane="' + pid + '"]'); return { pid, sw: !!(el && el.querySelector('.seg.view10')), feed: !!(el && el.querySelector('.cfeed')) }; });
+  await p.evaluate((pid) => NS.tabs.chatView(pid, 'term'), v0.pid); await p.waitForTimeout(900);
+  const v1 = await p.evaluate((pid) => { const el = document.querySelector('.pane[data-pane="' + pid + '"]'); return { term: !!(el && el.querySelector('.t-pane')), feed: !!(el && el.querySelector('.cfeed')), field: !!(NS.tabs.active.term) }; }, v0.pid);
+  await p.evaluate((pid) => NS.tabs.chatView(pid, 'chat'), v0.pid); await p.waitForTimeout(700);
+  const v2 = await p.evaluate((pid) => { const el = document.querySelector('.pane[data-pane="' + pid + '"]'); return { term: !!(el && el.querySelector('.t-pane')), feed: !!(el && el.querySelector('.cfeed')) }; }, v0.pid);
+  ok('v10: «Чат | Терминал» in the head; «Терминал» puts the CLI in the same pane, «Чат» brings the feed back', v0.sw && v0.feed && v1.term && !v1.feed && v1.field && !v2.term && v2.feed, { v0, v1, v2 });
   // 1 and 3: the column, the type, the bubbles
   const L = await p.evaluate(() => {
     const feed = document.querySelector('.cfeed'), fr = feed.getBoundingClientRect();
@@ -375,17 +398,17 @@ async function f10(b, base, out) {
       const bgOf = (el) => { for (let e = el; e; e = e.parentElement) { const c = cs(e).backgroundColor; if (c && !/rgba\(.*, 0\)|transparent/.test(c)) return c; } return cs(document.body).backgroundColor; };
       const feed = q('.cfeed'), sec = q('.msg-h small') || q('.sysline'), pane = q('.pane');
       const lampOn = q('.tasks a .lamp.on-air'), lampCall = q('.tasks a .lamp.calling');
-      const vu = q('.bm-lim svg.vu');
+      const lim = q('.bm-lim.lim8'), fill = lim && lim.querySelector('.lim8-fill');
       return { appBg: cs(q('.app')).backgroundImage, canvas: cs(document.documentElement).getPropertyValue('--canvas').trim(), theme: document.documentElement.getAttribute('data-theme'),
         text: cs(feed).color, textBg: bgOf(feed), sec: sec && cs(sec).color, secBg: sec && bgOf(sec), paneBg: pane && cs(pane).backgroundColor,
         lampOn: !!lampOn, lampCall: !!lampCall, callAnim: lampCall && cs(lampCall).animationName, onAirBg: lampOn && cs(lampOn).backgroundImage,
-        vu: !!vu, vuN: vu && vu.style.getPropertyValue('--n'), vuText: vu && vu.parentElement.textContent, needle: vu && !!vu.querySelector('.vu-needle'), arc: vu && !!vu.querySelector('.vu-arc'),
+        lim: !!lim, limP: fill && fill.style.getPropertyValue('--p'), limText: lim && lim.textContent, limW: fill && fill.parentElement.getBoundingClientRect().width, who: (q('.lim8-who') || {}).textContent || '',
         gauge: !!q('.bm-lim .gauge'), stations: document.querySelectorAll('.tc-steps li i').length };
     });
     ok('v7 1 ' + scheme + ': the window ground is a faint radial wash of the live accent over the canvas', /radial-gradient/.test(R.appBg) && R.theme === scheme, R);
     const canvasRgb = (() => { const n = parseInt(R.canvas.slice(1), 16); return [n >> 16, (n >> 8) & 255, n & 255]; })();
     ok('v7 1 ' + scheme + ': the canvas is ' + (scheme === 'dark' ? 'graphite (B >= R, near black)' : 'near white (B >= R)'), canvasRgb[2] >= canvasRgb[0] && (scheme === 'dark' ? canvasRgb[0] < 24 : canvasRgb[0] > 220), canvasRgb);
-    ok('F10 3 ' + scheme + ': the limits in the status bar are VU meters (svg: needle, arc), the numbers stay, no flat gauge', R.vu && R.needle && R.arc && !R.gauge && /\d+%/.test(R.vuText) && +R.vuN >= 0 && +R.vuN <= 1, R);
+    ok('v8 ' + scheme + ': the limits in the status bar are bars named by the agent (no VU meter, no model in the name), the numbers stay', R.lim && R.who && R.limW > 0 && !R.gauge && /\d+%/.test(R.limText) && !/Opus|Sonnet/.test(R.limText) && +R.limP >= 0 && +R.limP <= 1, R);
     ok('F10 4 ' + scheme + ': message text >= 7:1 and the quiet line >= 4.5:1 against what is drawn behind them', ratio(mix(R.text), mix(R.textBg)) >= 7 && (!R.sec || ratio(mix(R.sec), mix(R.secBg)) >= 4.5), { text: ratio(mix(R.text), mix(R.textBg)), sec: R.sec && ratio(mix(R.sec), mix(R.secBg)), R });
     ok('F10 3 ' + scheme + ': the stages of the task card are one signal line of stations', R.stations >= 7, R.stations);
     await p.close();
@@ -437,7 +460,7 @@ async function f11(b, base, out) {
   const b0 = await btn();
   ok('F11 2: a new chat on a clean start has no project: the button says «Выбрать проект»', b0 && b0.text === 'Выбрать проект' && b0.empty, b0);
   await p.fill('.composer textarea', 'Сделай кнопку входа'); await p.keyboard.press('Enter'); await p.waitForTimeout(400);
-  const sent = await p.evaluate(() => ({ menu: !document.querySelector('.pj-pop').hidden, chats: NS.store.s.chats ? [...NS.store.s.chats.values()].flat().length : 0, left: document.querySelector('.composer textarea').value, pending: document.querySelectorAll('.me.sending').length }));
+  const sent = await p.evaluate(() => ({ menu: !document.querySelector('.newchat-empty .pj-pop').hidden, chats: NS.store.s.chats ? [...NS.store.s.chats.values()].flat().length : 0, left: document.querySelector('.composer textarea').value, pending: document.querySelectorAll('.me.sending').length }));
   ok('F11 2: «Сделай…» without a project is not sent, the project menu opens and the text stays', sent.menu && sent.left === 'Сделай кнопку входа' && sent.pending === 0, sent);
   const m = await p.evaluate(() => ({ rows: [...document.querySelectorAll('.pj-pop .mrow .mn')].map((x) => x.firstChild.textContent), w: document.querySelector('.pj-pop').getBoundingClientRect().width }));
   ok('F11 3: the menu lists the recent projects, then «Открыть папку…» and «Создать проект…»', JSON.stringify(m.rows) === JSON.stringify(['billing-api', 'web-site', 'docs-tool', 'Открыть папку…', 'Создать проект…']), m);
@@ -619,14 +642,16 @@ async function f14(b, base, out) {
   };
   let p = await open();
   const nav = await p.evaluate(() => { const b = document.querySelector('.nb-auto'); return b && { text: b.textContent.trim(), next: b.previousElementSibling && b.previousElementSibling.textContent.trim(), after: b.nextElementSibling && b.nextElementSibling.textContent.trim() }; });
-  ok('v7 F14: the entrance «Автоматика» sits between «⌘K Поиск» and «Настройки» in the foot of the agents column and carries the count of suggestions', nav && /^Автоматика\s*5$/.test(nav.text) && /Поиск/.test(nav.next) && nav.after === 'Настройки', nav);
+  ok('v10 F14: the entrance «Автоматика» sits after «⌘K Поиск» in the foot of the sessions column (the settings are the gear under the agents) and carries the count of suggestions', nav && /^Автоматика\s*5$/.test(nav.text) && /Поиск/.test(nav.next) && nav.after === null, nav);
   await p.click('.nb-auto'); await p.waitForTimeout(500);
   const rows = () => p.evaluate(() => [...document.querySelectorAll('#a4-sched .a4-row')].map((r) => ({ t: r.querySelector('b').textContent, on: r.classList.contains('on'), sw: r.querySelector('[role=switch]').getAttribute('aria-checked'), txt: r.textContent })));
   const r0 = await rows();
-  ok('F14 1: the schedule lists the tasks with preset, time and the next firing; the held one says why (limit under 10%)', r0.length === 3 && r0[0].txt.includes('по будням в 03:00') && /дальше:/.test(r0[0].txt) && /меньше 10% лимита/.test(r0[1].txt) && !r0[2].on, r0);
+  ok('F14 1: the schedule lists the tasks with preset, time and the next firing; the held one says why (limit under 10%)', r0.length === 3 && r0[0].txt.includes('03:00') && /по будням/.test(r0[0].txt) && /следующий запуск/.test(r0[0].txt) && /меньше 10% лимита/.test(r0[1].txt) && !r0[2].on, r0);
+  const near = await p.evaluate(() => { const n = document.querySelector('#a4-sched .a4-next'); return n && { text: n.textContent, hidden: n.hidden, bg: getComputedStyle(document.querySelector('#a4-sched')).backgroundImage }; });
+  ok('F14 1: the schedule panel leads with the nearest run and wears a soft accent gradient', near && !near.hidden && /Ближайший запуск/.test(near.text) && /gradient/.test(near.bg), near);
   await p.click('#a4-sched .a4-row:nth-child(1) [role=switch]'); await p.waitForTimeout(300);
   const r1 = await rows();
-  ok('F14 1: the switch turns a schedule off (the core agrees after a reload) and its «next» disappears', r1[0].sw === 'false' && !r1[0].on && !/дальше:/.test(r1[0].txt), r1[0]);
+  ok('F14 1: the switch turns a schedule off (the core agrees after a reload) and its «next» disappears', r1[0].sw === 'false' && !r1[0].on && !/следующий запуск/.test(r1[0].txt), r1[0]);
   // a new one from a template
   await p.click('[data-tpl=todo]'); await p.waitForTimeout(100);
   const filled = await p.evaluate(() => ({ title: document.querySelector('#a4-form input[type=text]').value, prompt: document.querySelector('#a4-form textarea').value.length > 20 }));
@@ -634,11 +659,11 @@ async function f14(b, base, out) {
   await p.fill('.a4-time', '25:99'); await p.click('#a4-form .btn.primary'); await p.waitForTimeout(300);
   ok('F14 1: a bad time is refused, nothing is added', (await rows()).length === 3, null);
   await p.fill('.a4-time', '02:15');
-  await p.selectOption('#a4-form select:has(option[value=weekly])', 'weekly'); await p.waitForTimeout(100);
-  const dayShown = await p.evaluate(() => !document.querySelector('.a4-day').hidden);
+  await p.click('#a4-form [data-preset=weekly]'); await p.waitForTimeout(100);
+  const dayShown = await p.evaluate(() => !document.querySelector('.a4-day').hidden && /раз в неделю, среда в 02:15/.test(document.querySelector('#a4-form .a4-sum').textContent));
   await p.click('#a4-form .btn.primary'); await p.waitForTimeout(400);
   const r2 = await rows();
-  ok('F14 1: «Раз в неделю» shows the day of the week; saving adds a row that is still off (the person switches it on)', dayShown && r2.length === 4 && r2[3].t === 'Добить TODO' && /раз в неделю, среда в 02:15/.test(r2[3].txt) && !r2[3].on, { dayShown, last: r2[3] });
+  ok('F14 1: «Раз в неделю» shows the day of the week; saving adds a row that is still off (the person switches it on)', dayShown && r2.length === 4 && r2[3].t === 'Добить TODO' && /02:15/.test(r2[3].txt) && /по средам/.test(r2[3].txt) && !r2[3].on, { dayShown, last: r2[3] });
   await p.click('#a4-sched .a4-row:nth-child(4) .btn.sm'); await p.waitForTimeout(200);
   const editing = await p.evaluate(() => ({ h: document.querySelector('#a4-form h3').textContent, v: document.querySelector('#a4-form input[type=text]').value, save: document.querySelector('#a4-form .btn.primary').textContent }));
   ok('F14 1: «Править» loads the row into the form', /Править/.test(editing.h) && editing.v === 'Добить TODO' && editing.save === 'Сохранить', editing);
@@ -992,26 +1017,97 @@ async function shell6(b, base, out) {
   const e1 = await pop(p);
   ok('G82: an env with nothing says «В среде нет скиллов - открыть Каталог»', e1 && e1.open && e1.empty === 'В среде нет скиллов - открыть Каталог', e1);
   await p.close();
-  // 6: «В терминале»: a terminal tab with the session in the chat's copy, the chat marked, sending asks first
+  // 6 (v10): «Терминал» in the head of the chat puts the same session (the chat's copy) in the same pane - no new tab; «Чат» brings the feed back
   p = await open('env=claude&chat=how');
-  await p.click('.convo-h .menu-btn'); await p.waitForTimeout(150);
-  const items = await p.evaluate(() => [...document.querySelectorAll('.convo-h .menu [role=menuitem]')].map((x) => x.textContent));
-  await p.click('.convo-h .menu [role=menuitem] >> text=В терминале'); await p.waitForTimeout(900);
-  const tm = await p.evaluate(() => ({ term: !!document.querySelector('.t-pane'), cwd: (document.querySelector('.t-pane .t-cwd') || {}).textContent || '', mark: (() => { const m = document.querySelector('.convo-h .term6'); return m && !m.hidden && m.textContent; })(), line: [...document.querySelectorAll('.cfeed .sysline')].map((x) => x.textContent).filter((x) => /открыт в терминале/.test(x)).length }));
-  ok('G83: «В терминале» opens a terminal tab in the chat\'s copy; the chat is marked «в терминале» and the feed says so', items.includes('В терминале') && tm.term && /\.chats\/how/.test(tm.cwd) && /в терминале/.test(tm.mark || '') && tm.line === 1, { items, tm });
-  await type(p, 'И ещё вопрос'); await p.click('#sendBtn'); await p.waitForTimeout(300);
-  const w1 = await p.evaluate(() => { const d = document.querySelector('dialog[open]'); return d && d.textContent; });
-  ok('G83: while the terminal is open, sending from the chat asks «Разговор идёт в терминале»', /Разговор идёт в терминале/.test(w1 || ''), w1);
+  const tabs0 = await p.evaluate(() => NS.tabs.state.tabs.length);
+  const items = await p.evaluate(() => { const b = document.querySelector('.convo-h .menu-btn'); if (b) b.click(); return [...document.querySelectorAll('.convo-h .menu [role=menuitem]')].map((x) => x.textContent); });
+  await p.click('.convo-h .view10 button:has-text("Терминал")'); await p.waitForTimeout(900);
+  const tm = await p.evaluate(() => ({ term: !!document.querySelector('.view10-body .t-pane'), cwd: (document.querySelector('.t-pane .t-cwd') || {}).textContent || '', feed: !!document.querySelector('.cfeed'), tabs: NS.tabs.state.tabs.length,
+    head: !!document.querySelector('.view10-h .view10 button.on:not([disabled])') }));
+  ok('G83/v10: «Терминал» shows the session in the chat\'s copy in the same pane (no new tab), no second «В терминале» in the menu', !items.includes('В терминале') && tm.term && /\.chats\/how/.test(tm.cwd) && !tm.feed && tm.tabs === tabs0 && tm.head, { items, tm, tabs0 });
+  await p.click('.view10-h .view10 button:has-text("Чат")'); await p.waitForTimeout(700);
+  const back = await p.evaluate(() => ({ term: !!document.querySelector('.t-pane'), feed: !!document.querySelector('.cfeed') }));
+  ok('G83/v10: «Чат» ends the CLI and brings the feed back', !back.term && back.feed, back);
   await p.close();
   // 7: no session yet: the reason in words and the explicit choice «Новый разговор в терминале»
   p = await open('env=claude&chat=how&term=nosession');
-  await p.click('.convo-h .menu-btn'); await p.waitForTimeout(150);
-  await p.click('.convo-h .menu [role=menuitem] >> text=В терминале'); await p.waitForTimeout(400);
+  await p.click('.convo-h .view10 button:has-text("Терминал")'); await p.waitForTimeout(400);
   const n1 = await p.evaluate(() => { const d = document.querySelector('dialog[open]'); return d && { text: d.textContent, ok: (d.querySelector('.btn.primary') || {}).textContent }; });
   ok('G83.2: no session - the reason in words and the choice «Новый разговор в терминале», not silently', n1 && /ещё нет разговора/.test(n1.text) && n1.ok === 'Новый разговор в терминале' && !(await p.evaluate(() => !!document.querySelector('.t-pane'))), n1);
   await p.click('dialog[open] .btn.primary'); await p.waitForTimeout(900);
-  ok('G83.2: after the choice a new conversation opens in a terminal tab', await p.evaluate(() => !!document.querySelector('.t-pane')), null);
+  ok('G83.2: after the choice a new conversation opens in the terminal of the same pane', await p.evaluate(() => !!document.querySelector('.t-pane')), null);
   const words = await p.evaluate(() => { const d = NSI18n.dicts; const keys = Object.keys(d.ru).filter((k) => /^(slash|shell|img)\.|^err\.(no_session|cannot_resume|session_not_found|opened_in_terminal|continued_in_terminal|back_from_terminal|not_an_image|image_too_big|too_many_images|images_not_supported|attachment_not_found)$/.test(k)); return { n: keys.length, missing: keys.filter((k) => !(k in d.en)) }; });
   ok('G82/G83/G65: every new word exists in ru and en', words.n > 30 && !words.missing.length, words);
+  await p.close();
+}
+
+// look8 - the drawn window: nine theme cards, OLED paints true black, an own theme from the editor (live, refused under 4.5:1,
+// saved, deleted), window transparency (a see-through ground) and accent gradients on the panes
+async function look8(b, base, out) {
+  const ok = (name, cond, detail) => out.push((cond ? 'PASS ' : 'FAIL ') + name + (cond ? '' : ' ' + JSON.stringify(detail)));
+  const p = await b.newPage({ viewport: { width: 1440, height: 900 }, colorScheme: 'dark' });
+  const errs = [];
+  p.on('pageerror', (e) => errs.push(String(e)));
+  await p.goto(base + '/index.html?lang=ru&platform=mac&screen=settings&section=look');
+  await p.waitForTimeout(1200);
+  const cards = await p.evaluate(() => [...document.querySelectorAll('.th8-cards .card4')].map((c) => c.querySelector('.card4-t b').textContent));
+  ok('look8 1: «Внешний вид → Тема» shows sixteen cards - the system one and fifteen ready themes (v9: designer palettes)', cards.length === 16 && cards.includes('Tokyo Night') && cards.includes('Чёрная OLED') && cards.includes('Светлая тёплая') && cards.includes('Полночь'), cards);
+  await p.evaluate(() => [...document.querySelectorAll('.th8-cards .card4')].find((c) => /OLED/.test(c.textContent)).click());
+  await p.waitForTimeout(400);
+  const oled = await p.evaluate(() => ({ canvas: getComputedStyle(document.documentElement).getPropertyValue('--canvas').trim(), look: document.documentElement.dataset.look, theme: document.documentElement.dataset.theme, saved: NS.store.s.settings.look.theme }));
+  ok('look8 2: a card applies the theme at once and saves it (OLED: canvas #000000, data-theme dark, data-look oled)', oled.canvas === '#000000' && oled.look === 'oled' && oled.theme === 'dark' && oled.saved === 'oled', oled);
+  await p.evaluate(() => document.querySelector('.th8-tools .btn').click());
+  await p.waitForTimeout(300);
+  const ed = await p.evaluate(async () => {
+    const box = document.querySelector('.th8-ed');
+    if (!box) return null;
+    const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+    const hexes = [...box.querySelectorAll('.cf8-hex')];
+    const set = (i, v) => { hexes[i].value = v; hexes[i].dispatchEvent(new Event('input', { bubbles: true })); };
+    set(1, '#203040'); await wait(60);
+    const live = getComputedStyle(document.documentElement).getPropertyValue('--panel').trim();
+    set(2, '#2a3a4a'); await wait(60);
+    const blocked = box.querySelector('.btn.primary').disabled, low = box.querySelector('.th8-ratio').classList.contains('low');
+    set(2, '#f4f6f8');
+    const name = box.querySelector('.th8-name'); name.value = 'Проверка'; name.dispatchEvent(new Event('input'));
+    await wait(60);
+    box.querySelector('.btn.primary').click();
+    await wait(400);
+    const L = NS.store.s.settings.ui.tabs.look;
+    return { live, blocked, low, themes: (L.themes || []).map((x) => x.name + ':' + x.panel), theme: NS.store.s.settings.look.theme, look: document.documentElement.dataset.look, cards: document.querySelectorAll('.th8-cards .card4').length, open: !!document.querySelector('.th8-ed') };
+  });
+  ok('look8 3: own theme - the editor previews on the whole window while typing, refuses text under 4.5:1, saves a named theme and selects it',
+    !!ed && ed.live === '#203040' && ed.blocked && ed.low && ed.themes.join() === 'Проверка:#203040' && /^u/.test(ed.theme) && ed.look === 'custom' && ed.cards === 17 && !ed.open, ed);
+  const gl = await p.evaluate(async () => {
+    const cs = (el) => getComputedStyle(el), scr = document.querySelector('.screen, .pane'), before = cs(scr).backgroundImage;
+    await NS.settingsV4.setLook({ glass: 40, fx: true });
+    const de = document.documentElement;
+    return { glass: de.hasAttribute('data-glass'), fx: de.hasAttribute('data-fx'), body: cs(document.body).backgroundColor, app: cs(document.querySelector('.app')).backgroundColor, washed: cs(scr).backgroundImage !== before };
+  });
+  ok('look8 4: transparency 40% - the page ground is see-through (body transparent, the canvas at 60%); gradients wash the panes with the accent', gl.glass && gl.fx && gl.body === 'rgba(0, 0, 0, 0)' && /0\.6\)$/.test(gl.app) && gl.washed, gl);
+  const del = await p.evaluate(async () => {
+    const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+    await NS.settingsV4.setLook({ glass: 0, fx: false });
+    [...document.querySelectorAll('.th8-tools .btn')].find((x) => /Проверка/.test(x.textContent)).click(); await wait(200);
+    document.querySelector('.th8-ed .btn.danger').click(); await wait(200);
+    document.querySelector('#dlg .btn.primary').click(); await wait(400);
+    return { themes: (NS.store.s.settings.ui.tabs.look.themes || []).length, theme: NS.store.s.settings.look.theme, cards: document.querySelectorAll('.th8-cards .card4').length, glass: document.documentElement.hasAttribute('data-glass') };
+  });
+  ok('look8 5: deleting the selected own theme (after a confirmation) falls back to the system theme; glass 0 takes data-glass away', del.themes === 0 && del.theme === 'system' && del.cards === 16 && !del.glass, del);
+  await p.goto(base + '/index.html?lang=ru&platform=mac');
+  await p.waitForTimeout(1200);
+  const term = await p.evaluate(async () => {
+    const wait = (ms) => new Promise((r) => setTimeout(r, ms)), cs = (sel) => getComputedStyle(document.querySelector(sel)).backgroundColor;
+    const gl = () => document.querySelectorAll('.t-host canvas:not(.xterm-link-layer)').length;
+    if (!document.querySelector('.t-pane')) { NS.tabs.newTab('term'); await wait(900); }     // v10: a session opens as a chat - a bare terminal for this check
+    const solid = { ground: cs('.t-pane'), webgl: gl() };
+    await NS.settingsV4.setLook({ glass: 40 }); await wait(300);
+    const thin = { ground: cs('.t-pane'), host: cs('.t-host'), pane: cs('.pane.k-term'), webgl: gl() };
+    await NS.settingsV4.setLook({ glass: 0 }); await wait(300);
+    return { solid, thin, back: { ground: cs('.t-pane'), webgl: gl() } };
+  });
+  ok('look8 6: a terminal under a see-through window keeps one translucent ground (no stacked layers) and draws with the DOM renderer; glass 0 brings the solid ground and WebGL back',
+    /^rgb\(/.test(term.solid.ground) && /, 0\.55\)$/.test(term.thin.ground) && term.thin.host === 'rgba(0, 0, 0, 0)' && term.thin.pane === 'rgba(0, 0, 0, 0)' && term.solid.webgl > 0 && term.thin.webgl === 0 && /^rgb\(/.test(term.back.ground) && term.back.webgl === term.solid.webgl, term);
+  ok('look8: no page errors', !errs.length, errs);
   await p.close();
 }

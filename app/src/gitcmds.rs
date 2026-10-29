@@ -17,6 +17,13 @@ fn project_path(s: &State<'_, App>, path: &str) -> Res<PathBuf> {
     known.then_some(p).ok_or_else(|| "project_not_found".to_string())
 }
 
+/// v8: the open PRs of a known project for the GitHub panel (read-only `gh pr list`); Err = the gh hint (not installed, not logged in).
+#[tauri::command]
+pub async fn gh_prs(s: State<'_, App>, path: String) -> Res<Value> {
+    let p = project_path(&s, &path)?;
+    tauri::async_runtime::spawn_blocking(move || git::pr_list(&p)).await.map_err(e2s)?.map_err(e2s)
+}
+
 /// Ok(url); Err = the `PublishError` JSON `{kind, ...}` (gh_missing, gh_not_logged_in, name_taken, bad_name,
 /// protected_in_history{paths}, publish_failed{detail}). The window asks the person first: this goes outward.
 #[tauri::command]

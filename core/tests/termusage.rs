@@ -78,7 +78,7 @@ fn claude_usage_is_not_priced_by_us_and_is_empty_without_files_or_for_other_envs
     let cwd = h.cwd.to_str().unwrap();
     lines(&h.session("s.jsonl"), &[&claude_row("a", "2020-01-01T10:00:01Z", cwd, r#"{"input_tokens":4,"output_tokens":2}"#, "")]);
     assert_eq!(h.get("claude", 0), Usage { tokens_in: Some(4), tokens_out: Some(2), usd: None }, "no cost field, no price");
-    for env in ["gemini", "opencode", "custom:x", ""] {
+    for env in ["gemini", "opencode", "kimi", "copilot", "crush", "amp", "goose", "droid", "aider", "grok", "custom:x", ""] {
         assert_eq!(h.get(env, 0), Usage::default(), "{env}");
     }
     // another folder with the same folder-name key is not this one's

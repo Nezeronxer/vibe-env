@@ -27,10 +27,11 @@
       return h('div', { class: 'sum-row ' + r.kind }, ic('i-' + icon, 'ti ' + (r.kind === 'limit' ? '' : r.kind)), envIcon(e.custom ? 'custom' : e.id), h('span', { class: 'tx' }, text), r.env ? h('button', { type: 'button', class: 'btn sm', text: t('sum.open'), onclick: () => open(r) }) : h('span'));
     });
     return h('section', { class: 'sum', 'aria-label': t('sum.title') },
-      h('div', { class: 'sum-h' }, h('b', { text: t('sum.title') }), since ? h('span', { class: 'hint', text: t('sum.for', { time: L.formatDuration(now - since, NS.lang()) }) }) : null),
+      // «Понятно» in the head, beside the title: under the rows it made a second line and the plate took a fifth of a small window
+      h('div', { class: 'sum-h' }, h('b', { text: t('sum.title') }), since ? h('span', { class: 'hint', text: t('sum.for', { time: L.formatDuration(now - since, NS.lang()) }) }) : null, h('span', { class: 'grow' }),
+        onDismiss ? h('button', { type: 'button', class: 'btn sm', text: t('notice.ok'), onclick: onDismiss }) : null),
       h('div', { class: 'sum-rows' }, rows),
-      h('div', { class: 'sum-foot' }, v.spent != null ? h('span', { text: t('sum.spent', { usd: L.formatCost(v.spent) }) }) : null, v.more > 0 ? h('span', { text: t('sum.more', { n: v.more }) }) : null, h('span', { class: 'grow' }),
-        onDismiss ? h('button', { type: 'button', class: 'btn sm', text: t('notice.ok'), onclick: onDismiss }) : null));
+      v.spent != null || v.more > 0 ? h('div', { class: 'sum-foot' }, v.spent != null ? h('span', { text: t('sum.spent', { usd: L.formatCost(v.spent) }) }) : null, v.more > 0 ? h('span', { text: t('sum.more', { n: v.more }) }) : null) : null);
   }
 
   async function check() {

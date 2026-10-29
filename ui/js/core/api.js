@@ -13,7 +13,11 @@
     'list_envs', 'get_catalog', 'refresh_catalog', 'get_limits', 'list_chats', 'get_chat', 'send_chat', 'retry_chat', 'side_ask', 'remove_chat', 'note',
     'answer_outward', 'resume_failed', 'pick_variant', 'stop_swarm', 'nudge', 'switch_model', 'freeze', 'hand_off', 'take_back', 'start_now',
     'not_a_task', 'submit_convoy', 'summary_since', 'diff_file', 'check_custom', 'install_env', 'login_env',
+    // v8: the envs asked again after an install in a terminal tab (list_envs answers from its cache)
+    'recheck_envs', 'gh_prs',
     'kits_inventory', 'kits_export', 'kits_preview', 'kits_install', 'kits_enable', 'kits_snapshots', 'kits_rollback', 'kits_check_update', 'set_secret',
+    // skills and MCP of one CLI into every other installed one (Kits::spread)
+    'kits_spread', 'kits_spread_last', 'kits_spread_undo',
     // not in "Границы v2" by name: A07.2 "Продолжить в терминале" for a chat (the spec gives the behaviour, not the command) - see the report of task 15
     'open_chat_terminal',
     // data that cannot be read at start (G16.4): ask, show the folder, start clean after a confirmation

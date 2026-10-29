@@ -210,7 +210,7 @@ img.mono { filter: invert(1); }
 .lim .lb i { display: block; height: 100%; width: var(--w, 0%); background: linear-gradient(90deg, color-mix(in srgb, var(--amber) 55%, var(--brass)), var(--amber)); border-radius: 2px; }
 .lim.warn { color: var(--ink); font-weight: 600; }
 .lim.warn .lb { height: 5px; } .lim.warn .lb i { background: linear-gradient(90deg, var(--amber), var(--needle)); }
-.lim.exhausted { color: var(--bad); font-weight: 600; } .lim.exhausted .lb i { background: var(--bad); }
+.lim.exhausted { color: var(--bad); font-weight: 600; } .lim.exhausted .lb { background: color-mix(in srgb, var(--bad) 35%, var(--line2)); }
 .lim.stale { opacity: .55; }
 .lim.none { display: flex; gap: 8px; align-items: baseline; color: var(--ink3); }
 .limits .cons { color: var(--ink2); }

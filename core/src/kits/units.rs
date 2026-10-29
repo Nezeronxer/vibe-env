@@ -47,7 +47,7 @@ pub(crate) fn forbidden(real: &Path) -> bool {
     parts.iter().any(|x| SENSITIVE.contains(&x.as_str())) || parts.windows(2).any(|w| w[0] == ".config" && w[1] == "gh")
 }
 
-const SKIP_NAMES: &[&str] = &[".DS_Store", "node_modules", "__pycache__", ".venv", ".git"];
+pub(crate) const SKIP_NAMES: &[&str] = &[".DS_Store", "node_modules", "__pycache__", ".venv", ".git"];
 
 impl DiskTree<'_> {
     pub fn path(&self, rel: &str) -> PathBuf {

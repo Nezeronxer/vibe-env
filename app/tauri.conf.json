@@ -6,7 +6,7 @@
   "build": { "frontendDist": "../ui" },
   "app": {
     "withGlobalTauri": true,
-    "windows": [{ "label": "main", "title": "Nightshift", "width": 960, "height": 680, "dragDropEnabled": true }],
+    "windows": [{ "label": "main", "title": "Nightshift", "width": 960, "height": 680, "dragDropEnabled": true, "transparent": true }],
     "security": {
       "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' ipc: http://ipc.localhost"
     }

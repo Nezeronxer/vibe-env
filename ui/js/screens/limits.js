@@ -10,12 +10,11 @@
 
   function bar(w, now, warnAt) {
     const level = L.limitLevel(w, warnAt), fresh = L.limitFreshness(w, now);
-    const pct = w.exhausted ? 100 : Math.max(0, Math.min(100, w.used_pct == null ? 0 : w.used_pct));
+    const pct = L.leftPct(w) == null ? 100 : L.leftPct(w);
     const text = L.formatLimit(w, now, t);
     const cls = 'lim ' + level + (fresh !== 'fresh' ? ' stale' : '');
     const el = h('div', { class: cls, title: t('lim.seen', { time: NS.hhmm(w.seen_at) }) },
       h('span', { class: 'lt' }, level === 'warn' ? ic('i-warn', 'warn-i') : null, text,
-        level === 'warn' && w.used_pct != null ? h('em', { text: ' · ' + t('lim.left_pct', { n: Math.max(0, Math.round(100 - w.used_pct)) }) }) : null,
         fresh === 'stale' ? h('em', { text: ' · ' + t('lim.at_time', { time: NS.hhmm(w.seen_at) }) }) : null),
       h('span', { class: 'lb' }, setVars(h('i'), { '--w': pct + '%' })));
     return el;

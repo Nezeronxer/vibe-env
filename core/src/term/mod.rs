@@ -117,6 +117,14 @@ fn env_of(argv0: &str) -> Option<&'static str> {
         "opencode" => Some("opencode"),
         "qwen" => Some("qwen"),
         "agent" | "cursor-agent" => Some("cursor"),
+        "kimi" => Some("kimi"),
+        "copilot" => Some("copilot"),
+        "crush" => Some("crush"),
+        "amp" => Some("amp"),
+        "goose" => Some("goose"),
+        "droid" => Some("droid"),
+        "aider" => Some("aider"),
+        "grok" => Some("grok"),
         _ => None,
     }
 }

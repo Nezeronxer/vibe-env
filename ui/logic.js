@@ -214,14 +214,14 @@
   const hhmm = (d) => `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
   const sameDay = (a, b) => a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
 
+  // v8: no model in the name ("Неделя Opus" read badly): the bar names the agent once, the tooltip has the rest
   function windowName(win, t) {
     const n = String(win.name || '').toLowerCase();
-    const who = win.model ? ' ' + win.model.charAt(0).toUpperCase() + win.model.slice(1) : '';   // a per-model window: "Неделя Opus"
-    if (/five|5\s*h|5\s*ч/.test(n)) return t('lim.w5h') + who;
-    if (/seven|7\s*d|week|недел/.test(n)) return t('lim.wweek') + who;
-    if (/^(day|daily|one_day|1d|24h)$/.test(n)) return t('lim.wday') + who;
-    if (/^(month|monthly|30d)$/.test(n)) return t('lim.wmonth') + who;
-    return (win.name || '') + who;
+    if (/five|5\s*h|5\s*ч/.test(n)) return t('lim.w5h');
+    if (/seven|7\s*d|week|недел/.test(n)) return t('lim.wweek');
+    if (/^(day|daily|one_day|1d|24h)$/.test(n)) return t('lim.wday');
+    if (/^(month|monthly|30d)$/.test(n)) return t('lim.wmonth');
+    return win.name || '';
   }
   // same day -> "сброс в 19:00"; another day -> "пн 10:00" (as in the spec)
   function formatReset(iso, now, t) {
@@ -241,11 +241,13 @@
     if (w.resets_at && ts(w.resets_at) <= now && ts(w.seen_at) < ts(w.resets_at)) return 'reset';
     return now - ts(w.seen_at) > STALE_MS ? 'stale' : 'fresh';
   }
-  // "5 ч · 54% · сброс в 19:00", exhausted: "5 ч · исчерпан · сброс в 19:00"
+  // bars and numbers show what is left (просьба 28.10): a full bar that drains; null = unknown
+  const leftPct = (w) => (w.exhausted ? 0 : w.used_pct == null ? null : Math.max(0, Math.min(100, Math.round(100 - w.used_pct))));
+  // "5 ч · осталось 46% · сброс в 19:00", exhausted: "5 ч · исчерпан · сброс в 19:00"
   function formatLimit(w, now, t) {
     const parts = [windowName(w, t)];
     if (w.exhausted) parts.push(t('lim.exhausted'));
-    else if (w.used_pct != null) parts.push(Math.round(w.used_pct) + '%');
+    else if (w.used_pct != null) parts.push(t('lim.left_pct', { n: leftPct(w) }));
     else if (w.remaining) parts.push(t('lim.left', { n: w.remaining }));
     if (w.resets_at) {
       if (limitFreshness(w, now) === 'reset') parts.push(t('lim.reset_gone', { time: hhmm(new Date(w.resets_at)) }));
@@ -331,6 +333,7 @@
       reason, kitDir: raw.kit_dir || '' };
     if (raw.sandbox) env.sandbox = raw.sandbox;      // SandboxInfo from the adapter (rights screen, R17i.3)
     if (raw.path) env.path = raw.path;               // where the CLI was found
+    if (raw.install) env.install = raw.install;      // v8: {line, argv|null, piped} - the agents column installs by it
     return env;
   }
 
@@ -757,7 +760,7 @@
 
   const api = { MAX_TASK_CHARS, WARN_AT, STALE_MS, ARCHIVE_MS, MSG_LIMIT, KINDS, KIND_LABEL, KIND_ICON, STATUS, variant, info, kindOf, labelKey, iconOf,
     roleKey, chatState, chatArchived, groupChats, badgeText, envCounts, stepBar, retryPushCommand, outwardChoices, taskActions, strongerModel, capList,
-    formatDuration, formatElapsed, plural, windowName, formatReset, formatLimit, limitLevel, limitFreshness, pickWindows, limitsView, exhaustedLine,
+    formatDuration, formatElapsed, plural, windowName, formatReset, formatLimit, leftPct, limitLevel, limitFreshness, pickWindows, limitsView, exhaustedLine,
     swarmHint, defaultFamily, modelLabel, versionRow, groupByVendor, filterFamilies, needsGrouping, normalizeEnv, nextBefore, hasMore, mergeMsgs,
     whoOf, groupFeed, mockWanted, validateSend, createSendGate, draftKey,
     SWARM_MIN, SWARM_MAX, clampSwarmN, stepSwarmN, formatCost, formatBudget, autopickLeft, rankVariants, tallyVotes,

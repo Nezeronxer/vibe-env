@@ -47,7 +47,9 @@
   }
 
   // original vendor marks (icons/SOURCES.md); [file, mono]: a mono mark is black and is inverted in the dark theme (CSS img.mono)
-  const ENV_ICON = { claude: ['claude-code', 0], codex: ['openai', 1], gemini: ['gemini', 0], opencode: ['opencode', 1], cursor: ['cursor', 1], qwen: ['qwen', 1] };
+  // crush: no official SVG mark found (icons/SOURCES.md), so the neutral mark
+  const ENV_ICON = { claude: ['claude-code', 0], codex: ['openai', 1], gemini: ['gemini', 0], opencode: ['opencode', 1], cursor: ['cursor', 1], qwen: ['qwen', 1],
+    kimi: ['kimi', 1], copilot: ['copilot', 1], amp: ['amp', 0], goose: ['goose', 1], droid: ['factory', 1], aider: ['aider', 1], grok: ['grok', 1] };
   const VENDOR_ICON = { anthropic: ['claude', 0], claude: ['claude', 0], openai: ['openai', 1], google: ['gemini', 0], gemini: ['gemini', 0],
     cursor: ['cursor', 1], opencode: ['opencode', 1], qwen: ['qwen', 1], alibaba: ['qwen', 1] };
   function logo(entry, cls) {

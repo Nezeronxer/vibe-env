@@ -16,7 +16,7 @@ fn fake_gh() {
     let d = ONCE.get_or_init(|| {
         let d = tempfile::tempdir().unwrap();
         let p = d.path().join("gh");
-        fs::write(&p, "#!/bin/sh\ncase \"$1 $2\" in\n\"api user\") echo octocat;;\n\"pr view\") echo MERGED;;\n\"pr create\") echo 'Creating pull request'; echo https://github.com/o/r/pull/7;;\n*) echo bad >&2; exit 1;;\nesac\n").unwrap();
+        fs::write(&p, "#!/bin/sh\ncase \"$1 $2\" in\n\"api user\") echo octocat;;\n\"pr view\") echo MERGED;;\n\"pr list\") echo '[{\"number\":12,\"title\":\"Fix bar\",\"headRefName\":\"ns/fix\",\"isDraft\":false}]';;\n\"pr create\") echo 'Creating pull request'; echo https://github.com/o/r/pull/7;;\n*) echo bad >&2; exit 1;;\nesac\n").unwrap();
         fs::set_permissions(&p, fs::Permissions::from_mode(0o755)).unwrap();
         std::env::set_var("NIGHTSHIFT_GH", &p);
         d
@@ -43,6 +43,10 @@ fn gh_status_pr_state_and_open_pr_use_gh_output() {
 
     assert_eq!(gh_status(&repo).unwrap(), "octocat");
     assert_eq!(pr_state(&repo, "https://github.com/o/r/pull/7").unwrap(), "merged");
+    // v8: the PR list for the GitHub panel is gh's JSON as is
+    let prs = pr_list(&repo).unwrap();
+    assert_eq!(prs[0]["number"], 12);
+    assert_eq!(prs[0]["headRefName"], "ns/fix");
     let url = open_pr(&repo, "ns/abcd1234-x", "main", "Title", "Body").unwrap();
     assert_eq!(url, "https://github.com/o/r/pull/7");
     // open_pr pushed the branch first

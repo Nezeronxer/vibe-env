@@ -1,0 +1,1 @@
+{"type":"result","subtype":"success","is_error":false,"duration_ms":5657,"num_turns":1,"result":"A TypeScript monorepo with an API and a UI package.","session_id":"8af22e0a-d222-42c6-8c7e-7a059e391b0b","usage":{"input_tokens":4,"output_tokens":18,"cache_read_input_tokens":13528,"cache_creation_input_tokens":17913,"factory_credits":36947,"ttft_ms":2609}}

@@ -3,7 +3,7 @@
 //! message (kept in the app's data, 0600, gone with the chat) and the tokens of a run in the spending history.
 mod common;
 use common::*;
-use nightshift_core::agent::adapters::{Claude, Codex, Cursor, Custom, Gemini, OpenCode, Qwen};
+use nightshift_core::agent::adapters::{Aider, Amp, Claude, Codex, Copilot, Crush, Cursor, Custom, Droid, Gemini, Goose, Grok, Kimi, OpenCode, Qwen};
 use nightshift_core::agent::{inventory, Adapter, AgentEvent, FakeAdapter, FakeStep, Run};
 use nightshift_core::chat::{ChatTarget, Chats, MAX_ATTACHMENTS, MAX_ATTACHMENT_BYTES};
 use nightshift_core::engine::Engine;
@@ -32,6 +32,16 @@ fn every_env_continues_a_session_with_the_words_of_the_table_and_a_bad_id_gets_n
     assert_eq!(words(&Qwen::with_bin("qwen-x")), Some(vec!["--resume".into(), s.into()]));
     assert_eq!(words(&OpenCode::with_bin("opencode-x")), Some(vec!["--session".into(), s.into()]));
     assert_eq!(words(&Cursor::with_bin("cursor-agent-x")), Some(vec!["--resume".into(), s.into()]));
+    // v8 envs, from their docs (research-clis §7-14)
+    assert_eq!(words(&Kimi::with_bin("kimi-x")), Some(vec!["--session".into(), s.into()]));
+    assert_eq!(words(&Copilot::with_bin("copilot-x")), Some(vec![format!("--resume={s}")]));
+    assert_eq!(words(&Crush::with_bin("crush-x")), Some(vec!["--session".into(), s.into()]));
+    assert_eq!(words(&Amp::with_bin("amp-x")), Some(vec!["threads".into(), "continue".into(), s.into()]));
+    assert_eq!(words(&Goose::with_bin("goose-x")), Some(vec!["session".into(), "--resume".into(), "--session-id".into(), s.into()]));
+    assert_eq!(words(&Droid::with_bin("droid-x")), Some(vec!["--resume".into(), s.into()]));
+    assert_eq!(words(&Grok::with_bin("grok-x")), Some(vec!["--resume".into(), s.into()]));
+    assert_eq!(Aider::with_bin("aider-x").resume_argv(s, cwd), None, "aider has no sessions");
+    assert_eq!(Copilot::new().resume_argv("--help", cwd), None);
     // the program comes first, as configured (not found on PATH: the name itself)
     assert_eq!(Claude::with_bin("claude-x").resume_argv(s, cwd).unwrap()[0], "claude-x");
     let own = Custom(CustomAgent { id: "mine".into(), name: "Mine".into(), run: "my-cli {prompt}".into(), resume: None });

@@ -42,8 +42,10 @@
       if (inTerm) { const have = NS.tabs && window.NSPanes.allPanes(NS.tabs.state).find((x) => x.pane.kind === 'term' && x.pane.chat === chatId); if (have) { NS.tabs.focusPane(have.pane.id); return Promise.resolve(); } NS.shell.toast(t('shell.term_on_d')); return Promise.resolve(); }
       return NS.chatShell.openTerminal(chatId).then((r) => { if (r && alive.v) setTerm(true); });
     };
+    // v10: «Чат | Терминал» - the same talk in the real CLI, in this pane (tabs.js chatView); in a pane only
+    const viewSw = tabId && NS.tabs && NS.tabs.viewSwitch ? NS.tabs.viewSwitch({ id: tabId, chat: isNew ? 'new' : chatId, term: null }) : null;
     const header = h('header', { class: 'convo-h pane-h' }, h('span', { class: 'pane-ic' }, envIcon(env.custom ? 'custom' : envId)), lamp,
-      title, sub, termMark, sideBtn, !isNew ? menuBtn : null);
+      title, sub, termMark, viewSw, sideBtn, !isNew ? menuBtn : null);
     // F11: a new chat starts with the project button above the field (the menu: recent, open a folder, create)
     const pj = isNew ? NS.projects.picker(() => selProject, (p) => { selProject = p.id; drawHeader(); renderFeed(); composer.focus(); }) : null;
     function drawLamp() {
@@ -72,7 +74,8 @@
       closeChatMenu();
       const busy = st.chatTasks(chatId).some((x) => ['wait', 'run', 'queue'].includes(L.kindOf(x)));
       const m = h('div', { class: 'menu menu-r', role: 'menu' },
-        h('button', { type: 'button', role: 'menuitem', text: t('shell.term'), onclick: () => { closeChatMenu(); openTerm(); } }),      // v6 G83: the same session in a terminal tab
+        // v10: «В терминале» is the «Терминал» switch in the head now (one way, not two); outside a pane the item stays
+        viewSw ? null : h('button', { type: 'button', role: 'menuitem', text: t('shell.term'), onclick: () => { closeChatMenu(); openTerm(); } }),
         h('button', { type: 'button', role: 'menuitem', disabled: busy, title: busy ? t('chat.delete_busy') : '', text: t('chat.delete'),
         onclick: async () => {
           closeChatMenu();

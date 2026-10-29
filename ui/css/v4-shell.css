@@ -214,7 +214,7 @@
 .mini-tabs i.on { background: var(--ink3); }
 .mini-panes { display: flex; gap: var(--gap); flex: 1; min-height: 0; }
 .mini-pane { flex: 1; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 5px 6px; display: flex; flex-direction: column; gap: 2px; overflow: hidden; min-width: 0; }
-.mini-pane span, .mini-pane b { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mini-pane span, .mini-pane b { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: 1.35; flex: none; }   /* overflow clips descenders under a tight inherited line-height */
 .mini-pane.focus { border-color: var(--accent); }
 .mini-pane b { color: var(--ink); }
 .mini-pane .cmd { background: var(--raised); border-radius: 3px; padding: 0 3px; color: var(--ink); }
@@ -230,7 +230,6 @@
 .swatch.env { width: auto; padding: 0 8px; font: 11.5px var(--mono); color: var(--ink2); }
 .swatch.on { border-color: var(--amber); }
 .swatch.env.on { color: var(--ink); }
-.srow input[type=range] { width: 160px; accent-color: var(--amber); }
 .srow output { font: 12px var(--mono); color: var(--ink2); min-width: 4ch; text-align: right; }
 .adv-top { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 16px; max-width: 860px; }
 .adv-q { flex: 1 1 320px; height: 34px; font: 13px var(--mono); }
@@ -258,7 +257,7 @@
 .pj-pop .mgroup { margin: 6px 8px 2px; font-size: 11px; font-weight: 600; color: var(--ink3); }
 .pj-pop .hint { margin: 6px 8px; font-size: 12.5px; }
 .pj-f { display: flex; flex-direction: column; gap: 5px; margin: 12px 0; }
-.pj-f > span { font: 600 12.5px var(--mono); color: var(--ink2); }
+.pj-f > span { font: 600 12.5px var(--sans); color: var(--ink2); }
 .pj-row { display: flex; align-items: center; gap: 8px; }
 .pj-where { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 12.5px var(--mono); }
 .pj-name { width: 100%; }

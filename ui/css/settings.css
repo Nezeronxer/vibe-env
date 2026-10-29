@@ -67,5 +67,5 @@ body { font-size: var(--fs, 13px); }
 body.no-role-labels .rname, body.no-role-labels .rlab { display: none; }
 .snav-gap { height: 10px; border-bottom: 1px solid var(--line); margin: 0 10px 8px; }
 .sbody > h1 + .sgrp { margin-top: 16px; }
-.sfoot-note { color: var(--ink3); font-size: 12px; max-width: 860px; margin: -8px 0 6px; }
+.sfoot-note { color: var(--ink3); font-size: 12px; max-width: 860px; margin: 4px 0 6px; }   /* -8px pulled it into the preview above */
 .stepper button:disabled { opacity: .35; cursor: not-allowed; }

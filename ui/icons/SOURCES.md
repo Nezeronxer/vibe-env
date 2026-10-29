@@ -11,6 +11,15 @@
 | cursor.svg | https://cdn.jsdelivr.net/npm/simple-icons@16.34.0/icons/cursor.svg | Simple Icons: CC0 для файла, знак - товарный знак Anysphere |
 | opencode.svg | https://cdn.jsdelivr.net/npm/simple-icons@16.34.0/icons/opencode.svg | Simple Icons: CC0, знак владельца opencode |
 | qwen.svg | https://cdn.jsdelivr.net/npm/simple-icons@16.34.0/icons/qwen.svg | Simple Icons: CC0, знак Alibaba (монохромная версия; цветной официальной не нашли) |
+| kimi.svg | https://cdn.jsdelivr.net/npm/simple-icons@16.36.0/icons/kimi.svg | Simple Icons: CC0 для файла, знак - товарный знак Moonshot AI |
+| copilot.svg | https://cdn.jsdelivr.net/npm/simple-icons@16.36.0/icons/githubcopilot.svg | Simple Icons: CC0, знак GitHub Copilot - товарный знак GitHub |
+| amp.svg | https://ampcode.com/app-icon.svg (пресс-кит https://ampcode.com/press-kit, «App Icon») | официальный значок из пресс-кита Amp; условия использования на странице не указаны, знак владельца Amp |
+| goose.svg | https://raw.githubusercontent.com/aaif-goose/goose/main/documentation/static/img/goose.svg | репозиторий goose (Apache-2.0), знак goose / Block |
+| factory.svg | https://raw.githubusercontent.com/Factory-AI/factory/main/docs/favicon.svg | репозиторий Factory-AI/factory («All rights reserved», знак Factory AI). Убран белый квадрат фона (монохромный знак) |
+| grok.svg | https://cdn.jsdelivr.net/gh/glincker/thesvg@8d07be9f43d70ea6d66b7a10ab02f27d1f9bacd6/public/icons/grok/default.svg | theSVG: MIT для файла, знак Grok - товарный знак xAI. Белая заливка заменена на чёрную (монохромный знак) |
+| aider.svg | https://raw.githubusercontent.com/Aider-AI/aider/main/aider/website/assets/icons/safari-pinned-tab.svg | репозиторий aider (Apache-2.0), знак aider. Убраны строка `<?xml>`, DOCTYPE со ссылкой на DTD и блок metadata |
+
+Crush (Charm): официального SVG-знака в репозитории charmbracelet/crush и на charm.land не нашли, значок не рисовали - в интерфейсе нейтральный знак, как у своей команды.
 
 «Своя команда» - условный значок макета, не чужой знак.
 

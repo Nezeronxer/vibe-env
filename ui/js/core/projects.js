@@ -57,20 +57,22 @@
   function createDialog() {
     return new Promise((resolve) => {
       const dlg = document.getElementById('dlg');
-      let parent = null, busy = false;
+      // the last folder a project was made in, else ~/Projects (the core makes it): a project is one name away
+      let parent = NS.storage.get('ns.projParent') || '~/Projects', busy = false;
       const done = (v) => { dlg.close(); dlg.replaceChildren(); resolve(v); };
-      const where = h('span', { class: 'pj-where mute', text: t('pj.no_folder') });
+      const where = h('span', { class: 'pj-where', text: parent, title: parent });
       const name = h('input', { type: 'text', class: 'pj-name', placeholder: t('pj.name_ph'), 'aria-label': t('pj.name'), autocomplete: 'off', spellcheck: 'false' });
       const err = h('small', { class: 'pj-err', role: 'alert', hidden: true });
       const make = h('button', { type: 'button', class: 'btn primary', text: t('pj.make'), disabled: true });
       const bad = (v) => /[\\/]/.test(v) || /^\.+$/.test(v);
       const sync = () => { const v = name.value.trim(); make.disabled = busy || !parent || !v; err.hidden = true; if (v && bad(v)) { err.textContent = t('err.bad_project_name'); err.hidden = false; make.disabled = true; } };
-      const choose1 = h('button', { type: 'button', class: 'btn sm', text: t('pj.choose'), onclick: async () => { const p = await pickFolder(); if (p) { parent = p; where.textContent = p; where.classList.remove('mute'); sync(); name.focus(); } } });
+      const choose1 = h('button', { type: 'button', class: 'btn sm', text: t('pj.choose'), onclick: async () => { const p = await pickFolder(); if (p) { parent = p; where.textContent = p; where.title = p; sync(); name.focus(); } } });
       const go = async () => {
         if (make.disabled) return;
         busy = true; sync();
         try {
           const p = await NS.api.call('create_project', { parent, name: name.value.trim() });
+          NS.storage.set('ns.projParent', parent);
           NS.store.s.projects = await NS.api.call('list_projects');
           choose(p.id);
           done(p);
@@ -90,7 +92,8 @@
 
   // the project drop-down of a new chat (F11): recent projects, "Открыть папку…", "Создать проект…". Looks like the model menu of F7.
   // -> { el: the button with its menu, open(), close() }; onPick(project) fires after every choice, also after open / create
-  function picker(getId, onPick) {
+  // opts.plain (v8, the head of the agents column): the button says just the project name
+  function picker(getId, onPick, opts) {
     const st = NS.store, S = st.s;
     const btn = h('button', { type: 'button', class: 'pj-btn', 'aria-haspopup': 'menu', 'aria-expanded': 'false' });
     const pop = h('div', { class: 'pop pj-pop', role: 'menu', 'aria-label': t('chat.project'), hidden: true });
@@ -98,7 +101,7 @@
     const rows = () => [...pop.querySelectorAll('.mrow')];
     function label() {
       const p = st.project(getId());
-      clear(btn).append(ic('i-branch', 'pj-ic'), h('span', { class: 'pj-t', text: p ? t('pj.cur', { name: p.name }) : t('pj.pick') }), ic('i-chev', 'chev'));
+      clear(btn).append(ic('i-branch', 'pj-ic'), h('span', { class: 'pj-t', text: p ? (opts && opts.plain ? p.name : t('pj.cur', { name: p.name })) : t('pj.pick') }), ic('i-chev', 'chev'));
       btn.classList.toggle('empty', !p);
     }
     function close(refocus) { const was = !pop.hidden; pop.hidden = true; btn.setAttribute('aria-expanded', 'false'); if (was && refocus) btn.focus(); }
@@ -116,7 +119,8 @@
       if (!S.projects.length) list.append(h('p', { class: 'hint', text: t('pj.none') }));
       for (const p of S.projects) {
         const repo = S.repos.get(p.id);
-        list.append(row({ on: p.id === cur, title: p.name, sub: p.path, tip: p.path, small: repo ? repo.current_branch || p.base_branch : p.base_branch, run: () => pick(p) }));
+        const gone = repo === null || (!!repo && repo.is_repo === false);      // the folder was deleted or moved (repo_info refuses it): say so instead of a branch
+        list.append(row({ on: p.id === cur, title: p.name, sub: p.path, tip: p.path, small: gone ? t('pj.gone') : repo ? repo.current_branch || p.base_branch : p.base_branch, run: () => pick(p) }));
         if (!S.repos.has(p.id)) st.loadRepo(p.id).then(() => { if (!pop.hidden) draw(); }).catch(() => {});
       }
       const foot = h('div', { class: 'mm-foot', role: 'group' },

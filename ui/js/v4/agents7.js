@@ -163,7 +163,8 @@
     const focusEnv = NS.tabs && NS.tabs.active && NS.tabs.active.env;
     let envId = (envs.find((e) => e.id === (focusEnv || last.env)) || envs[0] || {}).id;
     let own = !!last.own;
-    let proj = NS.store.project(projectOf(NS.tabs && NS.tabs.active) || NS.projects.current()) || null;
+    // the project picked in the column head is an explicit choice: it beats the project of whatever tab happens to be in front
+    let proj = NS.store.project(NS.projects.current() || projectOf(NS.tabs && NS.tabs.active)) || null;
     const projSel = S().projects.length > 1 ? h('select', { class: 'l7-model l7-proj', 'aria-label': t('agents.l_project'), onchange: (e) => { proj = NS.store.project(e.target.value) || null; drawWhere(); } },
       h('option', { value: '', text: t('agents.no_project') }), ...S().projects.map((p) => h('option', { value: p.id, text: p.name, selected: !!proj && p.id === proj.id }))) : null;
     const envRow = h('div', { class: 'l7-envs', role: 'radiogroup', 'aria-label': t('agents.l_env') });
@@ -284,6 +285,8 @@
       try { c = await call('agent_changes', { cwd: pane.cwd }); } catch (e) { clear(list).append(h('p', { class: 'bad', text: errText(e) })); return; }
       NS.append(clear(head), [h('b', { text: t('agents.chg') }), h('small', { class: 'mute', text: c.branch ? c.branch + (c.base ? ' → ' + c.base : '') : '' }),
         c.own_worktree && c.files.length ? h('button', { type: 'button', class: 'btn primary sm', text: t('agents.merge', { base: c.base || 'main' }), onclick: () => merge(c) }) : null,
+        // nothing left that the base lacks: the copy can go (before, copies piled up under the app's data for ever)
+        c.own_worktree && !c.files.length ? h('button', { type: 'button', class: 'btn sm', text: t('agents.wt_drop'), onclick: () => drop() }) : null,
         h('button', { type: 'button', class: 'pt', 'aria-label': t('term.find_close'), text: '×', onclick: () => panel.remove() })]);
       if (!c.repo) { clear(list).append(h('p', { class: 'mute', text: t('agents.chg_norepo') })); return; }
       if (!c.files.length) { clear(list).append(h('p', { class: 'mute', text: t('agents.chg_none') })); clear(diff); return; }
@@ -310,6 +313,16 @@
     async function merge(c) {
       if (!(await NS.projects.confirm(t('agents.merge_q', { base: c.base || 'main' }), t('agents.merge_d', { n: c.files.length }), t('agents.merge', { base: c.base || 'main' })))) return;
       try { const r = await call('agent_merge', { cwd: pane.cwd, message: pane.title || 'agent work' }); toast(r && r.merged ? t('agents.merged', { base: c.base || 'main' }) : t('agents.not_merged')); load(); } catch (e) { toast(errText(e), true); }
+    }
+    // the pane closes first (its CLI runs inside the copy; a running one asks as any close does), then the core removes
+    // the copy - it refuses one with uncommitted changes, and keeps the branch while it holds commits the base lacks
+    async function drop() {
+      if (!(await NS.projects.confirm(t('agents.wt_drop_q'), t('agents.wt_drop_d'), t('agents.wt_drop')))) return;
+      const cwd = pane.cwd;
+      await NS.tabs.closePane(pane.id);
+      if (NS.tabs.placeOf(pane.id)) return;                       // the close was cancelled
+      await new Promise((r) => setTimeout(r, 400));               // the PTY lets go of the folder
+      try { await call('agent_worktree_remove', { path: cwd, force: false }); toast(t('agents.wt_dropped')); } catch (e) { toast(errText(e), true); }
     }
     load();
   }

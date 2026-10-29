@@ -1,0 +1,257 @@
+/* v8 (Agentation notes 28.10.2026): the agents column on the far left, the mark and the project in the head of the sessions,
+   the session card, the session tabs above the terminal with "+", the limits as bars in the bar. Colours only from tokens.css. */
+.er8-i, .t8, .lim8-who, .am8 { --env: var(--amber); }
+.er8-i[data-env="claude"], .t8[data-env="claude"], .am8[data-env="claude"] { --env: var(--env-claude); }
+.er8-i[data-env="codex"], .t8[data-env="codex"], .am8[data-env="codex"] { --env: var(--env-codex); }
+.er8-i[data-env="gemini"], .t8[data-env="gemini"], .am8[data-env="gemini"] { --env: var(--env-gemini); }
+.er8-i[data-env="qwen"], .t8[data-env="qwen"], .am8[data-env="qwen"] { --env: var(--env-qwen); }
+.er8-i[data-env="opencode"], .t8[data-env="opencode"], .am8[data-env="opencode"] { --env: var(--env-opencode); }
+.er8-i[data-env="cursor"], .t8[data-env="cursor"], .am8[data-env="cursor"] { --env: var(--env-cursor); }
+.er8-i[data-env="kimi"], .t8[data-env="kimi"], .am8[data-env="kimi"] { --env: var(--env-kimi, var(--amber)); }
+.er8-i[data-env="copilot"], .t8[data-env="copilot"], .am8[data-env="copilot"] { --env: var(--env-copilot, var(--amber)); }
+.er8-i[data-env="crush"], .t8[data-env="crush"], .am8[data-env="crush"] { --env: var(--env-crush, var(--amber)); }
+.er8-i[data-env="amp"], .t8[data-env="amp"], .am8[data-env="amp"] { --env: var(--env-amp, var(--amber)); }
+.er8-i[data-env="goose"], .t8[data-env="goose"], .am8[data-env="goose"] { --env: var(--env-goose, var(--amber)); }
+.er8-i[data-env="droid"], .t8[data-env="droid"], .am8[data-env="droid"] { --env: var(--env-droid, var(--amber)); }
+.er8-i[data-env="aider"], .t8[data-env="aider"], .am8[data-env="aider"] { --env: var(--env-aider, var(--amber)); }
+.er8-i[data-env="grok"], .t8[data-env="grok"], .am8[data-env="grok"] { --env: var(--env-grok, var(--amber)); }
+
+/* ---------- the agents column: a mark, the short name under it ---------- */
+.er8-col { flex: 0 0 72px; min-height: 0; display: flex; flex-direction: column; gap: 6px; padding: 10px 6px 8px; overflow-y: auto; scrollbar-width: none;
+  background: var(--side-fx); border: 1px solid var(--line); border-radius: var(--radius-pane); }
+.er8-col::-webkit-scrollbar { display: none; }
+.er8-list { flex: none; display: flex; flex-direction: column; gap: 2px; }
+.er8-i { position: relative; display: flex; flex-direction: column; align-items: center; gap: 5px; width: 100%; padding: 7px 2px 6px; border: 0; border-radius: 10px;
+  background: none; color: var(--ink3); font: 500 10.5px/1.15 var(--sans); cursor: pointer; transition: background var(--t) var(--ease), color var(--t) var(--ease); }
+.er8-i:hover { background: color-mix(in srgb, var(--ink) 5%, transparent); color: var(--ink2); }
+.er8-i:active .er8-ic { transform: scale(.94); }
+.er8-i:focus-visible { outline: 2px solid var(--env); outline-offset: -2px; }
+.er8-ic { width: 34px; height: 34px; display: grid; place-items: center; border-radius: 10px; background: var(--raised); box-shadow: inset 0 0 0 1px var(--line);
+  transition: background var(--t) var(--ease), box-shadow var(--t) var(--ease), transform var(--t) var(--ease); }
+.er8-ic .ic, .er8-ic img { width: 18px; height: 18px; color: var(--env); }
+.er8-all .er8-ic .ic { width: 14px; height: 14px; color: var(--ink2); }
+.er8-n { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.er8-i.on { color: var(--ink); }
+.er8-i.on .er8-ic { background: color-mix(in srgb, var(--env) 16%, var(--raised)); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--env) 70%, transparent), 0 0 18px -6px color-mix(in srgb, var(--env) 60%, transparent); }
+.er8-i.on::before { content: ""; position: absolute; left: -6px; top: 14px; height: 20px; width: 3px; border-radius: 0 3px 3px 0; background: var(--env); }
+.er8-all.on .er8-ic .ic { color: var(--ink); }
+.er8-b { position: absolute; top: 3px; right: 9px; min-width: 15px; height: 15px; padding: 0 4px; border-radius: 8px; font: 600 10px/15px var(--sans); text-align: center;
+  color: var(--on-human); background: var(--human); box-shadow: 0 0 0 2px var(--panel); }
+.er8-b.run { min-width: 9px; width: 9px; height: 9px; padding: 0; top: 6px; right: 13px; background: var(--env); animation: er8-pulse 1.6s var(--ease) infinite; }
+@keyframes er8-pulse { 50% { box-shadow: 0 0 0 2px var(--panel), 0 0 8px 2px color-mix(in srgb, var(--env) 60%, transparent); } }
+.er8-add { flex: none; display: flex; flex-direction: column; gap: 2px; margin-top: auto; padding-top: 8px; border-top: 1px solid var(--line); }
+/* pinned: a long list of agents to add scrolls under it */
+.er8-foot { flex: none; display: flex; flex-direction: column; margin-top: auto; padding-top: 8px; border-top: 1px solid var(--line);
+  position: sticky; bottom: -8px; z-index: 1; margin-bottom: -8px; padding-bottom: 8px; background: var(--panel); }
+.er8-add + .er8-foot { margin-top: 0; }
+.er8-set .er8-ic .ic { color: var(--ink2); }
+.er8-set .er8-n { font-size: 9.5px; letter-spacing: -.01em; }   /* «Настройки» fits the 72px column */
+.er8-set:hover .er8-ic .ic { color: var(--ink); }
+.er8-lbl { padding: 0 0 2px; text-align: center; font: 600 9.5px var(--sans); letter-spacing: .06em; text-transform: uppercase; color: var(--ink3); }
+.er8-i.miss .er8-ic { background: none; box-shadow: inset 0 0 0 1px var(--line); border: 0; }
+.er8-i.miss .er8-ic .ic, .er8-i.miss .er8-ic img { opacity: .45; transition: opacity var(--t) var(--ease); }   /* no filter: mono marks keep their dark-theme invert */
+.er8-i.miss:hover .er8-ic .ic, .er8-i.miss:hover .er8-ic img { opacity: 1; }
+
+/* the card of an agent to add */
+.er8-card { position: fixed; left: var(--x); top: var(--y); z-index: 60; width: 300px; display: flex; flex-direction: column; gap: 8px; padding: 14px;
+  background: var(--raised); border: 1px solid var(--line2); border-radius: 14px; box-shadow: var(--shadow); transform-origin: 0 20px; animation: pop7 var(--t2) var(--spring); }
+.er8-ch { display: grid; grid-template-columns: 20px 1fr; column-gap: 9px; align-items: center; }
+.er8-ch .ic, .er8-ch img { width: 20px; height: 20px; grid-row: span 2; }
+.er8-ch b { font: 600 14px var(--sans); color: var(--ink); }
+.er8-ch small { font: 11.5px var(--sans); color: var(--ink3); }
+.er8-cmd { display: block; padding: 8px 10px; border-radius: 8px; background: var(--panel); border: 1px solid var(--line); font: 11.5px/1.45 var(--mono); color: var(--ink); word-break: break-all; user-select: all; }
+.er8-d { font: 12px/1.4 var(--sans); color: var(--ink3); }
+.er8-acts { display: flex; gap: 6px; }
+
+/* ---------- the head of the sessions: the mark, the project ---------- */
+.rail7-brand::before { content: none; }
+.rail7-logo { width: 20px; height: 20px; color: var(--amber); fill: var(--canvas); filter: drop-shadow(0 0 8px var(--glow)); transition: color var(--t2) var(--ease); }
+.rail7-brand > span { font: 600 14px var(--sans); letter-spacing: -.01em; }
+.rail7-proj { padding: 0 2px; }
+.rail7-proj .pj-pick { display: block; margin: 0; }
+.rail7-proj .pj-btn { width: 100%; height: 30px; padding: 0 8px; gap: 8px; border-color: var(--line); background: none; color: var(--ink2); font: 12.5px var(--sans); border-radius: 8px; }
+.rail7-proj .pj-btn:hover, .rail7-proj .pj-btn[aria-expanded="true"] { background: var(--raised); color: var(--ink); }
+.rail7-proj .pj-btn.empty { border-style: dashed; border-color: var(--line2); background: none; color: var(--ink2); }
+.rail7-proj .pj-btn .ic { width: 13px; height: 13px; color: var(--ink3); }
+.rail7-proj .pj-t { flex: 1; min-width: 0; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rail7-proj .pj-pick .pj-pop { left: 0; right: 0; transform: none; width: auto; min-width: 256px; transform-origin: 20px 0; animation: pop7 var(--t2) var(--spring); }
+
+/* ---------- the session card: title, two lines of output, the state as a word, branch, spend ---------- */
+.rail7-list .tab { grid-template-columns: 16px minmax(0, 1fr) auto auto; grid-template-areas: "ic t n x" "pv pv pv pv" "meta meta meta meta"; padding: 10px 8px 9px 12px; }
+.rail7-list .tab-l { font-weight: 550; }
+.tab-pv { margin-top: 6px; padding-left: 24px; }
+.tab-meta { margin-top: 7px; padding-left: 24px; gap: 10px; }
+.tab-sw { display: inline-flex; align-items: center; gap: 6px; }
+.tab-meta .tdot { margin: 0; flex: none; }
+.tab-meta .tdot.talk { background: none; box-shadow: inset 0 0 0 1.5px var(--ink3); }   /* free: a ring, so the word has its mark too */
+.tab-st { font: 500 11px var(--sans); color: var(--ink3); }
+.tab[data-state="run"] .tab-st { color: var(--env, var(--amber)); }
+.tab[data-state="wait"] .tab-st { color: var(--human); }
+.tab[data-state="fail"] .tab-st { color: var(--bad); }
+.tab[data-state="done"] .tab-st { color: var(--ok); }
+.tab-use { margin-left: auto; font-variant-numeric: tabular-nums; }
+
+/* ---------- the session tabs above the terminal ---------- */
+.tabs8 { flex: none; display: flex; align-items: center; gap: 6px; height: 36px; margin-bottom: var(--gap); padding: 0 4px; min-width: 0;
+  background: var(--side-fx); border: 1px solid var(--line); border-radius: var(--radius-pane); }
+.t8-list { flex: 0 1 auto; min-width: 0; display: flex; gap: 2px; overflow-x: auto; scrollbar-width: none; }
+.t8-list::-webkit-scrollbar { display: none; }
+.t8 { position: relative; flex: none; display: inline-flex; align-items: center; gap: 7px; height: 28px; max-width: 220px; padding: 0 4px 0 10px; border-radius: 8px;
+  color: var(--ink3); font: 500 12.5px var(--sans); cursor: pointer; transition: background var(--t) var(--ease), color var(--t) var(--ease); }
+.t8:hover { color: var(--ink2); background: color-mix(in srgb, var(--ink) 5%, transparent); }
+.t8.on { color: var(--ink); background: var(--raised); box-shadow: inset 0 0 0 1px var(--line2); }
+.t8.on::after { content: ""; position: absolute; left: 10px; right: 10px; bottom: -1px; height: 2px; border-radius: 2px; background: var(--env); }
+.t8:focus-visible { outline: 2px solid var(--env); outline-offset: -2px; }
+.t8-ic { display: grid; place-items: center; }
+.t8-ic .ic, .t8-ic img { width: 13px; height: 13px; color: var(--env); }
+.t8-ic .t-glyph { font: 600 10px var(--mono); color: var(--env); }
+.t8-l { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.t8-x { width: 20px; height: 20px; display: grid; place-items: center; border: 0; border-radius: 6px; background: none; color: var(--ink3); font: 14px/1 var(--sans);
+  opacity: 0; cursor: pointer; transition: opacity var(--t) var(--ease), background var(--t) var(--ease); }
+.t8:hover .t8-x, .t8-x:focus-visible { opacity: .8; }
+.t8-x:hover { background: var(--raised2); color: var(--ink); opacity: 1; }
+.t8-new { flex: none; width: 28px; height: 28px; display: grid; place-items: center; border: 1px solid var(--line); border-radius: 8px; background: none; color: var(--amber); cursor: pointer;
+  transition: background var(--t) var(--ease), border-color var(--t) var(--ease), transform var(--t) var(--ease); }
+.t8-new .ic { width: 13px; height: 13px; }
+.t8-new:hover { background: color-mix(in srgb, var(--amber) 10%, var(--raised)); border-color: color-mix(in srgb, var(--amber) 55%, var(--line2)); }
+.t8-new:active { transform: scale(.94); }
+.t8-new:focus-visible { outline: 2px solid var(--amber); outline-offset: 2px; }
+
+/* an agent with no sessions yet */
+.empty8 { margin: auto; display: flex; flex-direction: column; align-items: center; gap: 12px; color: var(--ink2); font: 13.5px var(--sans); }
+.empty8 > .ic, .empty8 > img { width: 30px; height: 30px; }
+
+/* ---------- the bar: the agent, then its windows as bars ---------- */
+.lim8-who { display: inline-flex; align-items: center; gap: 7px; padding: 0 8px 0 6px; color: var(--ink); font-weight: 500; white-space: nowrap; }
+.lim8-who .ic, .lim8-who img { width: 13px; height: 13px; }
+.bm-lim.lim8 { gap: 7px; padding: 0 8px; }
+.lim8-w { color: var(--ink3); }
+.lim8-bar { width: 72px; height: 5px; border-radius: 3px; background: var(--line2); overflow: hidden; flex: none; }
+.lim8-fill { display: block; height: 100%; width: 100%; border-radius: inherit; background: var(--amber); transform-origin: left; transform: scaleX(var(--p, 0)); transition: transform var(--t2) var(--ease); }
+.lim8.warn .lim8-fill { background: var(--human); }
+.lim8.exhausted .lim8-bar { background: color-mix(in srgb, var(--bad) 35%, var(--line2)); }
+.lim8.exhausted .lim8-p { color: var(--bad); }
+.lim8-p { min-width: 3ch; text-align: right; color: var(--ink2); }
+/* a narrow window keeps which window it is («5 ч», «Неделя») and drops the word «осталось»: the number stays whole */
+@media (max-width: 1000px) { .lim8-bar { width: 40px; } .lim8-p { font-size: 0; } .lim8-p::after { content: attr(data-short); font-size: 12px; } }
+@media (max-width: 760px) { .er8-col { flex-basis: 56px; } .er8-n { display: none; } }
+@media (prefers-reduced-motion: reduce) { .er8-b.run { animation: none; } .lim8-fill { transition: none; } .er8-card, .rail7-proj .pj-pick .pj-pop { animation: none; } }
+
+/* ---------- the work modes in the bar: «Рой», «Качество», «Фабрика» and the gear ---------- */
+.md8 { display: inline-flex; align-items: center; gap: 3px; padding: 3px; border-radius: 11px; background: color-mix(in srgb, var(--ink) 4%, transparent); box-shadow: inset 0 0 0 1px var(--line); }
+.md8-p { height: 28px; gap: 7px; padding: 0 13px 0 11px; border-radius: 8px; color: var(--ink3); font-size: 13px; font-weight: 500; }
+.md8-p .ic { width: 15px; height: 15px; }
+.md8-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--line2); transition: background var(--t) var(--ease), box-shadow var(--t) var(--ease); }
+.md8-p.on { color: var(--ink); background: var(--raised); box-shadow: inset 0 0 0 1px var(--line2); }
+.md8-p.on span { box-shadow: none; }   /* not the 1px accent line of a selected bar module */
+.md8-p.on .md8-dot { background: var(--amber); box-shadow: 0 0 6px var(--glow); }
+.md8-p:active, .md8-gear:active { transform: scale(.96); }
+.md8-gear { width: 28px; height: 28px; padding: 0; justify-content: center; border-radius: 8px; }
+.md8-gear .ic { width: 15px; height: 15px; }
+.md8-pop { position: fixed; left: var(--x); bottom: var(--yb); z-index: 60; width: 320px; display: flex; flex-direction: column; gap: 8px; padding: 12px;
+  background: var(--raised); border: 1px solid var(--line2); border-radius: 14px; box-shadow: var(--shadow); transform-origin: 90% 100%; animation: pop7 var(--t2) var(--spring); }
+.md8-h { display: flex; align-items: baseline; justify-content: space-between; padding: 2px 4px 4px; }
+.md8-h b { font: 600 13.5px var(--sans); color: var(--ink); }
+.md8-h small { font: 11.5px var(--sans); color: var(--ink3); }
+.md8-sec { display: flex; flex-direction: column; gap: 10px; padding: 10px 12px; border-radius: 10px; background: var(--panel); border: 1px solid var(--line); transition: border-color var(--t) var(--ease); }
+.md8-sec.on { border-color: color-mix(in srgb, var(--amber) 35%, var(--line)); }
+.md8-sh { display: flex; align-items: center; gap: 12px; justify-content: space-between; }
+.md8-sh b { display: block; font: 600 12.5px var(--sans); color: var(--ink); }
+.md8-sh small { display: block; margin-top: 2px; font: 11.5px/1.35 var(--sans); color: var(--ink3); }
+.md8-sw { flex: none; position: relative; width: 34px; height: 20px; border: 0; border-radius: 10px; background: var(--line2); cursor: pointer; transition: background var(--t) var(--ease); }
+.md8-sw i { position: absolute; left: 2px; top: 2px; width: 16px; height: 16px; border-radius: 50%; background: var(--ink); transition: transform var(--t2) var(--spring); }
+.md8-sw.on { background: var(--amber); }
+.md8-sw.on i { transform: translateX(14px); background: var(--on-amber); }
+.md8-sw:focus-visible, .md8-seg:focus-visible, .md8-step:focus-visible { outline: 2px solid var(--amber); outline-offset: 2px; }
+.md8-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.md8-l { font: 12px var(--sans); color: var(--ink2); }
+.md8-segs { display: flex; flex: 1; padding: 2px; gap: 2px; border-radius: 8px; background: var(--raised2); }
+.md8-seg { flex: 1; height: 26px; border: 0; border-radius: 6px; background: none; color: var(--ink2); font: 500 12px var(--sans); cursor: pointer; transition: background var(--t) var(--ease), color var(--t) var(--ease); }
+.md8-seg.on { background: var(--raised); color: var(--ink); box-shadow: var(--shadow-sm), inset 0 0 0 1px var(--line2); }
+.md8-stepper { display: inline-flex; align-items: center; gap: 2px; padding: 2px; border-radius: 8px; background: var(--raised2); }
+.md8-stepper b { min-width: 22px; text-align: center; font: 600 12.5px var(--sans); color: var(--ink); font-variant-numeric: tabular-nums; }
+.md8-step { width: 24px; height: 24px; border: 0; border-radius: 6px; background: none; color: var(--ink2); font: 14px var(--sans); cursor: pointer; }
+.md8-step:hover:not(:disabled) { background: var(--raised); color: var(--ink); }
+.md8-step:disabled { opacity: .35; cursor: default; }
+.md8-chk { display: flex; align-items: center; gap: 8px; font: 12px var(--sans); color: var(--ink2); cursor: pointer; }
+.md8-chk input { accent-color: var(--amber); }
+@media (max-width: 1100px) { .md8-p span { display: none; } }
+@media (prefers-reduced-motion: reduce) { .md8-pop { animation: none; } .md8-sw i { transition: none; } }
+
+/* ---------- the GitHub panel left of the terminals ---------- */
+.ws7-body { flex: 1; min-height: 0; display: flex; gap: var(--gap); }
+.ws7-body > .panes { flex: 1; min-width: 0; }
+.gh8-col { flex: 0 0 300px; min-height: 0; display: flex; flex-direction: column; background: var(--side-fx); border: 1px solid var(--line); border-radius: var(--radius-pane); overflow: hidden; }
+.gh8-col[hidden] { display: none; }
+.gh8-h { display: flex; flex-direction: column; gap: 10px; padding: 12px 12px 10px; border-bottom: 1px solid var(--line); }
+.gh8-t { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.gh8-t > .ic { width: 14px; height: 14px; color: var(--amber); }
+.gh8-t b { flex: 1; min-width: 0; font: 600 13px var(--sans); color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gh8-ico { width: 26px; height: 26px; display: grid; place-items: center; border: 0; border-radius: 7px; background: none; color: var(--ink3); cursor: pointer; transition: background var(--t) var(--ease), color var(--t) var(--ease); }
+.gh8-ico:hover { background: var(--raised); color: var(--ink); }
+.gh8-ico:active { transform: scale(.94); }
+.gh8-segs { display: flex; padding: 2px; gap: 2px; border-radius: 8px; background: var(--raised2); }
+.gh8-seg { flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 26px; border: 0; border-radius: 6px; background: none; color: var(--ink2); font: 500 12px var(--sans); cursor: pointer; }
+.gh8-seg small { font: 600 10.5px var(--sans); color: var(--ink3); }
+.gh8-seg.on { background: var(--raised); color: var(--ink); box-shadow: var(--shadow-sm), inset 0 0 0 1px var(--line2); }
+.gh8-seg:focus-visible, .gh8-c:focus-visible, .gh8-pr:focus-visible { outline: 2px solid var(--amber); outline-offset: -2px; }
+.gh8-b { flex: 1; min-height: 0; overflow-y: auto; padding: 6px 6px 10px; scrollbar-width: thin; }
+.gh8-empty { padding: 24px 12px; text-align: center; font: 12.5px/1.45 var(--sans); color: var(--ink3); }
+.gh8-tree { display: flex; flex-direction: column; }
+.gh8-c { display: flex; align-items: center; gap: 6px; width: 100%; min-height: 30px; padding: 0 6px 0 4px; border: 0; border-radius: 7px; background: none; text-align: left; cursor: pointer; transition: background var(--t) var(--ease); }
+.gh8-c:hover { background: color-mix(in srgb, var(--ink) 5%, transparent); }
+.gh8-g { flex: none; overflow: visible; }
+.gh8-g circle { fill: var(--panel); stroke-width: 1.8; }
+.gh8-g circle.gh8-merge { fill: currentColor; }
+.gh8-cm { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.gh8-s { display: flex; align-items: center; gap: 5px; min-width: 0; }
+.gh8-sub { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 12.5px var(--sans); color: var(--ink); }
+.gh8-cm small, .gh8-pr-m small { font: 11px var(--sans); color: var(--ink3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.gh8-ref { flex: none; max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 0 6px; height: 17px; line-height: 17px; border-radius: 5px; font: 500 10.5px var(--mono);
+  color: var(--amber); background: color-mix(in srgb, var(--amber) 12%, transparent); }
+.gh8-ref.tag { color: var(--ok); background: color-mix(in srgb, var(--ok) 12%, transparent); }
+.gh8-ref.remote { color: var(--ink2); background: var(--raised2); }
+.gh8-more { display: block; margin: 8px auto 0; padding: 6px 12px; border: 1px solid var(--line); border-radius: 8px; background: none; color: var(--ink2); font: 12px var(--sans); cursor: pointer; }
+.gh8-more:hover { background: var(--raised); color: var(--ink); }
+.gh8-prs { display: flex; flex-direction: column; gap: 6px; padding: 4px 2px; }
+.gh8-pr { display: flex; flex-direction: column; gap: 7px; width: 100%; padding: 10px 11px; border: 1px solid var(--line); border-radius: 10px; background: var(--card-fx); text-align: left; cursor: pointer;
+  transition: border-color var(--t) var(--ease), transform var(--t) var(--ease); }
+.gh8-pr:hover { border-color: color-mix(in srgb, var(--amber) 45%, var(--line2)); }
+.gh8-pr:active { transform: scale(.99); }
+.gh8-pr-h { display: flex; align-items: flex-start; gap: 8px; }
+.gh8-pr-t { flex: 1; min-width: 0; font: 500 12.5px/1.35 var(--sans); color: var(--ink); }
+.gh8-num { flex: none; font: 11px var(--sans); color: var(--ink3); }
+.gh8-ck { flex: none; margin-top: 5px; width: 8px; height: 8px; border-radius: 50%; background: var(--line2); }
+.gh8-ck.ok { background: var(--ok); } .gh8-ck.fail { background: var(--bad); } .gh8-ck.run { background: var(--human); animation: er8-pulse 1.6s var(--ease) infinite; }
+.gh8-pr-m { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; padding-left: 16px; }
+.gh8-tag { padding: 0 6px; height: 17px; line-height: 17px; border-radius: 5px; font: 500 10.5px var(--sans); color: var(--ink2); background: var(--raised2); }
+.gh8-tag.ok { color: var(--ok); background: color-mix(in srgb, var(--ok) 12%, transparent); }
+.gh8-tag.bad { color: var(--bad); background: color-mix(in srgb, var(--bad) 12%, transparent); }
+.gh8-hint { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; margin: 8px 4px; padding: 12px; border-radius: 10px; border: 1px dashed var(--line2); }
+.gh8-hint b { font: 600 12.5px var(--sans); color: var(--ink); }
+.gh8-hint small { font: 11.5px var(--mono); color: var(--ink3); }
+.tabs8 .grow { flex: 1; }
+.t8-gh { flex: none; display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; border: 1px solid transparent; border-radius: 8px; background: none; color: var(--ink3); font: 500 12px var(--sans); cursor: pointer;
+  transition: background var(--t) var(--ease), color var(--t) var(--ease), border-color var(--t) var(--ease); }
+.t8-gh .ic { width: 13px; height: 13px; }
+.t8-gh:hover { color: var(--ink); background: color-mix(in srgb, var(--ink) 5%, transparent); }
+.t8-gh.on { color: var(--ink); border-color: var(--line2); background: var(--raised); }
+.t8-gh.on .ic { color: var(--amber); }
+@media (max-width: 1100px) { .gh8-col { flex-basis: 260px; } }
+@media (prefers-reduced-motion: reduce) { .gh8-ck.run { animation: none; } }
+
+/* ---------- the live mark of the agent in the corner (Claude keeps Clawd) ---------- */
+.am8 { position: relative; display: grid; place-items: center; width: 30px; height: 30px; border-radius: 10px; }
+.am8-core { position: relative; z-index: 1; display: grid; place-items: center; width: 26px; height: 26px; border-radius: 8px; background: var(--raised);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--env) 45%, var(--line)), 0 0 14px -4px color-mix(in srgb, var(--env) 60%, transparent); }
+.am8-core .ic, .am8-core img { width: 16px; height: 16px; color: var(--env); }
+.am8-ring { position: absolute; inset: 0; border-radius: inherit; opacity: 0; transition: opacity var(--t2) var(--ease); }
+.am8[data-st="idle"] .am8-core { animation: am8-breathe 3.2s var(--ease) infinite; }
+@keyframes am8-breathe { 50% { transform: scale(1.045); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--env) 70%, var(--line)), 0 0 20px -2px color-mix(in srgb, var(--env) 55%, transparent); } }
+.am8[data-st="run"] .am8-ring { opacity: 1; padding: 1.5px; background: conic-gradient(from var(--a7), transparent 0 40%, var(--env) 70%, transparent 95%);
+  -webkit-mask: linear-gradient(white, white) content-box, linear-gradient(white, white); -webkit-mask-composite: xor; mask-composite: exclude; animation: aura7 1.4s linear infinite; }
+.am8[data-st="run"] .am8-core { animation: am8-shimmer 1.4s var(--ease) infinite; }
+@keyframes am8-shimmer { 50% { filter: brightness(1.25) saturate(1.2); } }
+.am8[data-st="wait"] .am8-ring { opacity: 1; box-shadow: 0 0 0 1.5px var(--human); animation: am8-call 1.6s var(--ease) infinite; }
+@keyframes am8-call { 0% { box-shadow: 0 0 0 1.5px var(--human), 0 0 0 0 color-mix(in srgb, var(--human) 45%, transparent); } 100% { box-shadow: 0 0 0 1.5px var(--human), 0 0 0 9px transparent; } }
+@media (prefers-reduced-motion: reduce) { .am8 .am8-core, .am8 .am8-ring { animation: none; } }

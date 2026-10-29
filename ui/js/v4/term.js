@@ -55,8 +55,10 @@
   const looksIdle = (left, alt) => !alt && /[$%#>❯➜»λ]\s*$/.test(String(left || ''));
 
   // the CLI of an env in a terminal (251, 298): its binary, the model flag that env takes, resume where the CLI can (299)
-  const MODEL_FLAG = { claude: '--model', cursor: '--model', codex: '-m', gemini: '-m', opencode: '-m', qwen: '-m' };
-  const RESUME = { claude: ['--continue'], codex: ['resume', '--last'] };
+  // v8 envs from their docs, unverified (research-clis §7-14): amp, crush and goose take no model flag in the TUI; amp has no "continue last"
+  const MODEL_FLAG = { claude: '--model', cursor: '--model', codex: '-m', gemini: '-m', opencode: '-m', qwen: '-m', kimi: '-m', copilot: '--model', droid: '-m', aider: '--model', grok: '-m' };
+  const RESUME = { claude: ['--continue'], codex: ['resume', '--last'], kimi: ['--continue'], copilot: ['--continue'], crush: ['--continue'], droid: ['--resume'], grok: ['--continue'],
+    goose: ['session', '--resume'], aider: ['--restore-chat-history'] };
   function cliArgv(env, model, resume) {
     const argv = [env.path || env.id];
     if (resume && RESUME[env.id]) argv.push(...RESUME[env.id]);
@@ -153,7 +155,7 @@
     const theme = th ? TS().xterm(th) : (root.NSTheme.current ? root.NSTheme.current.xterm : root.NSTheme.xterm('dark', {}));
     const font = root.NSTheme.current ? root.NSTheme.current.font : root.NSTheme.xtermFont({});
     NS.setVars(box, { '--t-bg': theme.background });   // the header and the padding around the output take the ground of the terminal
-    const term = new root.Terminal({ allowProposedApi: true, theme, fontFamily: L.font ? '"' + L.font + '", ' + font.fontFamily : font.fontFamily, fontSize: L.size || font.fontSize,
+    const term = new root.Terminal({ allowProposedApi: true, allowTransparency: /^rgba/.test(theme.background), theme, fontFamily: L.font ? '"' + L.font + '", ' + font.fontFamily : font.fontFamily, fontSize: L.size || font.fontSize,
       lineHeight: L.line_height, cursorStyle: L.cursor, cursorBlink: L.blink, scrollback: L.scrollback, macOptionIsMeta: false, rightClickSelectsWord: false });
     const fit = new root.FitAddon.FitAddon();
     const search = new root.SearchAddon.SearchAddon();
@@ -163,13 +165,15 @@
     term.loadAddon(new root.WebLinksAddon.WebLinksAddon((e, uri) => { if (modKey(e)) openLink(uri); }));
     term.open(host);
     let webgl = null;
-    // WebGL draws fast; ligatures need the DOM renderer (the browser shapes the text); a lost context falls back to DOM
-    function renderer(lig) {
+    // WebGL draws fast; ligatures need the DOM renderer (the browser shapes the text); a lost context falls back to DOM.
+    // look8: a see-through ground (glass, thin panes) goes to the DOM renderer too - WebGL of xterm 6 blends alpha wrong on light grounds
+    function renderer(lig, clear) {
       host.classList.toggle('lig', lig);
-      if (lig && webgl) { webgl.dispose(); webgl = null; }
-      if (!lig && !webgl) try { webgl = new root.WebglAddon.WebglAddon(); webgl.onContextLoss(() => { webgl.dispose(); webgl = null; }); term.loadAddon(webgl); } catch (e) { webgl = null; }
+      const dom = lig || !!clear;
+      if (dom && webgl) { webgl.dispose(); webgl = null; }
+      if (!dom && !webgl) try { webgl = new root.WebglAddon.WebglAddon(); webgl.onContextLoss(() => { webgl.dispose(); webgl = null; }); term.loadAddon(webgl); } catch (e) { webgl = null; }
     }
-    renderer(L.ligatures);
+    renderer(L.ligatures, /^rgba/.test(theme.background));
     setPad(L.padding);
     function setPad(px) { NS.setVars(host, { '--t-pad': px + 'px' }); }
 
@@ -229,14 +233,26 @@
       actTimer = setTimeout(settle, isCli() ? 2600 : 1500);
       if (!pvTimer) pvTimer = setTimeout(() => { pvTimer = 0; markTabs(); }, 600);
     }
+    // the rows on screen hold a CLI's own question (selection prompts of Claude / Codex / Gemini end with these lines)
+    const ASK = /Enter to confirm|trust this folder|trust the files in this folder|Do you want to (proceed|make this edit|create|allow)|Allow (command|once)|\(y\/n\)/i;
+    function asking() {
+      const b = term.buffer.active, end = b.baseY + term.rows;
+      for (let y = Math.max(0, end - term.rows); y < end; y++) { const l = b.getLine(y); if (l && ASK.test(l.translateToString(true))) return true; }
+      return false;
+    }
     // output went quiet: the env CLI is free again; a shell back at its prompt ends the command (the long-command notice)
     function settle() {
       if (!running) return;
       // v7: an env CLI that went quiet after real work is waiting for the person (its answer or a permission); seen -> just free
       const worked = runSince && Date.now() - runSince > 3000;
       runSince = 0;
-      if (isCli() && worked && !seen()) { setState('wait'); if (NS.agents) NS.agents.calling(view); return; }
+      // a CLI that stopped on a question of its own (Claude's «trust this folder?» in a fresh copy, a permission) waits
+      // for the person even when it never worked: before, a one-click agent stood there as «свободна»
+      const asks = isCli() && asking();
+      if (isCli() && (worked || asks) && !seen()) { setState('wait'); if (NS.agents) NS.agents.calling(view); return; }
+      if (asks) { setState('wait'); return; }
       setState('talk');
+      if (pane.install && !isCli() && idle()) installDone();
       if (cmdStart && idle()) {
         const secs = (Date.now() - cmdStart) / 1000, lim = cfg().notify_secs;
         if (lim && secs >= lim && !seen()) notify(t('term.done_cmd', { cmd: cmdText || t('term.kind') }));
@@ -291,6 +307,8 @@
         exitCode = null; running = true; dead.hidden = true;
         await attach();
         setState('talk');
+        // v8: an install whose command pipes a script from the web is typed into the shell, never run: Enter is the person's
+        if (pane.typed && !pane.typedDone) { pane.typedDone = Date.now(); setTimeout(() => write(String(pane.typed).replace(/[\u0000-\u001f\u007f]+/g, ' ')), 500); }   // no control byte: no Enter, no escape sequence
       } catch (e) {
         const msg = NS.api.errText(e);
         if (/term_not_found/.test(msg) && !fresh) return restore();
@@ -336,7 +354,10 @@
       if (lim && cmdStart && (Date.now() - cmdStart) / 1000 >= lim && !seen()) notify(t('term.done_code', { cmd: cmdText || pane.title || '', code: exitCode }));
       cmdStart = 0;
       refreshSessions();
+      installDone();
     }
+    // v8: a tab that installs a CLI asks the envs again when its command ends (a process that exits, or a shell back at its prompt)
+    function installDone() { if (pane.install && NS.envrail) NS.envrail.installed(pane.install).then((ok) => { if (ok) { delete pane.install; if (NS.tabs && NS.tabs.save) NS.tabs.save(); } }); }
     async function restart(argv) {
       const old = id;
       dead.hidden = true;
@@ -450,11 +471,14 @@
       cliUpdated(to) { if (running) { updateTo = to; drawStrips(); } },
       applyLook() {
         const L2 = cfg(), th2 = TS().themeOf(L2), f2 = root.NSTheme.current ? root.NSTheme.current.font : font;
-        term.options.theme = th2 ? TS().xterm(th2) : root.NSTheme.current.xterm;
+        const x2 = th2 ? TS().xterm(th2) : root.NSTheme.current.xterm;
+        const glassy = /^rgba/.test(x2.background);   // look8: a see-through window / thin panes - the ground keeps its alpha (DOM renderer below)
+        term.options.allowTransparency = glassy;
+        term.options.theme = x2;
         NS.setVars(box, { '--t-bg': term.options.theme.background });
         Object.assign(term.options, { fontFamily: L2.font ? '"' + L2.font + '", ' + f2.fontFamily : f2.fontFamily, fontSize: L2.size || f2.fontSize, lineHeight: L2.line_height,
           cursorStyle: L2.cursor, cursorBlink: L2.blink, scrollback: L2.scrollback });
-        renderer(L2.ligatures); setPad(L2.padding);
+        renderer(L2.ligatures, glassy); setPad(L2.padding);
         view.fit();
       },
       taken() { attached = false; note('── ' + t('term.taken') + ' ──'); },
@@ -525,7 +549,7 @@
       if (icon && !p.env && !icon.querySelector('.t-glyph')) icon.replaceChildren(h('span', { class: 't-glyph', 'aria-hidden': 'true', text: '>_' }));
       const s = { run: 'run', wait: 'wait', talk: 'talk', done: 'done', fail: 'fail' }[v.state()];
       if (!dot.classList.contains(s)) dot.className = 'tdot ' + s;
-      const sr = el.querySelector('.sr-only');
+      const sr = el.querySelector('.tab-st');
       if (sr && sr.textContent !== t('term.st_' + s)) sr.textContent = t('term.st_' + s);
       // v7: the agent card shows what the terminal says now and glows while it works
       if (el.dataset.state !== s) el.dataset.state = s;

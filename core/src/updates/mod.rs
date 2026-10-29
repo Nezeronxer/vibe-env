@@ -153,6 +153,12 @@ pub fn npm_package(env: &str) -> Option<&'static str> {
         "gemini" => Some("@google/gemini-cli"),
         "opencode" => Some("opencode-ai"),
         "qwen" => Some("@qwen-code/qwen-code"),
+        // research-clis §7-14 (`npm view`, 2026-10-28)
+        "kimi" => Some("@moonshot-ai/kimi-code"),
+        "copilot" => Some("@github/copilot"),
+        "crush" => Some("@charmland/crush"),
+        "amp" => Some("@ampcode/cli"),
+        "droid" => Some("droid"),
         _ => None,
     }
 }
@@ -160,7 +166,8 @@ pub fn npm_package(env: &str) -> Option<&'static str> {
 /// Envs whose CLI updates itself with its own command.
 fn native_cmd(env: &str) -> Option<&'static str> {
     match env {
-        "claude" | "codex" | "qwen" | "cursor" => Some("update"),
+        // copilot, amp, goose, droid, grok: `<cli> update` per their docs (research-clis §7-14), not run here
+        "claude" | "codex" | "qwen" | "cursor" | "copilot" | "amp" | "goose" | "droid" | "grok" => Some("update"),
         "opencode" => Some("upgrade"),
         _ => None,
     }
@@ -233,6 +240,8 @@ fn rollback_cmd(env: &str, method: Method, path: &Path, from: &str) -> Option<Ve
     match (method, env) {
         (Method::Npm, _) => npm_package(env).map(|p| vec![npm_of(path), "install".into(), "-g".into(), format!("{p}@{from}")]),
         (Method::Native, "opencode") => Some(vec![path.to_string_lossy().into_owned(), "upgrade".into(), from.into()]),
+        // `droid update --version X`, `grok update --version X` (their docs; not run here)
+        (Method::Native, "droid" | "grok") => Some(vec![path.to_string_lossy().into_owned(), "update".into(), "--version".into(), from.into()]),
         _ => None,
     }
 }

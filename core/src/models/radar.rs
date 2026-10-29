@@ -13,6 +13,9 @@ pub fn provider_of(env: &str) -> Option<&'static str> {
         "claude" => Some("anthropic"),
         "gemini" => Some("google"),
         "qwen" => Some("alibaba"),
+        // unverified: that these CLIs take the catalog's model ids as they are (research-clis §8, §14)
+        "copilot" => Some("github-copilot"),
+        "grok" => Some("xai"),
         _ => None,
     }
 }

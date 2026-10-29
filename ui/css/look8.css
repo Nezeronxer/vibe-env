@@ -1,0 +1,70 @@
+/* look8: window transparency, accent gradients on the surfaces, the own-theme editor. Colours only through tokens (no hex here):
+   theme.js writes --glass (the canvas share, 100% = solid) and --glass-s (the own share of rail, panes, bar lying on it), and a theme's own
+   gradient into --window-fx. Text, borders and cards never turn see-through. */
+
+/* ---------- glass: the page lets the desktop (and the macOS blur under the window) through ---------- */
+:root { --side-c: var(--side); --side2-c: var(--side2); }
+:root[data-glass] {
+  --side-c: color-mix(in srgb, color-mix(in srgb, var(--ink) 2%, var(--side)) var(--glass-s), transparent);
+  --side2-c: color-mix(in srgb, var(--side2) var(--glass-s), transparent);
+  --side-fx: linear-gradient(180deg, var(--side-c), var(--side2-c));
+}
+/* an extra window (body.t-window) is never transparent: its ground stays solid */
+:root[data-glass] body:not(.t-window) { background: transparent; }
+:root[data-glass] body:not(.t-window) .app { background: var(--window-fx), color-mix(in srgb, var(--canvas) var(--glass), transparent); }
+:root[data-glass] .bar { background: color-mix(in srgb, var(--panel) var(--glass-s), transparent); }
+:root[data-glass] .snav { background: transparent; }
+/* thin panes (glass or pane opacity < 100%): one layer carries the ground of a terminal pane - .t-pane with the terminal colour;
+   the pane, the host and xterm's own viewport stay clear, so the alphas do not stack into an opaque block */
+:root[data-thin] .pane.k-term { background: var(--pane-fx); }
+:root[data-thin] .t-host, :root[data-thin] .t-host .xterm-scrollable-element, :root[data-thin] .t-host .xterm-viewport { background-color: transparent !important; }
+
+/* ---------- fx: a soft wash of the live accent (the env in focus) on the rail, panes and cards ---------- */
+:root[data-fx] {
+  --lamp-a: 15%; --lamp-b: 8%;
+  --side-fx: linear-gradient(180deg, color-mix(in srgb, var(--amber) 9%, var(--side-c)) 0, var(--side2-c) 72%);
+  --pane-fx: linear-gradient(180deg, color-mix(in srgb, var(--amber) 7%, transparent), transparent 260px);
+  --card-fx: linear-gradient(180deg, color-mix(in srgb, var(--amber) 7%, var(--raised)), var(--raised) 85%);
+}
+:root[data-fx][data-theme="light"] { --lamp-a: 11%; --lamp-b: 6%; }
+
+/* a miniature shows its theme's own gradient (not the accent lamp: on 90px it would tint the whole ground) */
+.mini { background: var(--theme-fx, none), var(--canvas); }
+
+/* ---------- theme cards: nine ready + own ones, four to a row on a wide screen ---------- */
+.th8 { display: grid; gap: 10px; }
+.cards4.th8-cards { grid-template-columns: repeat(auto-fill, minmax(168px, 1fr)); }
+.th8-cards .card4 .mini { height: 84px; }
+.th8-cards .mini-bar span { white-space: nowrap; overflow: hidden; }
+.th8-cards .mini-bar span:nth-child(2) { display: none; }
+.th8-cards .card4 { transition: border-color var(--t) var(--ease), box-shadow var(--t) var(--ease), transform var(--t) var(--ease); }
+.th8-cards .card4:active { transform: scale(.98); }
+.th8-tools, .th8-acts { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.th8-tools .grow, .th8-acts .grow { flex: 1; }
+.th8-note { color: var(--bad); font-size: 12.5px; }
+.th8-note[hidden] { display: none; }
+
+/* ---------- the editor: five colours, live on the whole window ---------- */
+.th8-ed { display: grid; gap: 10px; padding: 14px; border: 1px solid color-mix(in srgb, var(--amber) 45%, var(--line2)); border-radius: var(--radius-pane);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--amber) 6%, var(--raised)), var(--raised) 140px); animation: th8-in var(--t2) var(--ease); }
+@keyframes th8-in { from { opacity: 0; transform: translateY(-4px); } }
+.th8-ed-h { display: grid; gap: 2px; }
+.th8-ed-h b { font-size: 13px; font-weight: 650; color: var(--ink); }
+.th8-ed-h small { color: var(--ink3); font-size: 12.5px; }
+.th8-ed .srows { background: var(--panel); }
+.th8-name { width: 220px; }
+.cf8 { display: inline-flex; align-items: center; gap: 6px; transition: opacity var(--t) var(--ease); }
+.cf8.off { opacity: .45; }
+.cf8 input[type="color"] { width: 30px; height: 26px; padding: 0; border: 1px solid var(--line2); border-radius: 6px; background: none; flex: none; cursor: pointer; }
+.cf8 input[type="color"]::-webkit-color-swatch-wrapper { padding: 2px; }
+.cf8 input[type="color"]::-webkit-color-swatch { border: 0; border-radius: 4px; }
+.cf8 .cf8-hex { width: 84px; font: 12px var(--mono); text-transform: lowercase; }
+.th8-ratio { font: 600 12px var(--mono); color: var(--ok); padding: 2px 7px; border-radius: 6px; background: var(--ok-bg); font-variant-numeric: tabular-nums; }
+.th8-ratio.low { color: var(--bad); background: var(--bad-bg); }
+.th8-json { width: 100%; min-height: 96px; resize: vertical; font: 12px/1.5 var(--mono); color: var(--ink); background: var(--bg); border: 1px solid var(--line2);
+  border-radius: var(--radius-sm); padding: 8px 10px; }
+.th8-json[hidden] { display: none; }
+.th8-paste { display: grid; gap: 8px; padding: 12px 14px; border: 1px dashed var(--line2); border-radius: var(--radius-pane); }
+.th8-paste small { color: var(--ink2); }
+
+@media (prefers-reduced-motion: reduce) { .th8-ed { animation: none; } .th8-cards .card4:active { transform: none; } }
