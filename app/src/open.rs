@@ -8,12 +8,14 @@ use std::process::Command;
 /// Files that may be opened: plain text, code, images, PDF. Everything else (no extension,
 /// .terminal, .webloc, .command, .app, scripts, ...) is refused; folders are only revealed.
 const OPENABLE: &[&str] = &[
-    "md", "txt", "json", "toml", "yaml", "yml", "rs", "ts", "tsx", "js", "jsx", "mjs", "py", "go", "java", "c", "h", "cpp", "css", "log",
-    "diff", "patch", "csv", "ini", "lock", "png", "jpg", "jpeg", "gif", "webp", "pdf", "rb", "php", "sql",
+    "md", "txt", "json", "toml", "yaml", "yml", "rs", "ts", "tsx", "go", "java", "c", "h", "cpp", "css", "log",
+    "diff", "patch", "csv", "ini", "lock", "png", "jpg", "jpeg", "gif", "webp", "pdf", "sql",
 ];
 
 /// Types a browser runs as a page (scripts in them execute): shown in the file manager, never opened.
-const REVEAL_ONLY: &[&str] = &["html", "htm", "xhtml", "xht", "shtml", "svg", "svgz", "xml", "mht", "mhtml"];
+/// Scripts too: Windows runs .js with Windows Script Host on a double click, and an installed Python or Ruby runs
+/// .py / .rb on Windows and (Python Launcher) on macOS.
+const REVEAL_ONLY: &[&str] = &["html", "htm", "xhtml", "xht", "shtml", "svg", "svgz", "xml", "mht", "mhtml", "js", "jsx", "mjs", "cjs", "py", "pyw", "rb", "php"];
 
 #[derive(Debug, PartialEq)]
 pub enum Target {
@@ -25,10 +27,14 @@ pub enum Target {
     Reveal(PathBuf),
 }
 
-/// open_path: http(s), or a plain file / folder inside a registered project or the worktrees dir.
+/// open_path: https, or a plain file / folder inside a registered project or the worktrees dir.
 /// The returned path is the canonical one that passed the check; open exactly that.
 pub fn check_openable(target: &str, roots: &[PathBuf]) -> Res<Target> {
-    if target.starts_with("https://") || target.starts_with("http://") {
+    if target.starts_with("https://") {
+        // the opener (explorer on Windows) reads quotes and spaces itself: such a link is not a link
+        if target.chars().any(|c| c.is_whitespace() || c.is_control() || c == '"') {
+            return Err(format!("cannot open: {target}"));
+        }
         return Ok(Target::Url(target.to_string()));
     }
     let bad = || format!("cannot open: {target}");
@@ -185,7 +191,7 @@ mod tests {
         use std::os::unix::fs::PermissionsExt;
         let root = scratch("open");
         let outside = scratch("open-outside");
-        for f in ["notes.txt", "page.html", "pic.svg", "data.xml", "run.sh", "tool", "tool.txt", "a.terminal", "a.webloc", "a.fileloc", "a.inetloc", "noext"] {
+        for f in ["notes.txt", "page.html", "pic.svg", "data.xml", "evil.js", "evil.py", "run.sh", "tool", "tool.txt", "a.terminal", "a.webloc", "a.fileloc", "a.inetloc", "noext"] {
             std::fs::write(root.join(f), "x").unwrap();
         }
         std::fs::set_permissions(root.join("tool.txt"), std::fs::Permissions::from_mode(0o755)).unwrap();
@@ -198,7 +204,8 @@ mod tests {
         assert_eq!(check_openable("https://github.com/o/r", &roots), Ok(Target::Url("https://github.com/o/r".into())));
         assert_eq!(check_openable(&p("notes.txt"), &roots), Ok(Target::File(root.join("notes.txt"))));
         // what a browser would run as a page is only shown in the file manager
-        for n in ["page.html", "pic.svg", "data.xml"] {
+        // and a script a double click would run (.js on Windows, .py with Python Launcher)
+        for n in ["page.html", "pic.svg", "data.xml", "evil.js", "evil.py"] {
             assert_eq!(check_openable(&p(n), &roots), Ok(Target::Reveal(root.join(n))), "{n}");
         }
         assert_eq!(check_openable(&root.to_string_lossy(), &roots), Ok(Target::Dir(root.clone())));
@@ -206,7 +213,8 @@ mod tests {
         assert_eq!(check_openable(&p("Thing.app"), &roots), Ok(Target::Dir(root.join("Thing.app"))));
         for bad in [p("run.sh"), p("tool"), p("tool.txt"), p("a.terminal"), p("a.webloc"), p("a.fileloc"), p("a.inetloc"), p("noext"),
                     p("link.txt"), outside.join("notes.txt").to_string_lossy().to_string(),
-                    "/".into(), "file:///etc/passwd".into(), "javascript:alert(1)".into(), "-a Calculator".into(), p("missing")] {
+                    "/".into(), "file:///etc/passwd".into(), "javascript:alert(1)".into(), "http://evil.example/".into(),
+                    "https://a.com/\",/select,C:\\x.js".into(), "https://a.com/ b".into(), "-a Calculator".into(), p("missing")] {
             assert!(check_openable(&bad, &roots).is_err(), "{bad}");
         }
     }

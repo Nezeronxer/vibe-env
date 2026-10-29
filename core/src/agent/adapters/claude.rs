@@ -45,6 +45,9 @@ fn settings_json(open_network: bool) -> String {
     }
     json!({
         "permissions": permissions,
+        // `-p` asks no "trust this folder?": hooks of the repository's .claude/settings.json would run outside the
+        // sandbox before the first word (audit 29.10.2026). The project's CLAUDE.md is still read.
+        "disableAllHooks": true,
         // writes only to the worktree (+ its main .git, handled by Claude Code); no sandbox on the host -> run anyway
         "sandbox": { "enabled": true, "autoAllowBashIfSandboxed": true, "failIfUnavailable": false, "allowUnsandboxedCommands": false }
     })
@@ -131,6 +134,12 @@ impl Adapter for Claude {
         c.current_dir(&run.cwd).args(["-p", "--output-format", "stream-json", "--verbose", "--include-partial-messages"]);
         let mode = if run.is_read_only() { "plan" } else { "bypassPermissions" };
         c.args(["--permission-mode", mode, "--settings", &settings_json(supports_wildcard_domain(&self.bin))]);
+        // MCP servers of the repository's .mcp.json would start without a question too (an override in --settings
+        // does not stop them, checked on 2.1.312); shortcut: with one there the task runs with no MCP servers at all -
+        // pass the user's own through --mcp-config when someone needs them in such projects
+        if run.cwd.join(".mcp.json").exists() {
+            c.arg("--strict-mcp-config");
+        }
         if let Some(m) = cli_model(run) {
             c.args(["--model", m]);
         }

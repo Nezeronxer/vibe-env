@@ -77,16 +77,122 @@ fn identity_args(dir: &Path) -> Vec<String> {
     args
 }
 
-fn git_cmd(dir: &Path) -> Command {
+/// A folder no hook can be found in (`core.hooksPath`): the app's own commits, merges and rebases run no hook.
+const NO_HOOKS: &str = if cfg!(windows) { "NUL" } else { "/dev/null" };
+
+fn git_cmd(dir: &Path) -> Result<Command, GitError> {
+    check_repo_config(dir)?;
     let mut c = crate::proc::cmd("git");
     c.current_dir(dir)
         .env("GIT_TERMINAL_PROMPT", "0")
         .env("GIT_EDITOR", "true")
         .env("LC_ALL", "C")
-        // a repository's own config must not run a program on a read (fsmonitor of an unpacked or agent-written .git)
+        // a repository's own config must not run a program on a read (fsmonitor of an unpacked or agent-written .git),
+        // and hooks an agent wrote into .git/hooks must not run on the app's commit
         .args(["-c", "core.fsmonitor=false"])
         .args(identity_args(dir));
-    c
+    // NIGHTSHIFT_GIT_HOOKS=1: tests that watch git through a hook (set by the app's starter, never by an agent)
+    if std::env::var_os("NIGHTSHIFT_GIT_HOOKS").is_none() {
+        c.args(["-c", &format!("core.hooksPath={NO_HOOKS}")]);
+    }
+    Ok(c)
+}
+
+/// Keys of a repository's own config (local / worktree scope) that make git run a program.
+fn runs_program(key: &str) -> bool {
+    let k = key.to_ascii_lowercase();
+    let (head, tail) = (k.split('.').next().unwrap_or(""), k.rsplit('.').next().unwrap_or(""));
+    matches!(
+        k.as_str(),
+        "diff.external" | "core.fsmonitor" | "core.hookspath" | "core.sshcommand" | "core.pager" | "core.editor" | "core.askpass" | "core.gitproxy"
+            | "core.alternaterefscommand" | "sequence.editor" | "gpg.program" | "include.path" | "uploadpack.packobjectshook"
+    ) || (head == "filter" && matches!(tail, "clean" | "smudge" | "process"))
+        || (head == "diff" && matches!(tail, "command" | "textconv"))
+        || (head == "merge" && tail == "driver")
+        || (head == "gpg" && tail == "program")
+        || (head == "credential" && tail == "helper")
+        || head == "includeif"
+}
+
+/// What `<dir>/.git` is: the text of a worktree's pointer file, "dir" for a repository, "" when there is none.
+fn dotgit_kind(dir: &Path) -> String {
+    let g = dir.join(".git");
+    match std::fs::symlink_metadata(&g) {
+        Ok(m) if m.is_file() => std::fs::read_to_string(&g).unwrap_or_default(),
+        Ok(_) => "dir".into(),
+        Err(_) => String::new(),
+    }
+}
+
+/// `dir` -> its repository's common git dir (canonical), asked once per folder. A folder whose `.git` changed kind
+/// since (a worktree's pointer file replaced by a repository of its own, or pointed elsewhere) is refused; a folder
+/// that had no `.git` and got one (`git init`) is asked again.
+fn common_dir(dir: &Path) -> Result<PathBuf, GitError> {
+    static DIRS: std::sync::Mutex<Vec<(PathBuf, String, PathBuf)>> = std::sync::Mutex::new(Vec::new());
+    let kind = dotgit_kind(dir);
+    let before = DIRS.lock().unwrap().iter().find(|(d, _, _)| d == dir).map(|(_, w, k)| (w.clone(), k.clone()));
+    if let Some((was, k)) = &before {
+        if *was == kind {
+            return Ok(k.clone());
+        }
+    }
+    let o = crate::proc::cmd("git").current_dir(dir).args(["rev-parse", "--path-format=absolute", "--git-common-dir"]).output().ok();
+    let k = o.filter(|o| o.status.success()).map(|o| PathBuf::from(String::from_utf8_lossy(&o.stdout).trim())).filter(|p| !p.as_os_str().is_empty());
+    let k = k.map(|k| crate::proc::canon(&k).unwrap_or(k)).unwrap_or_else(|| dir.to_path_buf());
+    // a copy (pointer file) may be made again by the app in the same folder; it may not become another repository
+    if let Some((was, old)) = &before {
+        if !was.is_empty() && was != "dir" && !kind.is_empty() && (kind == "dir" || k != *old) {
+            return Err(GitError::Other(format!("unsafe_repo_config: {} was replaced", dir.join(".git").display())));
+        }
+    }
+    let mut dirs = DIRS.lock().unwrap();
+    dirs.retain(|(d, _, _)| d != dir);
+    dirs.push((dir.to_path_buf(), kind, k.clone()));
+    Ok(k)
+}
+
+/// The program-running config entries of `dir`'s repository, first seen in this run, per repository.
+static RUNS: std::sync::Mutex<Vec<(PathBuf, Vec<String>)>> = std::sync::Mutex::new(Vec::new());
+
+/// Refuses git in `dir` when its repository's own config was changed to run a program since the app first looked at
+/// it (an agent writing `.git/config`: a filter, a diff driver, a merge driver), or when the `.git` file of a
+/// worktree was pointed at a folder inside the worktree itself (a config the agent wrote). What the person set up
+/// themselves (a merge driver of a tool, git-lfs) is seen first and goes on working.
+fn check_repo_config(dir: &Path) -> Result<(), GitError> {
+    let dotgit = dir.join(".git");
+    if dotgit.is_file() {
+        let to = std::fs::read_to_string(&dotgit).unwrap_or_default();
+        if let Some(gd) = to.trim().strip_prefix("gitdir:").map(|g| dir.join(g.trim())) {
+            let (gd, root) = (crate::proc::canon(&gd).unwrap_or(gd), crate::proc::canon(dir).unwrap_or_else(|_| dir.to_path_buf()));
+            if gd.starts_with(&root) {
+                return Err(GitError::Other(format!("unsafe_repo_config: {} points inside the folder", dotgit.display())));
+            }
+        }
+    }
+    let o = crate::proc::cmd("git").current_dir(dir).args(["config", "--list", "--show-scope"]).stdin(std::process::Stdio::null()).output();
+    let Ok(o) = o else { return Ok(()) }; // no git: the real call says so
+    let mut runs: Vec<String> = String::from_utf8_lossy(&o.stdout)
+        .lines()
+        .filter_map(|l| l.split_once('\t'))
+        .filter(|(scope, _)| matches!(*scope, "local" | "worktree"))
+        .map(|(_, kv)| kv.to_string())
+        .filter(|kv| runs_program(kv.split('=').next().unwrap_or("")))
+        .collect();
+    runs.sort();
+    let key = common_dir(dir)?;
+    let mut seen = RUNS.lock().unwrap();
+    match seen.iter().find(|(k, _)| *k == key) {
+        None => {
+            seen.push((key, runs));
+            Ok(())
+        }
+        // the same, or fewer (an entry removed runs nothing new)
+        Some((_, first)) if runs.iter().all(|r| first.contains(r)) => Ok(()),
+        Some((_, first)) => {
+            let new: Vec<&str> = runs.iter().filter(|r| !first.contains(r)).map(|r| r.split('=').next().unwrap_or("")).collect();
+            Err(GitError::Other(format!("unsafe_repo_config: the repository config now runs a program ({})", new.join(", "))))
+        }
+    }
 }
 
 struct Out {
@@ -97,7 +203,7 @@ struct Out {
 }
 
 fn run(dir: &Path, args: &[&str]) -> Result<Out, GitError> {
-    let o: Output = git_cmd(dir)
+    let o: Output = git_cmd(dir)?
         .args(args)
         .output()
         .map_err(|e| GitError::Other(format!("git {}: {e}", args.join(" "))))?;
@@ -609,7 +715,7 @@ pub fn revert_tree_compat(repo: &Path, base: &str, ours: &str, theirs: &str) -> 
         }
         let mut files = vec![];
         for (i, (_, oid)) in [b, o, t].iter().enumerate() {
-            let out = git_cmd(repo).args(["cat-file", "blob", oid]).output().map_err(|e| GitError::Other(format!("git cat-file: {e}")))?;
+            let out = git_cmd(repo)?.args(["cat-file", "blob", oid]).output().map_err(|e| GitError::Other(format!("git cat-file: {e}")))?;
             if !out.status.success() {
                 return Err(GitError::Other(format!("git cat-file blob {oid}: {}", String::from_utf8_lossy(&out.stderr).trim())));
             }
@@ -617,7 +723,7 @@ pub fn revert_tree_compat(repo: &Path, base: &str, ours: &str, theirs: &str) -> 
             std::fs::write(&f, &out.stdout).map_err(|e| GitError::Other(format!("revert scratch: {e}")))?;
             files.push(f);
         }
-        let m = git_cmd(repo).arg("merge-file").arg("-p").arg(&files[1]).arg(&files[0]).arg(&files[2]).output()
+        let m = git_cmd(repo)?.arg("merge-file").arg("-p").arg(&files[1]).arg(&files[0]).arg(&files[2]).output()
             .map_err(|e| GitError::Other(format!("git merge-file: {e}")))?;
         if !m.status.success() {
             return Err(GitError::Conflict(format!("CONFLICT (content): {path}")));
@@ -1183,7 +1289,10 @@ pub fn diff_file(wt: &Path, base: &str, path: &str, max_lines: usize) -> FileDif
 /// Output of a git diff command read as a stream and cut at `max_lines` lines or the byte limit.
 fn stream_diff(dir: &Path, args: &[&str], max_lines: usize) -> (String, bool) {
     use std::io::BufRead;
-    let Ok(mut child) = git_cmd(dir).args(args).stdin(std::process::Stdio::null()).stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::null()).spawn() else {
+    let Ok(mut cmd) = git_cmd(dir) else {
+        return (String::new(), false);
+    };
+    let Ok(mut child) = cmd.args(args).stdin(std::process::Stdio::null()).stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::null()).spawn() else {
         return (String::new(), false);
     };
     let mut reader = std::io::BufReader::new(child.stdout.take().expect("piped"));
@@ -1373,7 +1482,7 @@ impl TmpIndex {
         Ok(TmpIndex(gd.with_file_name(format!("ns-snap-index-{}", std::process::id()))))
     }
     fn run(&self, wt: &Path, args: &[&str]) -> Result<String, GitError> {
-        let o = git_cmd(wt).env("GIT_INDEX_FILE", &self.0).args(args).output().map_err(|e| GitError::Other(format!("git {}: {e}", args.join(" "))))?;
+        let o = git_cmd(wt)?.env("GIT_INDEX_FILE", &self.0).args(args).output().map_err(|e| GitError::Other(format!("git {}: {e}", args.join(" "))))?;
         if o.status.success() {
             Ok(String::from_utf8_lossy(&o.stdout).trim_end().to_string())
         } else {

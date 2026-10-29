@@ -30,13 +30,14 @@ jobs:
       matrix:
         os: [macos-latest, ubuntu-22.04]
     runs-on: ${{ matrix.os }}
-    env:
-      # the core tests commit in throwaway repositories
-      GIT_AUTHOR_NAME: ci
-      GIT_AUTHOR_EMAIL: ci@example.invalid
-      GIT_COMMITTER_NAME: ci
-      GIT_COMMITTER_EMAIL: ci@example.invalid
     steps:
+      # the core tests commit in throwaway repositories; a global identity, not GIT_AUTHOR_* (that would beat the
+      # identity a test sets in its own repository)
+      - name: git identity
+        run: |
+          git config --global user.name ci
+          git config --global user.email ci@example.invalid
+
       # actions are pinned to commit SHAs (the comment is the tag)
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

