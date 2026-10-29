@@ -133,7 +133,7 @@
 .lim8.exhausted .lim8-p { color: var(--bad); }
 .lim8-p { min-width: 3ch; text-align: right; color: var(--ink2); }
 /* a narrow window keeps which window it is («5 ч», «Неделя») and drops the word «осталось»: the number stays whole */
-@media (max-width: 1000px) { .lim8-bar { width: 40px; } .lim8-p { font-size: 0; } .lim8-p::after { content: attr(data-short); font-size: 12px; } }
+@media (max-width: 1500px) { .lim8-bar { width: 40px; } .lim8-p { font-size: 0; } .lim8-p::after { content: attr(data-short); font-size: 12px; } }
 @media (max-width: 760px) { .er8-col { flex-basis: 56px; } .er8-n { display: none; } }
 @media (prefers-reduced-motion: reduce) { .er8-b.run { animation: none; } .lim8-fill { transition: none; } .er8-card, .rail7-proj .pj-pick .pj-pop { animation: none; } }
 
