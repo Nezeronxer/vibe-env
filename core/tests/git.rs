@@ -733,6 +733,8 @@ fn old_git_revert_of_a_submodule_changed_twice_is_a_conflict_not_an_empty_blob()
     let r = revert_tree_compat(&repo, &sha, &main, &parent);
     assert!(matches!(r, Err(GitError::Conflict(_))), "{r:?}");
     assert!(scratch_left(&repo).is_empty());
+}
+
 #[test]
 fn a_github_repository_is_named_owner_slash_name_from_a_name_or_a_link_and_flags_never_pass() {
     use nightshift_core::git::gh_full_name as f;
