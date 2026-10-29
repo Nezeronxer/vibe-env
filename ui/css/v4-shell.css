@@ -262,3 +262,11 @@
 .pj-where { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 12.5px var(--mono); }
 .pj-name { width: 100%; }
 .pj-err { display: block; color: var(--bad); margin-bottom: 8px; }
+/* v13 "С GitHub…" */
+.ghc { width: min(420px, 76vw); } /* the dialog is at most 460 px with 20 px sides */
+.ghc-who { color: var(--ink2); }
+.ghc-list { max-height: 280px; overflow: auto; margin: 8px 0; display: flex; flex-direction: column; gap: 2px; }
+.ghc-r { height: auto; min-height: 36px; padding: 6px 8px; }
+.ghc-r .mn { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+.ghc-r .pj-sub { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ghc-r > small { flex: none; color: var(--ink3); }

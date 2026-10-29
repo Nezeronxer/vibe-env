@@ -797,6 +797,17 @@ eq('error of the publication -> text key and the one action that helps', ['gh_mi
 eq('protected files in the history come back as a list', PL.errView({ kind: 'protected_in_history', paths: ['.env', 'k/id_rsa'] }), { key: 'pub.err.protected_in_history', action: null, paths: ['.env', 'k/id_rsa'], detail: '' });
 eq('catalog, history and publishing words exist in ru and en (and the keys the code builds)', Object.keys(NSI18n.dicts.ru).filter((k) => /^(mk|hist|pub)\./.test(k)).filter((k) => !(k in NSI18n.dicts.en)), []);
 eq('words built from a kind exist', ['skill', 'mcp', 'mod'].map((k) => NSI18n.has('mk.kind_' + k)).concat(['gh_missing', 'gh_not_logged_in', 'name_taken', 'bad_name', 'protected_in_history', 'publish_failed'].map((k) => NSI18n.has('pub.err.' + k))), Array(9).fill(true));
+// --- v13: a project from GitHub ---
+if (typeof NSGhClone !== 'undefined') {
+  const G = NSGhClone;
+  eq('GitHub: owner/name from a name or a link; flags, paths and other hosts never pass',
+    ['Nezeronxer/vibe-env', ' https://github.com/tauri-apps/tauri.git ', 'https://github.com/a/b/tree/main/src', 'git@github.com:a/b_c.d.git', '', 'a', 'a/b/c', '-o/x', 'a/--upload-pack=x', 'a/.git', '../a', 'a b/c', 'https://gitlab.com/a/b', 'a/b;rm'].map(G.fullName),
+    ['Nezeronxer/vibe-env', 'tauri-apps/tauri', 'a/b', 'a/b_c.d', null, null, null, null, null, null, null, null, null, null]);
+  eq('GitHub: the gh error -> install / login / error', ['gh: gh_not_installed: install GitHub CLI', 'gh: gh_not_logged_in: run `gh auth login`', 'boom'].map(G.state), ['install', 'login', 'error']);
+  eq('GitHub: the install command fits the system', ['Mozilla/5.0 (Windows NT 10.0; Win64; x64)', 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)', 'Mozilla/5.0 (X11; Linux x86_64)'].map(G.installCmd), ['winget install --id GitHub.cli', 'brew install gh', 'https://cli.github.com']);
+  eq('GitHub: the words exist in ru and en', Object.keys(NSI18n.dicts.ru).filter((k) => /^ghc\.|^pj\.github$|^err\.bad_repo_name$/.test(k)).filter((k) => !(k in NSI18n.dicts.en)), []);
+  eq('GitHub: every state has its line', ['install', 'login', 'error'].map((k) => NSI18n.has('ghc.s_' + k)), [true, true, true]);
+} else eq('v13 GitHub script is loaded', 'missing', 'loaded');
 } else eq('v4 catalog scripts are loaded', 'missing', 'loaded');
 
 // ================= v4 Clawd (task 25): the state machine, time-based animation, the loop stops on a hidden window =================

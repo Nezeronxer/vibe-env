@@ -24,6 +24,32 @@ pub async fn gh_prs(s: State<'_, App>, path: String) -> Res<Value> {
     tauri::async_runtime::spawn_blocking(move || git::pr_list(&p)).await.map_err(e2s)?.map_err(e2s)
 }
 
+fn home() -> PathBuf {
+    std::env::var_os("HOME").map(PathBuf::from).filter(|h| h.is_dir()).unwrap_or_else(std::env::temp_dir)
+}
+
+/// v13: the GitHub login of gh; Err = `gh_not_installed: ...` / `gh_not_logged_in: ...`.
+#[tauri::command]
+pub async fn gh_account() -> Res<String> {
+    tauri::async_runtime::spawn_blocking(|| git::gh_status(&home())).await.map_err(e2s)?.map_err(e2s)
+}
+
+/// v13: the person's repositories (`gh repo list --json`), for "С GitHub…".
+#[tauri::command]
+pub async fn gh_repos() -> Res<Value> {
+    tauri::async_runtime::spawn_blocking(|| git::gh_repos(&home())).await.map_err(e2s)?.map_err(e2s)
+}
+
+/// v13: clone `repo` (`owner/name` or a github.com link) into `parent` and add it as a project.
+#[tauri::command]
+pub async fn clone_project(app: tauri::AppHandle, s: State<'_, App>, parent: String, repo: String) -> Res<nightshift_core::model::Project> {
+    let hub = s.hub.clone();
+    let proj = tauri::async_runtime::spawn_blocking(move || hub.clone_project(&parent, &repo)).await.map_err(e2s)??;
+    use tauri::Emitter;
+    let _ = app.emit("project-changed", &proj.id);
+    Ok(proj)
+}
+
 /// Ok(url); Err = the `PublishError` JSON `{kind, ...}` (gh_missing, gh_not_logged_in, name_taken, bad_name,
 /// protected_in_history{paths}, publish_failed{detail}). The window asks the person first: this goes outward.
 #[tauri::command]

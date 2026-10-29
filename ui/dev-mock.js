@@ -153,6 +153,12 @@
       if (projects.some((x) => x.path === parent + '/' + name)) fail('folder_exists: ' + parent + '/' + name);
       const p = P('p' + (projects.length + 1), name, 'local'); p.path = parent + '/' + name; projects.push(p); repos[p.id] = { is_repo: true, base_branch: 'main', current_branch: 'main', dirty: false, origin_url: null, web_url: null, ahead: 0, behind: 0 }; return p;
     },
+    // v13 "С GitHub…" (gh_account / gh_repos are in mock-market.js); dev/dotfiles already has a folder
+    clone_project: ({ parent, repo }) => {
+      const name = String(repo).split('/')[1] || '';
+      if (name === 'dotfiles' || projects.some((x) => x.path === parent + '/' + name)) fail('folder_exists: ' + parent + '/' + name);
+      const p = P('p' + (projects.length + 1), name, 'local'); p.path = parent + '/' + name; projects.push(p); repos[p.id] = { is_repo: true, base_branch: 'main', current_branch: 'main', dirty: false, origin_url: 'https://github.com/' + repo + '.git', web_url: 'https://github.com/' + repo, ahead: 0, behind: 0 }; return p;
+    },
     get_catalog: ({ env }) => (catalogs[env] ? { env, families: catalogs[env], source: 'built_in', at: ago(60 * 5) } : null),
     refresh_catalog: ({ env }) => (catalogs[env] ? { env, families: catalogs[env], source: 'cli_list', at: iso(Date.now()) } : null),
     get_limits: ({ env }) => { limitsCache = limitsCache || window.NSMockLimits.build({ exhausted }); return limitsCache[env] || null; },

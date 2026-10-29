@@ -733,6 +733,27 @@ fn old_git_revert_of_a_submodule_changed_twice_is_a_conflict_not_an_empty_blob()
     let r = revert_tree_compat(&repo, &sha, &main, &parent);
     assert!(matches!(r, Err(GitError::Conflict(_))), "{r:?}");
     assert!(scratch_left(&repo).is_empty());
+#[test]
+fn a_github_repository_is_named_owner_slash_name_from_a_name_or_a_link_and_flags_never_pass() {
+    use nightshift_core::git::gh_full_name as f;
+    assert_eq!(f("Nezeronxer/vibe-env").as_deref(), Some("Nezeronxer/vibe-env"));
+    assert_eq!(f(" https://github.com/tauri-apps/tauri.git ").as_deref(), Some("tauri-apps/tauri"));
+    assert_eq!(f("https://github.com/a/b/tree/main/src").as_deref(), Some("a/b"));
+    assert_eq!(f("git@github.com:a/b_c.d.git").as_deref(), Some("a/b_c.d"));
+    for bad in ["", "a", "a/b/c", "-o/x", "a/--upload-pack=x", "a/.git", "../a", "a b/c", "https://gitlab.com/a/b", "a/b;rm"] {
+        assert_eq!(f(bad), None, "{bad}");
+    }
+}
+
+#[test]
+fn cloning_refuses_a_bad_name_and_an_existing_folder_before_gh_runs() {
+    let d = std::env::temp_dir().join(format!("ns-ghclone-{}", std::process::id()));
+    std::fs::create_dir_all(&d).unwrap();
+    let e = nightshift_core::git::gh_clone("-x/y", &d.join("y")).unwrap_err().to_string();
+    assert!(e.contains("bad_repo_name"), "{e}");
+    let e = nightshift_core::git::gh_clone("a/b", &d).unwrap_err().to_string();
+    assert!(e.contains("folder_exists"), "{e}");
+    let _ = std::fs::remove_dir(&d);
 }
 
 #[test]

@@ -7,7 +7,7 @@ set -eu
 
 # --- the only places that name the product and the repository ---------------------------------
 APP_NAME="Nightshift"                 # ASSUMPTION: working name; must equal productName in app/tauri.conf.json
-REPO="<OWNER>/<REPO>"                 # PLACEHOLDER: GitHub "owner/name", fill in when the repository is published
+REPO="Nezeronxer/vibe-env"
 # -----------------------------------------------------------------------------------------------
 
 DRY_RUN=0

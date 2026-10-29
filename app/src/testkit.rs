@@ -164,7 +164,9 @@ pub fn fake_gh() -> PathBuf {
     let d = GH.get_or_init(|| {
         let d = Scratch::new("gh");
         let p = d.0.join("gh");
-        std::fs::write(&p, format!("#!/bin/sh\necho \"$@\" >> '{}'\necho https://github.com/o/r/pull/9\n", d.0.join("calls").display())).unwrap();
+        // `repo clone o/n DIR` makes DIR a repository with one commit, as a real clone would
+        let clone = "if [ \"$1 $2\" = 'repo clone' ]; then git init -q \"$4\" && git -C \"$4\" -c user.name=t -c user.email=t@t commit -q --allow-empty -m init; fi\n";
+        std::fs::write(&p, format!("#!/bin/sh\necho \"$@\" >> '{}'\n{clone}echo https://github.com/o/r/pull/9\n", d.0.join("calls").display())).unwrap();
         nightshift_core::proc::cmd("chmod").arg("755").arg(&p).status().unwrap();
         std::env::set_var("NIGHTSHIFT_GH", &p);
         d

@@ -3,7 +3,7 @@
 This is the map of trust boundaries that the pre-publication security audit works through. It states
 what the design intends and where to look. The audit results are in the last section.
 
-Reporting a vulnerability: `<SECURITY_CONTACT>` (placeholder, set before publishing).
+Reporting a vulnerability: privately through GitHub, https://github.com/Nezeronxer/vibe-env/security/advisories/new (not in a public issue).
 
 ## What agents can and cannot do
 

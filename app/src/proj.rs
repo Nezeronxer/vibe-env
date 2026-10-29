@@ -79,6 +79,19 @@ impl Hub {
     }
 
     /// "Убрать проект": refused while the project has tasks that are not finished.
+    /// v13 "С GitHub…": `owner/name` cloned by gh into `<parent>/<name>` (never over an existing folder), then added.
+    pub fn clone_project(&self, parent: &str, full: &str) -> Res<Project> {
+        let full = git::gh_full_name(full).ok_or("bad_repo_name")?;
+        let name = full.split('/').nth(1).unwrap_or_default();
+        let home = std::env::var_os("HOME").map(std::path::PathBuf::from);
+        let dir = parent_folder(parent, home.as_deref())?.join(name);
+        if dir.symlink_metadata().is_ok() {
+            return Err(format!("folder_exists: {}", dir.display()));
+        }
+        git::gh_clone(&full, &dir).map_err(e2s)?;
+        self.add_project(&dir.to_string_lossy())
+    }
+
     pub fn remove_project(&self, id: &str) -> Res<()> {
         let mut st = lk(self.engine.store());
         let open = |t: &Task| !matches!(t.status, Status::Done | Status::DoneNotPushed | Status::Failed | Status::Cancelled | Status::Reverted);
@@ -274,6 +287,20 @@ mod tests {
         p.path = other.clone();
         assert!(r.hub.update_project(p).unwrap_err().starts_with("not_same_repo"));
         assert_eq!(r.hub.project(&r.project.id).unwrap().path, r.repo);
+    }
+
+    #[test]
+    fn a_github_repository_is_cloned_by_gh_into_the_parent_and_becomes_a_project_once() {
+        let calls = fake_gh();
+        let r = Rig::new(FakeAdapter::new(vec![]));
+        let parent = r.s.0.to_string_lossy().to_string();
+        let p = r.hub.clone_project(&parent, "https://github.com/o/demo.git").unwrap();
+        assert_eq!(p.name, "demo");
+        assert!(p.path.join(".git").is_dir() && r.hub.project(&p.id).is_ok());
+        assert!(std::fs::read_to_string(&calls).unwrap().contains("repo clone o/demo"));
+        assert!(r.hub.clone_project(&parent, "o/demo").unwrap_err().starts_with("folder_exists"));
+        assert_eq!(r.hub.clone_project(&parent, "o/--upload-pack=x").unwrap_err(), "bad_repo_name");
+        assert!(r.hub.clone_project(&format!("{parent}/nope"), "o/x").unwrap_err().starts_with("path_missing"));
     }
 
     #[test]

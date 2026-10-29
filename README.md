@@ -4,7 +4,7 @@
 
 **A desktop app that hands coding work to your agent CLIs and stays quiet until it needs a human decision.**
 
-> Nightshift is a working name (see [Renaming](#renaming)). Repository: `<REPO_URL>` (placeholder, not published yet).
+> Nightshift is a working name (see [Renaming](#renaming)). Repository: https://github.com/Nezeronxer/vibe-env
 
 ![Main screen: chat with Claude Code, a task waiting for you, limit bars on top](docs/screenshot-main-dark.png)
 
@@ -20,7 +20,8 @@ with tests and an independent reviewer, merge it, and **call you only when somet
 1. Install at least one agent CLI (Claude Code, Codex, opencode, Qwen Code, Gemini…). The left column shows the
    installed ones; the rest sit under "Add" and install from there in the built-in terminal.
 2. A project: the column head → "Create project…" (a name is enough: a folder in `~/Projects`, git and a first commit)
-   or "Open folder…".
+   or "Open folder…" or "From GitHub…" (sign in once with GitHub CLI, pick one of your repositories or paste
+   `owner/name` or a link to any public one: it is cloned into `~/Projects` and becomes the project).
 3. "New agent": environment, model, project and where to work - "In its own copy" (its own `ns/term-*` branch, your
    files untouched) or right in the folder. Write the task → "Run".
 4. The agent works in the terminal of its CLI. Done or asking - the card says "waits for you", a system notification
@@ -127,20 +128,25 @@ He lives in the corner right of the tabs and does what the agents do: types duri
 
 ## Install
 
-macOS (Apple silicon and Intel) and Linux x86_64. Windows and mobile are not supported.
+Windows 10/11 x64, macOS (Apple silicon and Intel) and Linux x86_64. Downloads: [https://github.com/Nezeronxer/vibe-env/releases/latest](https://github.com/Nezeronxer/vibe-env/releases/latest).
+
+**Windows:** download `Nightshift_<version>_x64-setup.exe` (or the `.msi`) and run it - it installs for your user,
+no admin rights. The build is not signed yet, so SmartScreen may say "Windows protected your PC": "More info" →
+"Run anyway". Needs git ([git-scm.com](https://git-scm.com/download/win)) and at least one agent CLI; for
+"From GitHub…" also GitHub CLI (`winget install --id GitHub.cli`). The terminal inside the app is PowerShell.
 
 One line (the script downloads the latest release, checks its SHA-256 against `SHA256SUMS` from the same release and installs it). The checksum protects against a damaged download, **not** against a tampered release: both files come from the same place. Trust comes from the repository and its release page:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/<OWNER>/<REPO>/main/scripts/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/Nezeronxer/vibe-env/main/scripts/install.sh | sh
 ```
 
-`<OWNER>/<REPO>` is a placeholder until the repository is published. Prefer to read the script first:
+macOS and Linux. Prefer to read the script first:
 [`scripts/install.sh`](scripts/install.sh). It also sets the install target by distribution: `.deb` for the
 Debian family and `.rpm` for Fedora/openSUSE (it prints the `sudo` command, it does not run sudo), the AppImage
 in `~/.local/bin` plus a `.desktop` entry for everything else.
 
-**By hand:** download from the Releases page (`<REPO_URL>/releases`): `.dmg` (macOS), `.AppImage` (any Linux),
+**By hand:** download from the Releases page (https://github.com/Nezeronxer/vibe-env/releases): `-setup.exe` / `.msi` (Windows), `.dmg` (macOS), `.AppImage` (any Linux),
 `.deb`, `.rpm`. Compare the file with `SHA256SUMS` from the same release (this catches corruption, not a replaced release).
 
 **macOS and the missing signature.** The macOS build is not signed or notarized yet (that needs a paid Apple Developer
@@ -174,7 +180,7 @@ cd app && cargo tauri build      # installers in target/release/bundle/
 ```
 
 `ui/` is plain HTML, CSS and JavaScript with no bundler. Quick UI checks without a window: `node scripts/ui-selftest.js`.
-CI: `.github/workflows/ci.yml` (tests on macOS and Ubuntu), `.github/workflows/release.yml` (installers on a `v*` tag, draft release).
+CI: `.github/workflows/ci.yml` (tests on macOS and Ubuntu, the app build on Windows), `.github/workflows/release.yml` (installers on a `v*` tag, draft release).
 To sign macOS builds later, set the repository secrets named in `release.yml`.
 
 ## Not done yet, and out of scope
@@ -188,7 +194,7 @@ Not finished:
 - On macOS a blocked-notifications warning rarely arrives.
 - Codex, Gemini CLI and Cursor have never been run against this app (see the table above).
 
-Out of scope on purpose: Windows, mobile and web clients; containers (the CLI sandbox, worktree and throw-away copies
+Out of scope on purpose: mobile and web clients; containers (the CLI sandbox, worktree and throw-away copies
 cover the main need); a built-in editor or terminal (the diff is read-only, "continue in terminal" opens one);
 starting tasks from the command line; translating kits between environments; our own limit estimates for
 environments that report none; Flatpak (the AppImage covers other distributions); macOS signing (needs your Apple account).
@@ -197,11 +203,11 @@ environments that report none; Flatpak (the AppImage covers other distributions)
 
 Do not publish the repository until every box is ticked; if one cannot be, publication waits and the reason is written down.
 
-- [ ] Security audit closed (`docs/security.md`, "Audit report" is filled in; every finding fixed or explained)
-- [ ] `gitleaks` over the whole history is clean
-- [ ] `README.md`, `README.ru.md` and `LICENSE` are in place
+- [x] Security audit closed (`docs/security.md`, "Audit report" is filled in; every finding fixed or explained)
+- [x] `gitleaks` over the whole history is clean (29.10.2026: 13 hits, all test fixtures and UI words; trufflehog: no live secret)
+- [x] `README.md`, `README.ru.md` and `LICENSE` are in place
 - [ ] CI builds (`ci.yml` green; a test tag produced the draft release)
-- [ ] Placeholders filled: `<OWNER>`, `<REPO>`, `<REPO_URL>`, `<SECURITY_CONTACT>`, `<MAINTAINER ...>` in the PKGBUILD
+- [x] Placeholders filled: `<OWNER>`, `<REPO>`, `<REPO_URL>`, `<SECURITY_CONTACT>`, `<MAINTAINER ...>` in the PKGBUILD
 - [ ] Icon terms re-checked ([`docs/icons-sources.md`](docs/icons-sources.md))
 
 ## Renaming

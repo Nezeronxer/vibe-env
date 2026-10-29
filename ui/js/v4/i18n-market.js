@@ -45,6 +45,14 @@
     'pub.err.bad_name': 'Имя может состоять из латинских букв, цифр, точки, дефиса и подчёркивания.', 'pub.err.protected_in_history': 'В истории есть защищённые файлы (.env, ключи). Публикация остановлена.',
     'pub.err.publish_failed': 'Не получилось опубликовать: {detail}',
     'pub.push': 'Push', 'pub.pull': 'Pull', 'pub.pushed': 'Отправлено на GitHub', 'pub.pulled': 'Обновлено с GitHub', 'pub.ahead_behind': 'Впереди / позади GitHub',
+    'pj.github': 'С GitHub…', 'ghc.title': 'Проект с GitHub', 'ghc.checking': 'Проверяю вход в GitHub…', 'ghc.signed_in': 'Вошёл в GitHub как {login}',
+    'ghc.s_install': 'Нужен GitHub CLI (команда gh). Поставь его и нажми «Проверить снова».', 'ghc.s_login': 'Ты не вошёл в GitHub.', 'ghc.login': 'Войти в GitHub', 'ghc.again': 'Проверить снова',
+    'ghc.s_error': 'gh не ответил.', 'ghc.login_how': 'Откроется вкладка терминала: подтверди вход в браузере. Пароль и токен приложение не видит.',
+    'ghc.after_login': 'Войди в GitHub во вкладке терминала, потом снова «С GitHub…».',
+    'ghc.search': 'Поиск репозитория', 'ghc.search_ph': 'Свой репозиторий, owner/name или ссылка', 'ghc.repos': 'Репозитории',
+    'ghc.loading': 'Загружаю репозитории…', 'ghc.none': 'У тебя пока нет репозиториев. Вставь owner/name любого открытого.', 'ghc.none_q': 'Ничего не нашлось.',
+    'ghc.by_name': 'по имени или ссылке', 'ghc.private': 'приватный', 'ghc.fork': 'форк', 'ghc.where': 'Куда склонировать',
+    'ghc.clone': 'Склонировать', 'ghc.cloning': 'Клонирую…', 'err.bad_repo_name': 'Это не репозиторий GitHub. Нужно owner/name или ссылка github.com.',
   };
   const en = {
     'mk.title': 'Catalog', 'mk.bar': 'Catalog', 'mk.group': 'catalog and git', 'mk.close': 'Close',
@@ -91,6 +99,14 @@
     'pub.err.bad_name': 'The name may contain Latin letters, digits, dot, hyphen and underscore.', 'pub.err.protected_in_history': 'Protected files (.env, keys) are in the history. Publishing stopped.',
     'pub.err.publish_failed': 'Could not publish: {detail}',
     'pub.push': 'Push', 'pub.pull': 'Pull', 'pub.pushed': 'Pushed to GitHub', 'pub.pulled': 'Updated from GitHub', 'pub.ahead_behind': 'Ahead / behind GitHub',
+    'pj.github': 'From GitHub…', 'ghc.title': 'Project from GitHub', 'ghc.checking': 'Checking the GitHub sign-in…', 'ghc.signed_in': 'Signed in to GitHub as {login}',
+    'ghc.s_install': 'GitHub CLI (the gh command) is needed. Install it and press “Check again”.', 'ghc.s_login': 'You are not signed in to GitHub.', 'ghc.login': 'Sign in to GitHub', 'ghc.again': 'Check again',
+    'ghc.s_error': 'gh did not answer.', 'ghc.login_how': 'A terminal tab opens: confirm the sign-in in the browser. The app never sees a password or a token.',
+    'ghc.after_login': 'Sign in to GitHub in the terminal tab, then “From GitHub…” again.',
+    'ghc.search': 'Search repositories', 'ghc.search_ph': 'Your repository, owner/name or a link', 'ghc.repos': 'Repositories',
+    'ghc.loading': 'Loading repositories…', 'ghc.none': 'You have no repositories yet. Paste owner/name of any public one.', 'ghc.none_q': 'Nothing found.',
+    'ghc.by_name': 'by name or link', 'ghc.private': 'private', 'ghc.fork': 'fork', 'ghc.where': 'Clone into',
+    'ghc.clone': 'Clone', 'ghc.cloning': 'Cloning…', 'err.bad_repo_name': 'This is not a GitHub repository. Use owner/name or a github.com link.',
   };
   Object.assign(root.NSI18n.dicts.ru, ru);
   Object.assign(root.NSI18n.dicts.en, en);

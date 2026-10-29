@@ -712,6 +712,44 @@ pub fn pr_list(repo: &Path) -> Result<serde_json::Value, GitError> {
     serde_json::from_str(&out).map_err(|e| GitError::Gh(format!("bad gh output: {e}")))
 }
 
+/// v13: the person's own repositories for "С GitHub…" (`gh repo list`, newest first). Read-only; `dir` is any existing folder.
+pub fn gh_repos(dir: &Path) -> Result<serde_json::Value, GitError> {
+    let fields = "nameWithOwner,description,isPrivate,isFork,updatedAt,url,primaryLanguage";
+    let out = gh(dir, &["repo", "list", "--limit", "200", "--json", fields])?;
+    serde_json::from_str(&out).map_err(|e| GitError::Gh(format!("bad gh output: {e}")))
+}
+
+/// `owner/name` out of what the person typed or picked: `owner/name`, `https://github.com/owner/name(.git)(/...)`,
+/// `git@github.com:owner/name.git`. None for anything else, and for a part that starts with `-` or `.` (it would
+/// reach gh and git as a flag or a path trick).
+pub fn gh_full_name(s: &str) -> Option<String> {
+    let s = s.trim();
+    let (rest, link) = match ["https://github.com/", "http://github.com/", "github.com/", "git@github.com:"].iter().find_map(|p| s.strip_prefix(p)) {
+        Some(r) => (r, true),
+        None => (s, false),
+    };
+    let parts: Vec<&str> = rest.trim_end_matches('/').split('/').collect();
+    // a link may go on (`/tree/main`); a bare `a/b/c` is not a repository
+    if parts.len() < 2 || (!link && parts.len() != 2) {
+        return None;
+    }
+    let (owner, name) = (parts[0], parts[1].strip_suffix(".git").unwrap_or(parts[1]));
+    let ok = |w: &str, extra: &[char]| {
+        !w.is_empty() && w.len() <= 100 && !w.starts_with(['-', '.']) && w.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || extra.contains(&c))
+    };
+    (ok(owner, &[]) && ok(name, &['.', '_'])).then(|| format!("{owner}/{name}"))
+}
+
+/// Clones `owner/name` into `dest` (which must not exist) with `gh repo clone`: gh's login reaches private repositories.
+pub fn gh_clone(full: &str, dest: &Path) -> Result<(), GitError> {
+    let full = gh_full_name(full).ok_or_else(|| GitError::Gh("bad_repo_name".into()))?;
+    if dest.symlink_metadata().is_ok() {
+        return Err(GitError::Gh(format!("folder_exists: {}", dest.display())));
+    }
+    let parent = dest.parent().ok_or_else(|| GitError::Gh("path_missing".into()))?;
+    gh(parent, &["repo", "clone", &full, &dest.to_string_lossy()]).map(|_| ())
+}
+
 /// "open" | "merged" | "closed"
 pub fn pr_state(repo: &Path, url: &str) -> Result<String, GitError> {
     Ok(gh(repo, &["pr", "view", url, "--json", "state", "-q", ".state"])?.to_lowercase())
