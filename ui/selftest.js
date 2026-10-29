@@ -738,6 +738,9 @@ eq('env CLI: the first task - claude and codex take a bare word, opencode --prom
 eq('env CLI: opencode got its task on screen - box frames and wraps do not hide it, another text does not count',
   [TM.promptShown(['┃  Создай index.html: страница с од', '┃  ной буквой'], 'Создай index.html: страница'), TM.promptShown(['Ask anything…'], 'Создай index.html'), TM.promptShown(['x'], '')],
   [true, false, false]);
+eq('v12 kit refusal: kit.json of another format or a newer one is not «no kit.json»',
+  [L.kitRefusal({ kind: 'not_a_kit', detail: 'no_kit_json' }).key, L.kitRefusal({ kind: 'not_a_kit', detail: 'bad_kind' }).key, L.kitRefusal({ kind: 'not_a_kit', detail: 'format_3' })],
+  ['not_a_kit', 'bad_kit_json', { key: 'kit_format', detail: '3' }]);
 eq('v4 terminal words exist in ru and en', Object.keys(NSI18n.dicts.ru).filter((k) => /^(term|termset)\./.test(k)).filter((k) => !(k in NSI18n.dicts.en)), []);
 } else eq('v4 terminal scripts are loaded', 'missing', 'loaded');
 

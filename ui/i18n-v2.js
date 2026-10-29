@@ -3,7 +3,7 @@
 (function (root) {
   const ru = {
     // data that cannot be read (G16.4)
-    'data.title': 'Данные приложения не читаются', 'data.lead': 'Файл с задачами и настройками повреждён. Он не тронут, рядом лежит его копия: {copy}', 'data.open': 'Открыть папку', 'data.fresh': 'Начать с чистого листа (копия останется)', 'data.fresh_title': 'Начать с чистого листа?', 'data.fresh_text': 'Старый файл будет отложен в сторону, приложение начнёт с пустого. Копия останется, ничего не удаляется.', 'data.fresh_ok': 'Начать с чистого листа',
+    'load.title': 'Не удалось загрузить данные', 'load.lead': 'Ядро приложения не ответило при запуске. Данные не тронуты. Вот что оно сказало:', 'data.title': 'Данные приложения не читаются', 'data.lead': 'Файл с задачами и настройками повреждён. Он не тронут, рядом лежит его копия: {copy}', 'data.open': 'Открыть папку', 'data.fresh': 'Начать с чистого листа (копия останется)', 'data.fresh_title': 'Начать с чистого листа?', 'data.fresh_text': 'Старый файл будет отложен в сторону, приложение начнёт с пустого. Копия останется, ничего не удаляется.', 'data.fresh_ok': 'Начать с чистого листа',
     'err.terminal_edits_lost': 'правки там не сохранятся - поручи задачей', 'err.waiting_folder': 'папка проекта не найдена: {detail}. Задача ждёт',
     'err.protected_file_committed': 'В ветке задачи ключ или .env ({detail}) - «Защищённые пути» не дают его влить, запушить или отправить в PR', 'err.protected_paths_not_committed': 'не закоммичено - «Защищённые пути»: {detail}',
     // chat: continue in the terminal (A07.2)
@@ -118,7 +118,7 @@
     'kits.open_in': 'Открыть в {env}', 'kits.back': 'Назад', 'kits.snaps': 'Установленные наборы и снимки', 'kits.check_update': 'Проверить обновление', 'kits.rollback': 'Откатить',
     'kits.rollback_text': 'Вернёт файлы к состоянию до установки «{name}» и удалит добавленное.', 'kits.rolled_back': 'Откатил: {name}', 'kits.off': 'выкл.', 'kits.enable': 'Включить',
     'kits.interrupted': 'установка {name} прервана - откатил',
-    'kit.err.not_a_kit': 'Это не набор: в нём нет kit.json. На диске ничего не записано.', 'kit.err.bad_zip': 'Архив повреждён или это не zip. На диске ничего не записано.',
+    'kit.err.not_a_kit': 'Это не набор: в нём нет kit.json. На диске ничего не записано.', 'kit.err.bad_kit_json': 'kit.json есть, но это не конфиг Nightshift: файл другого формата. На диске ничего не записано.', 'kit.err.kit_format': 'Конфиг сделан новой версией Nightshift (формат {detail}) - обнови приложение. На диске ничего не записано.', 'kit.err.bad_zip': 'Архив повреждён или это не zip. На диске ничего не записано.',
     'kit.err.unsafe_path': 'В архиве путь выходит за пределы папки набора: {detail}. На диске ничего не записано.', 'kit.err.symlink': 'В наборе есть символическая ссылка: {detail}. Такие наборы не ставим, на диске ничего не записано.',
     'kit.err.file_too_large': 'Файл больше 10 МБ: {detail}. На диске ничего не записано.', 'kit.err.kit_too_large': 'Набор больше 50 МБ. На диске ничего не записано.', 'kit.err.too_many_files': 'В наборе слишком много файлов ({detail}). На диске ничего не записано.',
     'kit.err.corrupt': 'Набор повреждён: {detail}. На диске ничего не записано.', 'kit.err.clone_failed': 'Не удалось скачать репозиторий: {detail}. На диске ничего не записано.', 'kit.err.unknown_env': 'Неизвестная среда: {detail}.',
@@ -144,7 +144,7 @@
   };
   const en = {
     // data that cannot be read (G16.4)
-    'data.title': 'The app data cannot be read', 'data.lead': 'The file with tasks and settings is damaged. It is untouched, a copy is next to it: {copy}', 'data.open': 'Open the folder', 'data.fresh': 'Start clean (the copy stays)', 'data.fresh_title': 'Start clean?', 'data.fresh_text': 'The old file is put aside and the app starts empty. The copy stays, nothing is deleted.', 'data.fresh_ok': 'Start clean',
+    'load.title': 'The data did not load', 'load.lead': 'The app core did not answer at start. The data is untouched. This is what it said:', 'data.title': 'The app data cannot be read', 'data.lead': 'The file with tasks and settings is damaged. It is untouched, a copy is next to it: {copy}', 'data.open': 'Open the folder', 'data.fresh': 'Start clean (the copy stays)', 'data.fresh_title': 'Start clean?', 'data.fresh_text': 'The old file is put aside and the app starts empty. The copy stays, nothing is deleted.', 'data.fresh_ok': 'Start clean',
     'err.terminal_edits_lost': 'edits made there are not kept - give it to an agent as a task', 'err.waiting_folder': 'the project folder is not found: {detail}. The task waits',
     'err.protected_file_committed': 'The task branch has a key or a .env ({detail}): "Protected paths" keep it from being merged, pushed or sent in a PR', 'err.protected_paths_not_committed': 'not committed - "Protected paths": {detail}',
     'chat.terminal': 'Continue in terminal', 'chat.terminal_warn': 'edits made there are not kept - hand them over as a task',
@@ -245,7 +245,7 @@
     'kits.open_in': 'Open in {env}', 'kits.back': 'Back', 'kits.snaps': 'Installed kits and snapshots', 'kits.check_update': 'Check for updates', 'kits.rollback': 'Roll back',
     'kits.rollback_text': 'Returns the files to the state before "{name}" was installed and removes what was added.', 'kits.rolled_back': 'Rolled back: {name}', 'kits.off': 'off', 'kits.enable': 'Turn on',
     'kits.interrupted': 'installing {name} was interrupted - rolled back',
-    'kit.err.not_a_kit': 'This is not a kit: there is no kit.json. Nothing was written to disk.', 'kit.err.bad_zip': 'The archive is damaged or is not a zip. Nothing was written to disk.',
+    'kit.err.not_a_kit': 'This is not a kit: there is no kit.json. Nothing was written to disk.', 'kit.err.bad_kit_json': 'There is a kit.json, but it is not a Nightshift kit: another format. Nothing was written to disk.', 'kit.err.kit_format': 'The kit was made by a newer Nightshift (format {detail}) - update the app. Nothing was written to disk.', 'kit.err.bad_zip': 'The archive is damaged or is not a zip. Nothing was written to disk.',
     'kit.err.unsafe_path': 'A path in the archive leaves the kit folder: {detail}. Nothing was written to disk.', 'kit.err.symlink': 'The kit contains a symbolic link: {detail}. Such kits are not installed, nothing was written to disk.',
     'kit.err.file_too_large': 'A file is larger than 10 MB: {detail}. Nothing was written to disk.', 'kit.err.kit_too_large': 'The kit is larger than 50 MB. Nothing was written to disk.', 'kit.err.too_many_files': 'The kit has too many files ({detail}). Nothing was written to disk.',
     'kit.err.corrupt': 'The kit is damaged: {detail}. Nothing was written to disk.', 'kit.err.clone_failed': 'The repository could not be downloaded: {detail}. Nothing was written to disk.', 'kit.err.unknown_env': 'Unknown environment: {detail}.',

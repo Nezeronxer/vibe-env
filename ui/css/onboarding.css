@@ -46,7 +46,7 @@
 .pathrow { display: flex; gap: 8px; margin-top: 10px; }
 .pathrow input { flex: 1; }
 .onb-models .picker { max-width: 100%; }
-.onb pre.cmd { font: 12.5px var(--mono); background: var(--bg); border: 1px solid var(--line); padding: 10px 12px; border-radius: var(--r); margin-bottom: 14px; }
+.onb pre.cmd { white-space: pre-wrap; overflow-wrap: anywhere; font: 12.5px var(--mono); background: var(--bg); border: 1px solid var(--line); padding: 10px 12px; border-radius: var(--r); margin-bottom: 14px; }
 .missing pre { white-space: pre-wrap; }
 
 /* v3: first run in one step */

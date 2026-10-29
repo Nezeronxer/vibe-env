@@ -61,8 +61,8 @@
     try { await store.loadAll(); }
     catch (e) {
       if (isGitMissing(e)) return NS.nav('nogit');
-      NS.shell.toast(NS.errHuman(api.errText(e)), true);
-      return NS.nav('placeholder');
+      // not «the next wave connects this screen» (a stub of the build): what failed and a way to try again
+      return NS.nav('loadfail', { error: NS.errHuman(api.errText(e)) });
     }
     document.documentElement.lang = NS.lang();
     NS.shell.renderRail();

@@ -18,4 +18,13 @@
     return {};
   }
   NS.registry.register({ id: 'unreadable', layout: 'bare', scroll: true, mount });
+
+  // the core did not answer at start for another reason than git or the data file: say what, and «Повторить» runs the start again
+  NS.registry.register({ id: 'loadfail', layout: 'bare', scroll: true, mount(root, ctx) {
+    const why = (ctx.params && ctx.params.error) || '';
+    root.append(h('div', { class: 'onb' }, h('div', { class: 'onb-brand' }, ic('i-moon'), 'Nightshift'), h('h1', { text: t('load.title') }), h('p', { class: 'lead', text: t('load.lead') }),
+      why ? h('pre', { class: 'cmd', text: why }) : null,
+      h('div', { class: 'row' }, h('button', { type: 'button', class: 'btn primary', text: t('git.recheck'), onclick: () => NS.recheckGit() }))));
+    return {};
+  } });
 })();

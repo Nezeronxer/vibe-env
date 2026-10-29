@@ -711,6 +711,9 @@
     const str = Object.keys(e).filter((k) => k !== 'kind' && typeof e[k] === 'string').map((k) => e[k]);
     if (e.kind === 'wrong_env') return { key: 'wrong_env', detail: e.kit_env_name || e.kit_env, env: e.kit_env, target: e.target_env_name || e.target_env };
     if (e.kind === 'not_applied') return { key: 'not_applied', detail: e.cli || '', keys: e.keys || [] };
+    // a kit.json that is there but is not a kit of this app is not «no kit.json» (the detail says which)
+    if (e.kind === 'not_a_kit' && /^format_\d+$/.test(str[0] || '')) return { key: 'kit_format', detail: str[0].slice(7) };
+    if (e.kind === 'not_a_kit' && ['bad_kit_json', 'bad_kind', 'kit_json_too_large'].includes(str[0])) return { key: 'bad_kit_json', detail: str[0] };
     return { key: e.kind, detail: e.path || str[0] || (e.size != null ? String(e.size) : '') };
   }
   // GroupInfo {group, available, active, note, count}: off when the layout is not verified or nothing is there
