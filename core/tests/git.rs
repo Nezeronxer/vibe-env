@@ -830,6 +830,41 @@ mod config_guard {
         assert!(!pwn.exists());
     }
 
+    // bypasses of a first, deny-list version of the guard (re-check 30.10.2026): each made git run a program
+    #[test]
+    fn config_hooks_remote_programs_ext_remotes_and_gpg_key_commands_added_later_are_refused() {
+        let plants: [(&str, &str); 4] = [
+            ("hook", "git config hook.x.command 'touch {M}' && git config hook.x.event pre-commit"),
+            ("gpg", "git config commit.gpgSign true && git config gpg.format ssh && git config gpg.ssh.defaultKeyCommand \"sh -c 'touch {M}'\""),
+            ("upload", "git remote add origin \"$PWD\" && git config remote.origin.uploadpack 'touch {M}; git-upload-pack'"),
+            ("ext", "git config protocol.ext.allow always && git remote add origin 'ext::sh -c touch% {M}'"),
+        ];
+        for (name, plant) in plants {
+            let d = tempfile::tempdir().unwrap();
+            let (repo, wt) = setup(&d);
+            let pwn = d.path().join("pwn");
+            sh(&repo, &plant.replace("{M}", &pwn.to_string_lossy()));
+            std::fs::write(wt.join("b.txt"), "b").unwrap();
+            let r1 = git::commit_all(&wt, "m", false).map(|_| ());
+            let r2 = git::fetch_ff(&repo, "main");
+            assert!(!pwn.exists(), "{name}: {r1:?} {r2:?}");
+            assert!(format!("{r1:?}{r2:?}").contains("unsafe_repo_config"), "{name}: {r1:?} {r2:?}");
+        }
+    }
+
+    #[test]
+    fn what_an_agent_planted_is_still_refused_after_a_restart_of_the_app() {
+        git::set_seen_file(std::env::temp_dir().join(format!("ns-git-seen-{}.json", std::process::id())));
+        let d = tempfile::tempdir().unwrap();
+        let (repo, wt) = setup(&d);
+        let pwn = d.path().join("pwn");
+        sh(&repo, &format!("git config filter.x.clean \"sh -c 'touch {}; cat'\"", pwn.display()));
+        std::fs::write(wt.join(".gitattributes"), "* filter=x\n").unwrap();
+        git::reload_seen(); // memory gone, what was seen comes back from the file
+        let e = git::commit_all(&wt, "m", false);
+        assert!(!pwn.exists() && e.is_err(), "{e:?}");
+    }
+
     #[test]
     fn a_merge_driver_the_person_had_before_keeps_working() {
         let d = tempfile::tempdir().unwrap();

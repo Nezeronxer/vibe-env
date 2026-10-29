@@ -995,6 +995,7 @@ async fn set_secret(s: State<'_, App>, env: String, name: String, value: String)
 fn build_app(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     let h = app.handle().clone();
     let dir = h.path().app_data_dir()?;
+    nightshift_core::git::set_seen_file(dir.join("git-seen.json"));
     let home = h.path().home_dir()?;
     let startup_list: Startup = Arc::new(Mutex::new(vec![]));
     let (store, replaced, unreadable) = match startup::open_store(&dir)? {

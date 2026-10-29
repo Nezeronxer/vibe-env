@@ -87,31 +87,77 @@ fn git_cmd(dir: &Path) -> Result<Command, GitError> {
         .env("GIT_TERMINAL_PROMPT", "0")
         .env("GIT_EDITOR", "true")
         .env("LC_ALL", "C")
-        // a repository's own config must not run a program on a read (fsmonitor of an unpacked or agent-written .git),
-        // and hooks an agent wrote into .git/hooks must not run on the app's commit
-        .args(["-c", "core.fsmonitor=false"])
+        // `ext::` runs a command as a "remote"
+        .env("GIT_ALLOW_PROTOCOL", "file:git:http:https:ssh")
+        // a repository's own config must not run a program on a read (fsmonitor of an unpacked or agent-written .git)
+        .args(["-c", "core.fsmonitor=false", "-c", "protocol.ext.allow=never"])
         .args(identity_args(dir));
-    // NIGHTSHIFT_GIT_HOOKS=1: tests that watch git through a hook (set by the app's starter, never by an agent)
+    // and hooks an agent wrote into .git/hooks do not run on the app's commit. NIGHTSHIFT_GIT_HOOKS=1: tests that
+    // watch git through a hook (set by the app's starter, never by an agent)
     if std::env::var_os("NIGHTSHIFT_GIT_HOOKS").is_none() {
         c.args(["-c", &format!("core.hooksPath={NO_HOOKS}")]);
     }
     Ok(c)
 }
 
-/// Keys of a repository's own config (local / worktree scope) that make git run a program.
-fn runs_program(key: &str) -> bool {
+/// Keys of a repository's own config (local / worktree scope) that run nothing and may change freely; any other
+/// key (filters, drivers, hooks, gpg, remote upload/receive programs, includes, ...) is held to what was there when
+/// the app first looked at the repository.
+fn plain_key(key: &str) -> bool {
     let k = key.to_ascii_lowercase();
     let (head, tail) = (k.split('.').next().unwrap_or(""), k.rsplit('.').next().unwrap_or(""));
-    matches!(
-        k.as_str(),
-        "diff.external" | "core.fsmonitor" | "core.hookspath" | "core.sshcommand" | "core.pager" | "core.editor" | "core.askpass" | "core.gitproxy"
-            | "core.alternaterefscommand" | "sequence.editor" | "gpg.program" | "include.path" | "uploadpack.packobjectshook"
-    ) || (head == "filter" && matches!(tail, "clean" | "smudge" | "process"))
-        || (head == "diff" && matches!(tail, "command" | "textconv"))
-        || (head == "merge" && tail == "driver")
-        || (head == "gpg" && tail == "program")
-        || (head == "credential" && tail == "helper")
-        || head == "includeif"
+    let two = k.matches('.').count() == 1;
+    match head {
+        "core" => two && matches!(tail, "repositoryformatversion" | "filemode" | "bare" | "logallrefupdates" | "ignorecase" | "precomposeunicode"
+            | "symlinks" | "autocrlf" | "safecrlf" | "eol" | "longpaths" | "checkstat" | "trustctime" | "untrackedcache" | "splitindex"
+            | "commitgraph" | "multipackindex" | "sparsecheckout" | "sparsecheckoutcone" | "quotepath" | "abbrev" | "compression"
+            | "bigfilethreshold" | "preloadindex" | "fscache" | "fsyncmethod"),
+        "remote" => matches!(tail, "url" | "pushurl" | "fetch" | "push" | "tagopt" | "prune" | "mirror" | "promisor" | "partialclonefilter" | "skipdefaultupdate"),
+        "branch" | "user" | "author" | "committer" | "extensions" | "gc" | "pack" | "index" | "color" | "advice" | "status" | "log" | "rerere"
+        | "maintenance" | "feature" | "lfs" | "http" | "init" | "column" | "versionsort" | "worktree" | "checkout" | "clean" | "rebase" => true,
+        "fetch" => two && matches!(tail, "prune" | "prunetags" | "writecommitgraph" | "recursesubmodules" | "parallel"),
+        "pull" => two && matches!(tail, "rebase" | "ff" | "twohead" | "octopus"),
+        "push" => two && matches!(tail, "default" | "autosetupremote" | "followtags" | "recursesubmodules"),
+        "merge" => two && matches!(tail, "conflictstyle" | "ff" | "renames" | "log" | "autostash"),
+        "diff" => two && matches!(tail, "renames" | "algorithm" | "colormoved" | "noprefix" | "mnemonicprefix" | "submodule" | "context" | "indentheuristic"),
+        "submodule" => matches!(tail, "url" | "active" | "branch" | "recurse" | "fetchjobs"),
+        _ => false,
+    }
+}
+
+/// What the app saw first, per repository (its common git dir): the entries of its own config outside `plain_key`,
+/// and per folder what its `.git` was. Kept in the app's data (`set_seen_file`) so a restart does not take what an
+/// agent planted meanwhile as the person's own.
+#[derive(serde::Serialize, serde::Deserialize, Default)]
+struct Seen {
+    runs: std::collections::BTreeMap<String, Vec<String>>,
+    dirs: std::collections::BTreeMap<String, (String, String)>,
+}
+static SEEN: std::sync::Mutex<Option<Seen>> = std::sync::Mutex::new(None);
+static SEEN_FILE: std::sync::OnceLock<PathBuf> = std::sync::OnceLock::new();
+
+/// Where the first look is kept (`<app data>/git-seen.json`); without it, only for this run.
+pub fn set_seen_file(p: PathBuf) {
+    let _ = SEEN_FILE.set(p);
+}
+
+/// Forgets what is in memory, as a restart of the app does (the file stays). For tests.
+#[doc(hidden)]
+pub fn reload_seen() {
+    *SEEN.lock().unwrap() = None;
+}
+
+fn with_seen<T>(f: impl FnOnce(&mut Seen) -> (T, bool)) -> T {
+    let mut g = SEEN.lock().unwrap();
+    let seen = g.get_or_insert_with(|| SEEN_FILE.get().and_then(|p| std::fs::read(p).ok()).and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default());
+    let (out, changed) = f(seen);
+    if changed {
+        if let (Some(p), Ok(b)) = (SEEN_FILE.get(), serde_json::to_vec(seen)) {
+            let tmp = p.with_extension("tmp");
+            let _ = std::fs::write(&tmp, b).and_then(|_| std::fs::rename(&tmp, p));
+        }
+    }
+    out
 }
 
 /// What `<dir>/.git` is: the text of a worktree's pointer file, "dir" for a repository, "" when there is none.
@@ -119,56 +165,57 @@ fn dotgit_kind(dir: &Path) -> String {
     let g = dir.join(".git");
     match std::fs::symlink_metadata(&g) {
         Ok(m) if m.is_file() => std::fs::read_to_string(&g).unwrap_or_default(),
-        Ok(_) => "dir".into(),
+        Ok(m) if m.is_dir() => "dir".into(),
+        Ok(_) => "link".into(),
         Err(_) => String::new(),
     }
 }
 
-/// `dir` -> its repository's common git dir (canonical), asked once per folder. A folder whose `.git` changed kind
-/// since (a worktree's pointer file replaced by a repository of its own, or pointed elsewhere) is refused; a folder
-/// that had no `.git` and got one (`git init`) is asked again.
+/// `dir` -> its repository's common git dir (canonical). A copy (its `.git` a pointer file) may be made again by the
+/// app in the same folder; it may not become a repository of its own or point into itself or at another repository.
 fn common_dir(dir: &Path) -> Result<PathBuf, GitError> {
-    static DIRS: std::sync::Mutex<Vec<(PathBuf, String, PathBuf)>> = std::sync::Mutex::new(Vec::new());
     let kind = dotgit_kind(dir);
-    let before = DIRS.lock().unwrap().iter().find(|(d, _, _)| d == dir).map(|(_, w, k)| (w.clone(), k.clone()));
+    let name = dir.to_string_lossy().to_string();
+    let before = with_seen(|s| (s.dirs.get(&name).cloned(), false));
     if let Some((was, k)) = &before {
         if *was == kind {
-            return Ok(k.clone());
+            return Ok(PathBuf::from(k));
+        }
+    }
+    let replaced = || Err(GitError::Other(format!("unsafe_repo_config: {} was replaced", dir.join(".git").display())));
+    if kind == "link" {
+        return replaced();
+    }
+    if !kind.is_empty() && kind != "dir" {
+        if let Some(gd) = kind.trim().strip_prefix("gitdir:").map(|g| dir.join(g.trim())) {
+            let (gd, root) = (crate::proc::canon(&gd).unwrap_or(gd), crate::proc::canon(dir).unwrap_or_else(|_| dir.to_path_buf()));
+            if gd.starts_with(&root) {
+                return Err(GitError::Other(format!("unsafe_repo_config: {} points inside the folder", dir.join(".git").display())));
+            }
         }
     }
     let o = crate::proc::cmd("git").current_dir(dir).args(["rev-parse", "--path-format=absolute", "--git-common-dir"]).output().ok();
     let k = o.filter(|o| o.status.success()).map(|o| PathBuf::from(String::from_utf8_lossy(&o.stdout).trim())).filter(|p| !p.as_os_str().is_empty());
     let k = k.map(|k| crate::proc::canon(&k).unwrap_or(k)).unwrap_or_else(|| dir.to_path_buf());
-    // a copy (pointer file) may be made again by the app in the same folder; it may not become another repository
     if let Some((was, old)) = &before {
-        if !was.is_empty() && was != "dir" && !kind.is_empty() && (kind == "dir" || k != *old) {
-            return Err(GitError::Other(format!("unsafe_repo_config: {} was replaced", dir.join(".git").display())));
+        if !was.is_empty() && was != "dir" && !kind.is_empty() && (kind == "dir" || k.to_string_lossy() != *old) {
+            return replaced();
         }
     }
-    let mut dirs = DIRS.lock().unwrap();
-    dirs.retain(|(d, _, _)| d != dir);
-    dirs.push((dir.to_path_buf(), kind, k.clone()));
+    let ks = k.to_string_lossy().to_string();
+    with_seen(|s| {
+        s.dirs.insert(name, (kind, ks));
+        ((), true)
+    });
     Ok(k)
 }
 
-/// The program-running config entries of `dir`'s repository, first seen in this run, per repository.
-static RUNS: std::sync::Mutex<Vec<(PathBuf, Vec<String>)>> = std::sync::Mutex::new(Vec::new());
-
-/// Refuses git in `dir` when its repository's own config was changed to run a program since the app first looked at
-/// it (an agent writing `.git/config`: a filter, a diff driver, a merge driver), or when the `.git` file of a
-/// worktree was pointed at a folder inside the worktree itself (a config the agent wrote). What the person set up
-/// themselves (a merge driver of a tool, git-lfs) is seen first and goes on working.
+/// Refuses git in `dir` when its repository's own config got a key that is not plain (it may make git run a
+/// program: a filter, a driver, a config hook, a remote program, gpg...) since the app first looked at it, or when
+/// a copy's `.git` was replaced (see `common_dir`). What the person had set up (a merge driver of a tool, git-lfs) is
+/// seen first and goes on working; to accept a key added since, remove it from `<app data>/git-seen.json`.
 fn check_repo_config(dir: &Path) -> Result<(), GitError> {
-    let dotgit = dir.join(".git");
-    if dotgit.is_file() {
-        let to = std::fs::read_to_string(&dotgit).unwrap_or_default();
-        if let Some(gd) = to.trim().strip_prefix("gitdir:").map(|g| dir.join(g.trim())) {
-            let (gd, root) = (crate::proc::canon(&gd).unwrap_or(gd), crate::proc::canon(dir).unwrap_or_else(|_| dir.to_path_buf()));
-            if gd.starts_with(&root) {
-                return Err(GitError::Other(format!("unsafe_repo_config: {} points inside the folder", dotgit.display())));
-            }
-        }
-    }
+    let key = common_dir(dir)?;
     let o = crate::proc::cmd("git").current_dir(dir).args(["config", "--list", "--show-scope"]).stdin(std::process::Stdio::null()).output();
     let Ok(o) = o else { return Ok(()) }; // no git: the real call says so
     let mut runs: Vec<String> = String::from_utf8_lossy(&o.stdout)
@@ -176,23 +223,22 @@ fn check_repo_config(dir: &Path) -> Result<(), GitError> {
         .filter_map(|l| l.split_once('\t'))
         .filter(|(scope, _)| matches!(*scope, "local" | "worktree"))
         .map(|(_, kv)| kv.to_string())
-        .filter(|kv| runs_program(kv.split('=').next().unwrap_or("")))
+        .filter(|kv| !plain_key(kv.split('=').next().unwrap_or("")))
         .collect();
     runs.sort();
-    let key = common_dir(dir)?;
-    let mut seen = RUNS.lock().unwrap();
-    match seen.iter().find(|(k, _)| *k == key) {
+    let key = key.to_string_lossy().to_string();
+    with_seen(|s| match s.runs.get(&key) {
         None => {
-            seen.push((key, runs));
-            Ok(())
+            s.runs.insert(key, runs);
+            (Ok(()), true)
         }
         // the same, or fewer (an entry removed runs nothing new)
-        Some((_, first)) if runs.iter().all(|r| first.contains(r)) => Ok(()),
-        Some((_, first)) => {
+        Some(first) if runs.iter().all(|r| first.contains(r)) => (Ok(()), false),
+        Some(first) => {
             let new: Vec<&str> = runs.iter().filter(|r| !first.contains(r)).map(|r| r.split('=').next().unwrap_or("")).collect();
-            Err(GitError::Other(format!("unsafe_repo_config: the repository config now runs a program ({})", new.join(", "))))
+            (Err(GitError::Other(format!("unsafe_repo_config: the repository config got {} since the app first looked at it", new.join(", ")))), false)
         }
-    }
+    })
 }
 
 struct Out {
