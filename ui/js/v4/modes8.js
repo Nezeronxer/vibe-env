@@ -68,9 +68,11 @@
       if (!env || !NS.store.env(env)) return;
       const sw = swarmOf(env), q = qualityOf(env), frozen = !!S().frozen;
       const pill = (cls, icon, label, on, title, fn) => h('button', { type: 'button', class: 'bm md8-p ' + cls + (on ? ' on' : ''), 'aria-pressed': String(on), title, onclick: fn }, h('i', { class: 'md8-dot', 'aria-hidden': 'true' }), icon, h('span', { text: label }));
+      // a switch answers the click at once; the save comes after (a second on disk) and draw() puts back what it holds, a failed one too
+      const flip = (save) => (e) => { const b = e.currentTarget, now = !b.classList.contains('on'); b.classList.toggle('on', now); b.setAttribute('aria-pressed', String(now)); save().then(draw).catch((er) => { draw(); fail(er); }); };
       el.append(h('div', { class: 'md8', role: 'group', 'aria-label': t('md8.title') },
-        pill('md8-swarm', ic('i-swarm'), sw ? t('md8.swarm_n', { n: sw.n || 3 }) : t('md8.swarm'), !!sw, t('md8.swarm_d'), () => setSwarm(env, sw ? null : swarmDefault()).then(draw).catch(fail)),
-        pill('md8-q', ic('i-check'), t('md8.quality'), q.on !== false, t('md8.quality_d'), () => setQuality(env, { on: q.on === false }).then(draw).catch(fail)),
+        pill('md8-swarm', ic('i-swarm'), sw ? t('md8.swarm_n', { n: sw.n || 3 }) : t('md8.swarm'), !!sw, t('md8.swarm_d'), flip(() => setSwarm(env, sw ? null : swarmDefault()))),
+        pill('md8-q', ic('i-check'), t('md8.quality'), q.on !== false, t('md8.quality_d'), flip(() => setQuality(env, { on: q.on === false }))),
         pill('md8-fact', ic('i-fact'), t('nav.factory'), !frozen, frozen ? t('md8.frozen') : t('nav.factory_d'), () => NS.shell.nav('factory', { env })),
         h('button', { type: 'button', class: 'bm md8-gear', title: t('md8.settings'), 'aria-label': t('md8.settings'), 'aria-haspopup': 'dialog', onclick: (e) => openPop(e.currentTarget, draw) }, ic('i-gear'))));
     };

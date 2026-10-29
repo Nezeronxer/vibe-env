@@ -256,7 +256,7 @@ fn git_limited(dir: &Path, args: &[&str], watch: &Path, err_file: &Path, out_fil
         .map_err(|e| KitError::CloneFailed(e.to_string()))?;
     let start = std::time::Instant::now();
     let kill = |child: &mut std::process::Child| {
-        let _ = Command::new("kill").args(["-KILL", &format!("-{}", child.id())]).status();
+        let _ = Command::new("kill").args(["-KILL", "--", &format!("-{}", child.id())]).status();
         let _ = child.kill();
         let _ = child.wait();
     };

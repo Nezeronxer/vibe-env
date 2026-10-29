@@ -12,7 +12,7 @@ fn ui(file: &str) -> String {
 /// `setting path -> (min, max)` of every number field of the settings screen: the rule and the call that saves it.
 fn screen_ranges() -> BTreeMap<String, Vec<(f64, f64)>> {
     let rule = regex::Regex::new(r"\{ min: ([\d.]+), max: ([\d.]+)").unwrap();
-    let save = regex::Regex::new(r"\b(commit|setL|setLook|setQ)\(\{ (\w+):").unwrap();
+    let save = regex::Regex::new(r"\b(commit|setL|setLook|setQ|setK)\(\{ (\w+):").unwrap();
     let text = ui("js/screens/settings.js");
     let lines: Vec<&str> = text.lines().collect();
     let mut out: BTreeMap<String, Vec<(f64, f64)>> = BTreeMap::new();
@@ -20,7 +20,7 @@ fn screen_ranges() -> BTreeMap<String, Vec<(f64, f64)>> {
         for c in rule.captures_iter(l) {
             // the save call is on the line of the rule or a few lines below it (a field with its own handler)
             let s = lines[i..(i + 4).min(lines.len())].iter().find_map(|l| save.captures(l)).unwrap_or_else(|| panic!("no save call for line {}: {l}", i + 1));
-            let prefix = match &s[1] { "setL" => "limits.", "setLook" => "look.", "setQ" => "quality.", _ => "" };
+            let prefix = match &s[1] { "setL" => "limits.", "setLook" => "look.", "setQ" => "quality.", "setK" => "keep.", _ => "" };
             let r = (c[1].parse().unwrap(), c[2].parse().unwrap());
             let v = out.entry(format!("{prefix}{}", &s[2])).or_default();
             if !v.contains(&r) {

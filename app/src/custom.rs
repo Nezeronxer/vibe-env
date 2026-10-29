@@ -52,7 +52,7 @@ impl Hub {
                 }
                 if t0.elapsed() >= wait {
                     // the whole group: the command may have started children
-                    let _ = std::process::Command::new("kill").args(["-KILL", &format!("-{}", child.id())]).status();
+                    let _ = std::process::Command::new("kill").args(["-KILL", "--", &format!("-{}", child.id())]).status();
                     let _ = child.kill();
                     let _ = child.wait();
                     break (None, true);

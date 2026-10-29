@@ -328,6 +328,7 @@
   def('notify', { reset: true, build(env, fx) {
     noticeCb = () => fx.alive.v && fx.redraw();
     const n = () => sget('notify'), setN = (patch) => commit({ notify: Object.assign({}, n(), patch) });
+    const keep = () => sget('keep'), setK = (patch) => commit({ keep: Object.assign({}, keep(), patch) });
     const blocked = (S.notices || {}).blocked;
     return [
       blocked ? h('div', { class: 'warnbox' }, ic('i-warn'), h('p', {}, h('b', { text: t('notice.blocked') + ' ' }), blocked)) : null,
@@ -338,6 +339,11 @@
       group(t('set.n.how'), [
         selectRow({ icon: 'l-volume-2', title: t('set.n.sound'), value: n().sound, options: [['soft_click', t('set.n.soft')], ['bell', t('set.n.bell')], ['none', t('set.n.none')]].map(([value, text]) => ({ value, text })), apply: (v) => setN({ sound: v }) }),
         timeRow({ icon: 'l-moon', title: t('set.n.quiet'), desc: t('set.n.quiet_d'), from: n().quiet_from, to: n().quiet_to, apply: (a, b) => setN({ quiet_from: a, quiet_to: b }) }),
+      ]),
+      // keep.* had a range in the core (SETTING_RANGES) but no place on any screen: only the config file reached them
+      group(t('set.n.keep'), [
+        numRow({ icon: 'l-clock', title: t('set.n.away'), desc: t('set.n.away_d'), prefix: t('set.n.after'), value: keep().summary_after_min, unit: t('set.min'), int: true, rule: { min: 1, max: 1440, int: true }, apply: (v) => setK({ summary_after_min: v }) }),
+        numRow({ icon: 'l-package', title: t('set.n.archive'), desc: t('set.n.archive_d'), prefix: t('set.n.after'), value: keep().archive_days, unit: t('set.days'), int: true, rule: { min: 1, max: 3650, int: true }, apply: (v) => setK({ archive_days: v }) }),
       ]),
     ].filter(Boolean);
   } });
