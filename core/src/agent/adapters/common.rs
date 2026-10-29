@@ -114,6 +114,13 @@ fn reset_time(text: &str, now: DateTime<Local>) -> Option<DateTime<Local>> {
 
 /// UTC offset of an IANA zone now, from the system tz database (`TZ=<zone> date +%z`).
 fn zone_offset(zone: &str) -> Option<FixedOffset> {
+    // `date` says +0000 for a zone it does not know (a typo, no tzdata in a minimal system): the reset time went 3 h
+    // off without a word; only a zone the database has counts, anything else is local time as documented above
+    let known = std::env::var_os("TZDIR").map(std::path::PathBuf::from).into_iter().chain(["/usr/share/zoneinfo".into(), "/var/db/timezone/zoneinfo".into()])
+        .any(|d: std::path::PathBuf| !zone.contains("..") && d.join(zone).is_file());
+    if !known {
+        return None;
+    }
     let out = std::process::Command::new("date").arg("+%z").env("TZ", zone).output().ok()?;
     let s = String::from_utf8(out.stdout).ok()?;
     let s = s.trim();

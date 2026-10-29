@@ -522,8 +522,9 @@ pub fn revert(repo: &Path, base: &str, sha: &str) -> Result<String, GitError> {
         return Err(GitError::Conflict(format!("{}\n{}", o.stdout, o.stderr).trim().to_string()));
     } else if o.ok {
         o.stdout.lines().next().unwrap_or("").to_string()
-    } else if o.stderr.contains("unknown option") {
-        // git before 2.40 (Debian 12, Ubuntu 22.04) has no --merge-base: the same three-way merge in a scratch index
+    } else if o.stderr.contains("unknown option") || o.stderr.contains("usage: git merge-tree") {
+        // git before 2.40 has no --merge-base (2.38-2.39: «unknown option», Debian 12) and before 2.38 no --write-tree
+        // at all (the old usage line, Ubuntu 22.04): the same three-way merge in a scratch index
         revert_tree_compat(repo, sha, &old, &parent)?
     } else {
         return Err(GitError::Other(format!("git merge-tree: {}", o.stderr)));
@@ -536,10 +537,17 @@ pub fn revert(repo: &Path, base: &str, sha: &str) -> Result<String, GitError> {
 }
 
 /// The tree of `ours` with `base`→`theirs` applied, for a git without `merge-tree --merge-base`: a three-way
-/// `read-tree` in a scratch index, then a line merge of each file both sides changed. Files and the real index stay.
-fn revert_tree_compat(repo: &Path, base: &str, ours: &str, theirs: &str) -> Result<String, GitError> {
+/// `read-tree` in a scratch index, then a line merge of each regular file both sides changed (a submodule, a symlink
+/// or a file deleted on one side is a conflict, as merge-tree says). Files and the real index stay.
+#[doc(hidden)]
+pub fn revert_tree_compat(repo: &Path, base: &str, ours: &str, theirs: &str) -> Result<String, GitError> {
+    static SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    // one name per call: two reverts in one repository at once (history and a task) must not share the scratch
+    let tag = format!("{}-{}", std::process::id(), SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed));
     let gd = hidden_list(repo).ok_or_else(|| GitError::Other("not a repository".into()))?;
-    let ix = TmpIndex(gd.with_file_name(format!("ns-revert-index-{}", std::process::id())));
+    let ix = TmpIndex(gd.with_file_name(format!("ns-revert-index-{tag}")));
+    let tmp = ScratchDir(gd.with_file_name(format!("ns-revert-files-{tag}")));
+    std::fs::create_dir_all(&tmp.0).map_err(|e| GitError::Other(format!("revert scratch: {e}")))?;
     ix.run(repo, &["read-tree", "-i", "-m", "--aggressive", base, ours, theirs])?;
     // "<mode> <oid> <stage>\t<path>" per stage of each path both sides changed
     let mut paths: Vec<(String, [Option<(String, String)>; 3])> = vec![];
@@ -552,15 +560,23 @@ fn revert_tree_compat(repo: &Path, base: &str, ours: &str, theirs: &str) -> Resu
         }
         paths.last_mut().unwrap().1[stage - 1] = Some((f[0].to_string(), f[1].to_string()));
     }
-    let tmp = tempfile_dir(&gd)?;
+    let regular = |m: &str| m == "100644" || m == "100755";
     for (path, st) in &paths {
         let [Some(b), Some(o), Some(t)] = st else { return Err(GitError::Conflict(format!("CONFLICT (modify/delete): {path}"))) };
-        let files: Vec<PathBuf> = [b, o, t].iter().enumerate().map(|(i, (_, oid))| {
-            let f = tmp.join(format!("{i}"));
-            let blob = git_cmd(repo).args(["cat-file", "blob", oid]).output().map(|x| x.stdout).unwrap_or_default();
-            std::fs::write(&f, blob).map(|_| f)
-        }).collect::<Result<_, _>>().map_err(|e| GitError::Other(format!("revert scratch: {e}")))?;
-        let m = git_cmd(repo).arg("merge-file").arg("-p").args(&files[1..2]).args(&files[0..1]).args(&files[2..3]).output()
+        if ![b, o, t].iter().all(|(m, _)| regular(m)) {
+            return Err(GitError::Conflict(format!("CONFLICT (submodule or symlink): {path}")));
+        }
+        let mut files = vec![];
+        for (i, (_, oid)) in [b, o, t].iter().enumerate() {
+            let out = git_cmd(repo).args(["cat-file", "blob", oid]).output().map_err(|e| GitError::Other(format!("git cat-file: {e}")))?;
+            if !out.status.success() {
+                return Err(GitError::Other(format!("git cat-file blob {oid}: {}", String::from_utf8_lossy(&out.stderr).trim())));
+            }
+            let f = tmp.0.join(format!("{i}"));
+            std::fs::write(&f, &out.stdout).map_err(|e| GitError::Other(format!("revert scratch: {e}")))?;
+            files.push(f);
+        }
+        let m = git_cmd(repo).arg("merge-file").arg("-p").arg(&files[1]).arg(&files[0]).arg(&files[2]).output()
             .map_err(|e| GitError::Other(format!("git merge-file: {e}")))?;
         if !m.status.success() {
             return Err(GitError::Conflict(format!("CONFLICT (content): {path}")));
@@ -571,14 +587,15 @@ fn revert_tree_compat(repo: &Path, base: &str, ours: &str, theirs: &str) -> Resu
         ix.run(repo, &["update-index", "--force-remove", "--", path])?;
         ix.run(repo, &["update-index", "--add", "--cacheinfo", &format!("{mode},{oid},{path}")])?;
     }
-    let _ = std::fs::remove_dir_all(&tmp);
     ix.run(repo, &["write-tree"])
 }
 
-fn tempfile_dir(gd: &Path) -> Result<PathBuf, GitError> {
-    let d = gd.with_file_name(format!("ns-revert-files-{}", std::process::id()));
-    std::fs::create_dir_all(&d).map_err(|e| GitError::Other(format!("revert scratch: {e}")))?;
-    Ok(d)
+/// The scratch files of `revert_tree_compat`, gone on every way out (a conflict left copies of the files in .git).
+struct ScratchDir(PathBuf);
+impl Drop for ScratchDir {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
 }
 
 /// Plain push of `branch` to origin. There is deliberately no force variant.

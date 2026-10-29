@@ -678,3 +678,59 @@ fn a_changed_tracked_key_is_seen_by_the_merge_check_and_a_deleted_one_is_not() {
     commit_all(&wt, "work", true).unwrap();
     assert_eq!(protected_committed(&wt, "main").unwrap(), ["server.key"]);
 }
+
+// ---- revert on a git without `merge-tree --merge-base` (before 2.40): the scratch-index path, checked against merge-tree ----
+
+fn scratch_left(repo: &Path) -> Vec<String> {
+    fs::read_dir(repo.join(".git")).unwrap().filter_map(|e| e.ok()).map(|e| e.file_name().to_string_lossy().into_owned()).filter(|n| n.starts_with("ns-revert-")).collect()
+}
+
+#[test]
+fn old_git_revert_gives_the_tree_merge_tree_gives_and_merges_lines_of_one_file() {
+    let (_d, repo) = new_repo();
+    commit_in(&repo, "a.txt", "one\ntwo\nthree\nfour\nfive\n", "lines");
+    commit_in(&repo, "a.txt", "one\nTWO\nthree\nfour\nfive\n", "edit two");
+    let sha = g(&repo, &["rev-parse", "HEAD"]);
+    commit_in(&repo, "a.txt", "one\nTWO\nthree\nfour\nFIVE\n", "later edit five");
+    fs::write(repo.join("b.txt"), "b\n").unwrap();
+    g(&repo, &["add", "-A"]);
+    g(&repo, &["commit", "-q", "-m", "add b"]);
+    let (main, parent) = (g(&repo, &["rev-parse", "main"]), g(&repo, &["rev-parse", &format!("{sha}^")]));
+    let got = revert_tree_compat(&repo, &sha, &main, &parent).unwrap();
+    // the reference only where this git has it (2.40+); on an older one the content check below is the test
+    let want = Command::new("git").current_dir(&repo).args(["merge-tree", "--write-tree", &format!("--merge-base={sha}"), &main, &parent]).output().unwrap();
+    if want.status.success() {
+        assert_eq!(got, String::from_utf8_lossy(&want.stdout).lines().next().unwrap());
+    }
+    assert_eq!(g(&repo, &["show", &format!("{got}:a.txt")]), "one\ntwo\nthree\nfour\nFIVE");
+    assert!(scratch_left(&repo).is_empty(), "{:?}", scratch_left(&repo));
+}
+
+#[test]
+fn old_git_revert_of_a_line_changed_again_is_a_conflict_and_leaves_no_scratch() {
+    let (_d, repo) = new_repo();
+    commit_in(&repo, "a.txt", "task\n", "edit a");
+    let sha = g(&repo, &["rev-parse", "HEAD"]);
+    commit_in(&repo, "a.txt", "later human edit\n", "later");
+    let (main, parent) = (g(&repo, &["rev-parse", "main"]), g(&repo, &["rev-parse", &format!("{sha}^")]));
+    assert!(matches!(revert_tree_compat(&repo, &sha, &main, &parent), Err(GitError::Conflict(_))));
+    assert!(scratch_left(&repo).is_empty(), "{:?}", scratch_left(&repo));
+}
+
+#[test]
+fn old_git_revert_of_a_submodule_changed_twice_is_a_conflict_not_an_empty_blob() {
+    let (_d, repo) = new_repo();
+    let gitlink = |oid: &str, msg: &str| {
+        g(&repo, &["update-index", "--add", "--cacheinfo", &format!("160000,{oid},sub")]);
+        g(&repo, &["commit", "-q", "-m", msg]);
+    };
+    let (a, b, c) = ("1111111111111111111111111111111111111111", "2222222222222222222222222222222222222222", "3333333333333333333333333333333333333333");
+    gitlink(a, "sub at A");
+    gitlink(b, "sub to B");
+    let sha = g(&repo, &["rev-parse", "HEAD"]);
+    gitlink(c, "sub to C");
+    let (main, parent) = (g(&repo, &["rev-parse", "main"]), g(&repo, &["rev-parse", &format!("{sha}^")]));
+    let r = revert_tree_compat(&repo, &sha, &main, &parent);
+    assert!(matches!(r, Err(GitError::Conflict(_))), "{r:?}");
+    assert!(scratch_left(&repo).is_empty());
+}

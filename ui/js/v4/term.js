@@ -328,8 +328,9 @@
       } catch (e) {
         const msg = NS.api.errText(e);
         if (/term_not_found/.test(msg) && !fresh) return restore();
-        // the folder is gone (an agent copy removed outside the tab): say so plainly, nothing to start again here
-        if (/bad_cwd/.test(msg)) { running = false; exitCode = 0; note(t('term.cwd_gone'), 'bad'); setState('done'); drawGone(); return; }
+        // the folder is not there (a copy removed outside the tab, a disk unplugged): say so plainly, without guessing why;
+        // «Запустить снова» for a folder that comes back
+        if (/bad_cwd/.test(msg)) { running = false; exitCode = -1; note(t('term.cwd_gone'), 'bad'); setState('fail'); drawGone(); return; }
         running = false; exitCode = -1;
         note(t('term.pty_failed', { why: errText(e) }), 'bad');
         setState('fail');
@@ -361,7 +362,8 @@
     }
     function drawGone() {
       clear(dead).append(h('div', { class: 't-dead-card' }, h('b', { text: t('term.cwd_gone_t') }), h('p', { text: pane.cwd || '' }),
-        h('div', { class: 't-dead-b' }, h('button', { type: 'button', class: 'btn primary sm t-dead-x', text: t('term.dead_close'), onclick: () => { if (NS.tabs && NS.tabs.closePane) NS.tabs.closePane(pane.id); } }))));
+        h('div', { class: 't-dead-b' }, h('button', { type: 'button', class: 'btn sm t-dead-run', text: t('term.dead_run'), onclick: () => { restart(); term.focus(); } }),
+          h('button', { type: 'button', class: 'btn primary sm t-dead-x', text: t('term.dead_close'), onclick: () => { if (NS.tabs && NS.tabs.closePane) NS.tabs.closePane(pane.id); } }))));
       dead.hidden = false;
     }
     function exited(code) {

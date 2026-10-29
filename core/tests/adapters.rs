@@ -354,8 +354,15 @@ fn limit_with_epoch_clock_and_relative_times() {
     let now = Local::now();
     let t = limit_time("You've hit your limit \u{b7} resets 3pm (Europe/Moscow)");
     let utc = t.with_timezone(&chrono::Utc);
-    assert_eq!((utc.hour(), utc.minute()), (12, 0));
+    // the zone needs the system tz database (a minimal Linux image has none: then it is local time, checked below)
+    if std::path::Path::new("/usr/share/zoneinfo/Europe/Moscow").is_file() {
+        assert_eq!((utc.hour(), utc.minute()), (12, 0));
+    }
     assert!(t > now && t <= now + Duration::hours(24));
+
+    // a zone the database does not know is local time, not UTC (`date` says +0000 for it)
+    let t = limit_time("limit reached, resets 3pm (Nowhere/Fake)");
+    assert_eq!((t.hour(), t.minute()), (15, 0));
 
     // no zone in the text -> local time
     let t = limit_time("limit reached, resets 3pm");
