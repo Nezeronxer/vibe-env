@@ -200,9 +200,19 @@ impl Ctx {
     /// with its old name too.
     pub fn revert_file(&self, file: &str) -> Result<(), String> {
         let rel = self.rel(file)?;
+        // an untracked folder in the list is a nested git repository (status shows it as one entry): «revert» deleted
+        // the whole clone with its history; it is the person's, not an agent's new file
+        let full = self.root.join(rel.trim_end_matches('/'));
+        if full.is_dir() && !run(&self.root, &["cat-file", "-e", &format!("{}:{}", self.since, rel.trim_end_matches('/'))]).map(|o| o.ok).unwrap_or(false) {
+            return Err(format!("nested_repo: {rel}"));
+        }
         let mut paths = vec![rel.clone()];
         if has_commit(&self.root) {
             if let Some(old) = self.rename_origin(&rel) {
+                // the old name holds a new file now (renamed, then a new one made there): putting the old one back overwrote it
+                if self.root.join(&old).symlink_metadata().is_ok() {
+                    return Err(format!("path_taken: {old}"));
+                }
                 paths.push(old);
             }
         }
@@ -275,6 +285,8 @@ pub fn fast_forward_base(repo: &Path, base: &str, wt: &Path) -> Result<(bool, St
     match advance(repo, base, &old, &new) {
         Ok(()) => Ok((true, new)),
         Err(GitError::AdvanceBlocked(m)) if m.ends_with("uncommitted changes") => Err("base_dirty".into()),
+        Err(GitError::AdvanceBlocked(m)) if m.starts_with("untracked files would be overwritten: ") => Err(format!("base_untracked: {}", m.trim_start_matches("untracked files would be overwritten: "))),
+        Err(GitError::AdvanceBlocked(m)) if m.starts_with("a rebase is in progress") => Err("base_rebasing".into()),
         Err(GitError::AdvanceBlocked(_)) | Err(GitError::BaseMoved(_)) => Err("not_fast_forward".into()),
         Err(e) => Err(gf(e)),
     }

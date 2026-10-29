@@ -1201,3 +1201,36 @@ fn a_dash_line_that_is_not_a_closing_fence_holds_the_skill() {
     assert_eq!(held_kind(&p, "skill:long"), Some(HeldKind::ScriptedSkill));
     assert_eq!(held_kind(&p, "skill:crlf"), None, "trailing spaces and \\r still close it");
 }
+
+#[test]
+fn rollback_keeps_a_replaced_file_the_person_edited_since_and_says_so() {
+    let e = env();
+    let kit = kit_from(&e, &[Group::Rules]);
+    let c = e.home.join(".claude");
+    put(&c.join("CLAUDE.md"), "# Mine before install\n");
+    let k = kits(&e);
+    let plan = k.preview("claude", KitSource::Folder(kit), &Scope::Global).unwrap();
+    let id = k.install(&plan, &Choices::default()).unwrap();
+    let edited = format!("{}\n## MY NEW RULES written after install\n", fs::read_to_string(c.join("CLAUDE.md")).unwrap());
+    fs::write(c.join("CLAUDE.md"), &edited).unwrap();
+    let rep = k.rollback(&id).unwrap();
+    assert_eq!(fs::read_to_string(c.join("CLAUDE.md")).unwrap(), edited, "weeks of edits are not replaced by the old bytes");
+    assert!(!rep.kept_files.is_empty(), "the rollback says the file was kept");
+}
+
+#[test]
+fn rolling_back_an_older_kit_does_not_take_away_a_newer_one() {
+    let e = env();
+    let kit = kit_from(&e, &[Group::Rules]);
+    let c = e.home.join(".claude");
+    put(&c.join("CLAUDE.md"), "# original\n");
+    let k = kits(&e);
+    let a = k.install(&k.preview("claude", KitSource::Folder(kit), &Scope::Global).unwrap(), &Choices::default()).unwrap();
+    let src = env();
+    put(&src.home.join(".claude/CLAUDE.md"), "# kit B rules\n");
+    let kit_b = src.out.join("kb");
+    kits(&src).export("claude", &sel(&[Group::Rules]), ExportDest::Folder(kit_b.clone())).unwrap();
+    k.install(&k.preview("claude", KitSource::Folder(kit_b), &Scope::Global).unwrap(), &Choices::default()).unwrap();
+    k.rollback(&a).unwrap();
+    assert_eq!(fs::read_to_string(c.join("CLAUDE.md")).unwrap(), "# kit B rules\n", "B is still installed");
+}

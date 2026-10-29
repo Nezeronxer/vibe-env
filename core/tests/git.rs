@@ -734,3 +734,23 @@ fn old_git_revert_of_a_submodule_changed_twice_is_a_conflict_not_an_empty_blob()
     assert!(matches!(r, Err(GitError::Conflict(_))), "{r:?}");
     assert!(scratch_left(&repo).is_empty());
 }
+
+#[test]
+fn the_base_does_not_move_under_a_rebase_the_person_has_going() {
+    let (_d, repo) = new_repo();
+    // a global git template may install hooks that write files into every repo (graphify): they block the checkouts here
+    g(&repo, &["config", "core.hooksPath", "/dev/null"]);
+    let _ = fs::remove_dir_all(repo.join("graphify-out"));
+    commit_in(&repo, "a.txt", "task\n", "edit a");
+    let sha = g(&repo, &["rev-parse", "HEAD"]);
+    g(&repo, &["checkout", "-q", "-b", "topic", &format!("{sha}^")]);
+    commit_in(&repo, "a.txt", "topic\n", "topic edit");
+    // the person rebases main onto topic and stops on the conflict: HEAD is detached, main is checked out nowhere
+    g(&repo, &["checkout", "-q", "main"]);
+    let o = Command::new("git").current_dir(&repo).args(["rebase", "topic"]).output().unwrap();
+    assert!(rebase_in_progress(&repo), "{}\n{}", String::from_utf8_lossy(&o.stdout), String::from_utf8_lossy(&o.stderr));
+    let before = g(&repo, &["rev-parse", "refs/heads/main"]);
+    assert!(revert(&repo, "main", &sha).is_err());
+    assert_eq!(g(&repo, &["rev-parse", "refs/heads/main"]), before, "main stays where the rebase expects it");
+    let _ = Command::new("git").current_dir(&repo).args(["rebase", "--abort"]).output();
+}

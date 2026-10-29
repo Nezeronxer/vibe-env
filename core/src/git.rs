@@ -466,6 +466,13 @@ fn advance(repo: &Path, base: &str, old: &str, new: &str) -> Result<(), GitError
         if is_dirty(&dir) {
             return Err(GitError::AdvanceBlocked(format!("{base} has uncommitted changes")));
         }
+        // a file the merge adds where the person keeps an untracked or ignored one of their own (a local.json the agent
+        // un-ignored): `merge --ff-only` overwrites ignored files without a word, so it is refused here, nothing touched
+        let added = run(&dir, &["diff", "-z", "--name-only", "--no-renames", "--diff-filter=A", old, new]).map(|o| o.stdout).unwrap_or_default();
+        let taken: Vec<&str> = added.split('\0').filter(|p| !p.is_empty() && dir.join(p).symlink_metadata().is_ok()).collect();
+        if !taken.is_empty() {
+            return Err(GitError::AdvanceBlocked(format!("untracked files would be overwritten: {}", taken.join(", "))));
+        }
         let o = run(&dir, &["merge", "--ff-only", "-q", new])?;
         if !o.ok {
             return Err(if tip_is_old() {
@@ -475,6 +482,11 @@ fn advance(repo: &Path, base: &str, old: &str, new: &str) -> Result<(), GitError
             });
         }
     } else {
+        // a rebase of the base going on in the main copy (HEAD detached, so `base` looks checked out nowhere): moving the
+        // ref under it left the person's rebase unable to finish
+        if rebase_in_progress(repo) {
+            return Err(GitError::AdvanceBlocked(format!("a rebase is in progress in {}", repo.display())));
+        }
         let o = run(repo, &["update-ref", &r, new, old])?;
         if !o.ok {
             return Err(if tip_is_old() { GitError::Other(format!("update-ref {r}: {}", o.stderr)) } else { moved() });

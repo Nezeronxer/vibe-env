@@ -242,8 +242,10 @@ impl Snaps {
             // the read and the write of a shared config under the app's one lock (see kits::CONFIG_LOCK)
             let _w = (!e.conf.is_empty()).then(|| super::CONFIG_LOCK.lock().unwrap_or_else(|x| x.into_inner()));
             let cur = std::fs::read(&e.path).ok();
-            // a file new to the install that no longer holds what the install wrote
-            let touched = careful && e.backup.is_none() && e.written.as_ref().is_some_and(|h| cur.as_deref().is_some_and(|c| source::sha256_hex(c) != *h));
+            // a file that no longer holds what the install wrote: the person (or a later kit) changed it since. Before,
+            // only a file new to the install was kept; one that existed before got its old bytes back over weeks of edits
+            // (a config file keeps its own key-by-key rules below; the CLI rewrites those all the time)
+            let touched = careful && (e.backup.is_none() || e.conf.is_empty()) && e.written.as_ref().is_some_and(|h| cur.as_deref().is_some_and(|c| source::sha256_hex(c) != *h));
             if touched {
                 kept.files.push(e.path.clone());
             }
@@ -281,6 +283,7 @@ impl Snaps {
                 continue;
             }
             match &e.backup {
+                Some(_) if touched => {}
                 Some(b) => {
                     let bytes = std::fs::read(self.dir(&m.id).join(b)).map_err(io)?;
                     write_atomic(&e.path, &bytes, e.mode)?;

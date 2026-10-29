@@ -437,3 +437,49 @@ fn a_gitattributes_the_base_lacks_is_kept_out_of_the_panel_and_the_merge() {
     fs::write(own.join(".gitattributes"), "*.png binary\n*.jpg binary\n").unwrap();
     assert_eq!(r.files(&own), vec![row(".gitattributes", "M", 1, 0)]);
 }
+
+// ---- review 30.10.2026: what the panel and the merge must not destroy ----
+
+#[test]
+fn revert_refuses_a_nested_git_repository_and_keeps_it() {
+    let r = rig();
+    let n = r.env.repo.join("vendor/lib");
+    fs::create_dir_all(&n).unwrap();
+    g(&n, &["init", "-q"]);
+    fs::write(n.join("history.txt"), "committed work\n").unwrap();
+    g(&n, &["add", "-A"]);
+    g(&n, &["-c", "user.name=x", "-c", "user.email=x@x", "commit", "-q", "-m", "c"]);
+    let c = r.e.agent_changes(&r.env.repo).unwrap();
+    let f = c.files.iter().find(|f| f.path.contains("vendor")).expect("the panel lists it").path.clone();
+    assert!(r.e.agent_revert_file(&r.env.repo, &f).unwrap_err().starts_with("nested_repo"));
+    assert!(n.join(".git").exists() && n.join("history.txt").exists(), "the clone stays with its history");
+}
+
+#[test]
+fn revert_of_a_rename_does_not_overwrite_a_new_file_at_the_old_name() {
+    let r = rig();
+    let repo = &r.env.repo;
+    fs::write(repo.join("b.txt"), "old b\n").unwrap();
+    g(repo, &["add", "-A"]);
+    g(repo, &["commit", "-q", "-m", "b"]);
+    g(repo, &["mv", "b.txt", "b2.txt"]);
+    fs::write(repo.join("b.txt"), "NEW WORK at old name\n").unwrap();
+    assert!(r.e.agent_revert_file(repo, "b2.txt").unwrap_err().starts_with("path_taken"));
+    assert_eq!(fs::read_to_string(repo.join("b.txt")).unwrap(), "NEW WORK at old name\n");
+}
+
+#[test]
+fn merge_refuses_to_overwrite_an_ignored_file_of_the_person() {
+    let r = rig();
+    let repo = &r.env.repo;
+    fs::write(repo.join(".gitignore"), "local.json\n").unwrap();
+    g(repo, &["add", "-A"]);
+    g(repo, &["commit", "-q", "-m", "gi"]);
+    let (path, _) = r.term("cfg");
+    fs::write(repo.join("local.json"), "{\"my\":\"settings\"}\n").unwrap();
+    fs::write(path.join(".gitignore"), "").unwrap();
+    fs::write(path.join("local.json"), "{\"agent\":1}\n").unwrap();
+    let err = r.e.agent_merge(&path, "m").unwrap_err();
+    assert!(err.starts_with("base_untracked") && err.contains("local.json"), "{err}");
+    assert_eq!(fs::read_to_string(repo.join("local.json")).unwrap(), "{\"my\":\"settings\"}\n");
+}
