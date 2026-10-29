@@ -46,7 +46,7 @@
     // spread: skills and MCP of one CLI in every other installed one (settings, "Основное")
     'spread.title': 'Скиллы и MCP во всех агентах', 'spread.desc': 'Что стоит в одном CLI, при запуске появляется в остальных установленных. Их своё не трогается.',
     'spread.none': 'Раскладки ещё не было', 'spread.last': '{date}: разложено {n}, пропущено {skip}', 'spread.undone': '{date}: раскладка откачена',
-    'spread.now': 'Разложить сейчас', 'spread.undo': 'Откатить последнюю', 'spread.undo_done': 'Раскладка откачена', 'spread.why': 'Что пропущено и почему', 'spread.all_skill': 'все скиллы', 'spread.all_mcp': 'все MCP',
+    'spread.now': 'Разложить сейчас', 'spread.undo': 'Откатить последнюю', 'spread.undo_done': 'Раскладка откачена', 'spread.undo_off': 'Раскладка откачена, автоматическая выключена - при запуске не вернётся', 'spread.why': 'Что пропущено и почему', 'spread.all_skill': 'все скиллы', 'spread.all_mcp': 'все MCP',
     'spread.r_conflict': 'имя уже занято другим', 'spread.r_layout_unverified': 'у этого агента место не подтверждено', 'spread.r_unparsed': 'конфиг не читается (комментарии?)',
     'spread.r_unsupported_field': 'настройка есть только у этого агента', 'spread.r_secret_inline': 'секрет прямо в команде или адресе', 'spread.r_secret_name': 'неподходящее имя переменной',
     'spread.r_secret_conflict': 'под этим именем уже другой секрет', 'spread.r_secret_file': 'файл с секретом не копируется', 'spread.r_symlink_outside': 'ссылка за пределы скилла', 'spread.r_symlink_dir': 'папка-ссылка внутри скилла не копируется',
@@ -89,7 +89,7 @@
     'fmt.of': 'of', 'lim.wday': 'Day', 'lim.wmonth': 'Month',
     'spread.title': 'Skills and MCP in every agent', 'spread.desc': 'What one CLI has shows up in the other installed ones at start. Nothing of theirs is replaced.',
     'spread.none': 'Nothing spread yet', 'spread.last': '{date}: {n} added, {skip} skipped', 'spread.undone': '{date}: spread undone',
-    'spread.now': 'Spread now', 'spread.undo': 'Undo the last one', 'spread.undo_done': 'Spread undone', 'spread.why': 'What was skipped and why', 'spread.all_skill': 'all skills', 'spread.all_mcp': 'all MCP',
+    'spread.now': 'Spread now', 'spread.undo': 'Undo the last one', 'spread.undo_done': 'Spread undone', 'spread.undo_off': 'Spread undone and the automatic one is off - it will not come back at start', 'spread.why': 'What was skipped and why', 'spread.all_skill': 'all skills', 'spread.all_mcp': 'all MCP',
     'spread.r_conflict': 'the name is taken by something else', 'spread.r_layout_unverified': 'this agent has no confirmed place for it', 'spread.r_unparsed': 'its config does not parse (comments?)',
     'spread.r_unsupported_field': 'a setting only this agent has', 'spread.r_secret_inline': 'a secret right in the command or address', 'spread.r_secret_name': 'the variable name is not allowed',
     'spread.r_secret_conflict': 'another secret already has this name', 'spread.r_secret_file': 'a secret file is not copied', 'spread.r_symlink_outside': 'a link outside the skill', 'spread.r_symlink_dir': 'a linked folder inside the skill is not copied',

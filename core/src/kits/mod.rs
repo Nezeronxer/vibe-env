@@ -14,6 +14,12 @@ mod source;
 mod spread;
 mod toml_lite;
 mod units;
+pub use units::json_in_style;
+
+/// One read-modify-write of a shared config file at a time in the whole app: a kit install or a spread and Claude's
+/// trust marks (app/src/claudetrust.rs) all rewrite ~/.claude.json, and one writer between the other's read and rename
+/// lost the other's change (a server or a trust mark gone without a word).
+pub static CONFIG_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
 pub(crate) use scrub::is_secret_file;
 pub(crate) use source::{read_tree, safe_rel, scratch_dir, sha256_hex, with_clone};
@@ -1038,6 +1044,7 @@ impl Kits {
             let res = if ops.is_empty() {
                 snap::write_atomic(p, b, mode).map(|_| source::sha256_hex(b))
             } else {
+                let _w = CONFIG_LOCK.lock().unwrap_or_else(|e| e.into_inner());
                 let refs: Vec<&ConfOp> = ops.iter().collect();
                 units::apply_conf(std::fs::read(p).ok().as_deref(), &refs).and_then(|nb| snap::write_atomic(p, &nb, mode).map(|_| source::sha256_hex(&nb)))
             };

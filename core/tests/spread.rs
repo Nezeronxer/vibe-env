@@ -283,3 +283,78 @@ fn the_audit_cases_are_closed() {
     let toml = fs::read_to_string(e2.home.join(".codex/config.toml")).unwrap();
     assert!(r2.added.iter().any(|a| a.name == "del") && toml.contains("a\\u007Fb") && !toml.contains('\u{7f}'), "{toml}");
 }
+
+// ---- review 29.10.2026: the cases a second reader reproduced ----
+
+#[test]
+fn a_secret_without_a_secret_name_goes_to_the_keyring_or_the_server_stays_home() {
+    let e = env();
+    put(&e.home.join(".claude.json"), &json!({ "mcpServers": {
+        "pg": { "command": "pg-mcp", "env": { "DB_PASS": "s3cr3tPassw0rdValue", "MYSQL_PWD": "xK9mQ2vL7pR4" } },
+        "files": { "command": "fs-mcp", "env": { "DATA_DIR": "/srv/pg/data", "MODE": "ro" } },
+        "kw": { "command": "kw-mcp", "args": ["--api-key", "a8f3k2m9q7x1z5c4v6b0n2"] },
+        "ck": { "type": "http", "url": "https://x.example.com/mcp", "headers": { "Cookie": "session=8f7d6c5b4a39281706f5e4d3c2b1a0ff" } }
+    } }).to_string());
+    put(&e.home.join(".qwen/settings.json"), "{}\n");
+    put(&e.home.join(".codex/config.toml"), "model = \"o3\"\n");
+    let ring = FakeKeyring::default();
+    let r = kits(&e, &ring).spread(&["claude", "qwen", "codex"]);
+    let (q, c) = (fs::read_to_string(e.home.join(".qwen/settings.json")).unwrap(), fs::read_to_string(e.home.join(".codex/config.toml")).unwrap());
+    for secret in ["s3cr3tPassw0rdValue", "xK9mQ2vL7pR4", "a8f3k2m9q7x1z5c4v6b0n2", "8f7d6c5b4a39281706f5e4d3c2b1a0ff"] {
+        assert!(!q.contains(secret) && !c.contains(secret), "{secret} copied as text\n{q}\n{c}");
+    }
+    assert!(q.contains("/srv/pg/data"), "a path is no secret and is copied as it is\n{q}");
+    // a password under a name the keyring does not take (no _TOKEN/_KEY…) keeps its server at home; an argument after
+    // --api-key cannot become a reference: the same
+    let skipped = |n: &str| r.skipped.iter().filter(|s| s.name == n).map(|s| s.reason.as_str()).collect::<Vec<_>>();
+    assert_eq!(skipped("pg"), ["secret_name", "secret_name"]);
+    assert_eq!(skipped("kw"), ["secret_inline", "secret_inline"]);
+    assert!(!skipped("ck").is_empty(), "the cookie server is not copied with its cookie");
+}
+
+#[test]
+fn a_codex_server_written_with_quotes_or_spaces_is_not_declared_twice() {
+    for toml in ["model = \"o3\"\n\n[\"mcp_servers\".gh]\ncommand = \"npx\"\n", "model = \"o3\"\n\n[mcp_servers . gh]\ncommand = \"npx\"\n", "model = \"o3\"\n\"mcp_servers\".gh.command = \"npx\"\n"] {
+        let e = env();
+        put(&e.home.join(".claude.json"), &json!({ "mcpServers": { "gh": { "command": "npx", "args": ["-y", "new"] } } }).to_string());
+        put(&e.home.join(".codex/config.toml"), toml);
+        let ring = FakeKeyring::default();
+        kits(&e, &ring).spread(&["claude", "codex"]);
+        assert_eq!(fs::read_to_string(e.home.join(".codex/config.toml")).unwrap(), toml, "the file was touched");
+    }
+}
+
+#[test]
+fn a_deeply_nested_codex_config_does_not_crash_the_app() {
+    let e = env();
+    put(&e.home.join(".claude.json"), &json!({ "mcpServers": { "fs": { "command": "node" } } }).to_string());
+    put(&e.home.join(".codex/config.toml"), &format!("[mcp_servers.x]\ncommand = \"a\"\nargs = {}{}\n", "[".repeat(50000), "]".repeat(50000)));
+    let (h, d) = (e.home.clone(), e.data.clone());
+    let r = std::thread::Builder::new().stack_size(2 << 20).spawn(move || Kits::new(&h, &d).with_secret_store(Box::new(FakeKeyring::default())).spread(&["claude", "codex"]).added.len()).unwrap().join();
+    assert!(r.is_ok(), "the spread thread overflowed its stack");
+}
+
+#[test]
+fn a_json_config_keeps_its_key_order_and_indent() {
+    let e = env();
+    put(&e.home.join(".claude.json"), &json!({ "mcpServers": { "fs": { "command": "node", "args": ["/srv/fs.js"] } } }).to_string());
+    put(&e.home.join(".qwen/settings.json"), "{\n    \"theme\": \"Dracula\",\n    \"mcpServers\": {},\n    \"auth\": { \"selectedType\": \"qwen-oauth\" },\n    \"a\": 1\n}\n");
+    let ring = FakeKeyring::default();
+    assert_eq!(kits(&e, &ring).spread(&["claude", "qwen"]).added.len(), 1);
+    let after = fs::read_to_string(e.home.join(".qwen/settings.json")).unwrap();
+    let keys: Vec<&str> = after.lines().filter(|l| l.starts_with("    \"") && !l.starts_with("     ")).map(|l| l.trim().split('"').nth(1).unwrap()).collect();
+    assert_eq!(keys, ["theme", "mcpServers", "auth", "a"], "\n{after}");
+}
+
+#[test]
+fn an_undone_spread_cannot_be_undone_twice() {
+    let e = env();
+    put(&e.home.join(".claude.json"), &json!({ "mcpServers": { "pg": { "command": "pg-mcp", "env": { "API_KEY": "zz-9f8e7d6c5b4a3f2e1d0c" } } } }).to_string());
+    put(&e.home.join(".qwen/settings.json"), "{}\n");
+    let ring = FakeKeyring::default();
+    let k = kits(&e, &ring);
+    k.spread(&["claude", "qwen"]);
+    k.spread_undo().unwrap();
+    assert!(k.spread_last().unwrap().undone);
+    assert!(k.spread_undo().is_err(), "a second undo forgot a secret the person may have set again");
+}

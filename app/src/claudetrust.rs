@@ -5,10 +5,9 @@
 use serde_json::{json, Value};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::Mutex;
 
-/// One read-modify-write at a time: copies start in parallel, and two writers of one file lose each other's answer.
-static ONE: Mutex<()> = Mutex::new(());
+/// One read-modify-write at a time - shared with the kit installs and the spread, which write the same file.
+use nightshift_core::kits::CONFIG_LOCK as ONE;
 
 /// The file itself: a `~/.claude.json` that is a link (dotfiles) is written through, not replaced by a plain file.
 fn config(home: &Path) -> PathBuf {
@@ -40,8 +39,8 @@ fn mark(home: &Path, cfg: &mut Value, dir: &Path) -> Result<(), String> {
     let path = config(home);
     static N: AtomicU64 = AtomicU64::new(0);
     let tmp = path.with_extension(format!("json.ns-{}-{}", std::process::id(), N.fetch_add(1, Ordering::Relaxed)));
-    let mut bytes = serde_json::to_vec_pretty(cfg).map_err(|e| e.to_string())?;
-    bytes.push(b'\n');
+    // in the file's own indent and key order (it is Claude's file, rewritten on every new copy of an agent)
+    let bytes = nightshift_core::kits::json_in_style(std::fs::read(&path).ok().as_deref(), cfg).map_err(|e| e.to_string())?.into_bytes();
     // made private from the start: the file holds tokens, and the home folder is readable by the group on a Mac
     let mut o = std::fs::OpenOptions::new();
     o.write(true).create_new(true);

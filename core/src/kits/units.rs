@@ -679,9 +679,7 @@ pub(crate) fn apply_conf(current: Option<&[u8]>, ops: &[&ConfOp]) -> Result<Vec<
                     _ => return Err(KitError::Corrupt("mixed config formats".into())),
                 }
             }
-            let mut s = serde_json::to_string_pretty(&root).map_err(|e| KitError::Io(e.to_string()))?;
-            s.push('\n');
-            Ok(s.into_bytes())
+            Ok(json_in_style(current, &root)?.into_bytes())
         }
         ConfOp::TomlKey { .. } | ConfOp::TomlTables { .. } => {
             let cur = match current {
@@ -848,9 +846,7 @@ pub(crate) fn undo_conf(current: Option<&[u8]>, backups: &[(ConfOp, Option<Strin
                     _ => return Err(bad()),
                 }
             }
-            let mut s = serde_json::to_string_pretty(&root).map_err(|e| KitError::Io(e.to_string()))?;
-            s.push('\n');
-            Ok(s.into_bytes())
+            Ok(json_in_style(current, &root)?.into_bytes())
         }
         ConfOp::TomlKey { .. } | ConfOp::TomlTables { .. } => {
             let cur = match current {
@@ -882,4 +878,17 @@ pub(crate) fn same_conf(a: &[u8], b: &[u8]) -> bool {
 /// Nothing left but an empty object / blank text.
 pub(crate) fn empty_conf(b: &[u8]) -> bool {
     serde_json::from_slice::<Value>(b).is_ok_and(|v| v.as_object().is_some_and(|m| m.is_empty())) || String::from_utf8_lossy(b).trim().is_empty()
+}
+
+/// `v` as JSON with the indent of the file it replaces (two spaces when there was none): a config rewritten with
+/// another indent (and, before `preserve_order`, sorted keys) was a diff of the whole file for the person and the CLI.
+pub fn json_in_style(original: Option<&[u8]>, v: &Value) -> Result<String, KitError> {
+    let text = original.and_then(|b| std::str::from_utf8(b).ok()).unwrap_or("");
+    let indent: String = text.lines().skip(1).find(|l| l.starts_with([' ', '\t'])).map(|l| l.chars().take_while(|c| *c == ' ' || *c == '\t').collect()).unwrap_or_else(|| "  ".into());
+    let mut out = Vec::new();
+    let mut ser = serde_json::Serializer::with_formatter(&mut out, serde_json::ser::PrettyFormatter::with_indent(indent.as_bytes()));
+    serde::Serialize::serialize(v, &mut ser).map_err(|e| KitError::Io(e.to_string()))?;
+    let mut s = String::from_utf8(out).map_err(|e| KitError::Io(e.to_string()))?;
+    s.push('\n');
+    Ok(s)
 }

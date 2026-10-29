@@ -13,7 +13,7 @@ tauri-plugin-global-shortcut = "2"
 tauri-plugin-single-instance = "2"
 tauri-plugin-dialog = "2"
 # json! for command results and event payloads (already in the workspace via core)
-serde_json = "1"
+serde_json = { version = "1", features = ["preserve_order"] }
 # derive for the automation file (same version as core)
 serde = { version = "1", features = ["derive"] }
 # DateTime<Local> for the engine clock and summary_since (already in the workspace through core)

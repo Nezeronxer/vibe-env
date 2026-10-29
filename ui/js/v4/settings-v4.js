@@ -253,7 +253,7 @@
     // what was skipped and why, folded: «пропущено 6» alone said nothing
     const why = h('details', { class: 'spread-why', hidden: true });
     const reason = (c) => { const k = 'spread.r_' + c, v = t(k); return v === k ? c : v; };
-    const show = (r) => {
+    let show = (r) => {
       sum.textContent = !r ? t('spread.none') : t(r.undone ? 'spread.undone' : 'spread.last', { date: fmtAt(r.at), n: r.added.length, skip: r.skipped.length });
       const sk = (r && !r.undone && r.skipped) || [];
       why.hidden = !sk.length;
@@ -261,13 +261,20 @@
     };
     const load = () => NS.api.call('kits_spread_last').then(show).catch(() => show(null));
     const run = async () => { try { show(await NS.api.call('kits_spread')); } catch (e) { fail(e); } };
-    const undo = async () => { try { await NS.api.call('kits_spread_undo'); NS.shell.toast(t('spread.undo_done')); load(); } catch (e) { fail(e); } };
+    // an undone spread came back on the next start (the switch stayed on): the undo turns the automatic one off too
+    const undo = async () => {
+      try { await NS.api.call('kits_spread_undo'); await k.commit({ spread_kits: false }); sw.sw && sw.sw.set && sw.sw.set(false); NS.shell.toast(t('spread.undo_off')); load(); } catch (e) { fail(e); }
+    };
+    const undoBtn = h('button', { type: 'button', class: 'btn', onclick: undo, text: t('spread.undo') });
+    const show0 = show;
+    show = (r) => { show0(r); undoBtn.hidden = !r || !!r.undone || !(r.added || []).length; };
     load();
+    const sw = k.toggleRow({ icon: 'l-package', title: t('spread.title'), desc: t('spread.desc'), on: (S.settings || {}).spread_kits !== false,
+      apply: async (v) => { await k.commit({ spread_kits: v }); if (v) run(); } });
     return [
-      k.toggleRow({ icon: 'l-package', title: t('spread.title'), desc: t('spread.desc'), on: (S.settings || {}).spread_kits !== false,
-        apply: async (v) => { await k.commit({ spread_kits: v }); if (v) run(); } }),
+      sw,
       h('div', { class: 'srow spread-sub' }, h('div', {}, sum, why), h('div', { class: 'ctl' },
-        h('button', { type: 'button', class: 'btn', onclick: run, text: t('spread.now') }), h('button', { type: 'button', class: 'btn', onclick: undo, text: t('spread.undo') }))),
+        h('button', { type: 'button', class: 'btn', onclick: run, text: t('spread.now') }), undoBtn)),
     ];
   }
 

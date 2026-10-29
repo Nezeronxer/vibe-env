@@ -171,6 +171,8 @@ fn from_codex(o: &Map<String, Value>) -> Parsed {
 struct TomlBody<'a> {
     s: &'a [u8],
     i: usize,
+    /// nesting of arrays and inline tables: a deep `[[[…]]]` overflowed the stack and aborted the app on every start
+    depth: usize,
 }
 
 impl TomlBody<'_> {
@@ -219,6 +221,15 @@ impl TomlBody<'_> {
         (self.i > start).then(|| String::from_utf8_lossy(&self.s[start..self.i]).to_string())
     }
     fn value(&mut self) -> Option<Value> {
+        if self.depth > 32 {
+            return None;
+        }
+        self.depth += 1;
+        let v = self.value_in();
+        self.depth -= 1;
+        v
+    }
+    fn value_in(&mut self) -> Option<Value> {
         match *self.s.get(self.i)? {
             b'"' | b'\'' => self.string().map(Value::String),
             b'[' => {
@@ -284,7 +295,7 @@ impl TomlBody<'_> {
     }
     fn parse(text: &str) -> Option<Map<String, Value>> {
         let body = text.split_once('\n').map_or("", |(_, b)| b); // the header line
-        let mut p = TomlBody { s: body.as_bytes(), i: 0 };
+        let mut p = TomlBody { s: body.as_bytes(), i: 0, depth: 0 };
         let mut m = Map::new();
         loop {
             p.ws(true);
@@ -301,10 +312,13 @@ impl TomlBody<'_> {
 /// `mcp_servers.gh.command = …`) - adding `[mcp_servers.gh]` then would declare it twice and break the whole file.
 fn codex_servers(text: &str, prefix: &str) -> Option<BTreeMap<String, Parsed>> {
     let blocks = tl::parse(text);
-    let dotted = |k: &str| { let k = k.trim().trim_matches('"'); k == prefix || k.starts_with(&format!("{prefix}.")) };
+    // quotes and spaces are legal in TOML keys (`["mcp_servers".gh]`, `[mcp_servers . gh]`, `"mcp_servers".gh.x = …`):
+    // a server written so is not seen below, so any such form leaves the file alone
+    let bare = |k: &str| k.chars().filter(|c| !matches!(c, '"' | '\'' | ' ' | '\t')).collect::<String>();
+    let under = |k: &str| k == prefix || k.starts_with(&format!("{prefix}."));
     let hidden = blocks.iter().any(|b| match b {
-        Block::Key { key, .. } => dotted(key),
-        Block::Table { header, .. } => header == prefix,
+        Block::Key { key, .. } => under(&bare(key)),
+        Block::Table { header, .. } => bare(header) == prefix || (under(&bare(header)) && bare(header) != header.trim()),
         _ => false,
     });
     if hidden {
@@ -337,6 +351,31 @@ fn codex_servers(text: &str, prefix: &str) -> Option<BTreeMap<String, Parsed>> {
 /// A secret left in a command, an argument, an address or an ordinary variable: what the export's scrubber would cut.
 fn secret_inline(s: &str, home: &str) -> bool {
     scrub::clean(s, home) != scrub::Scrubber::new(home).home_paths(s)
+}
+
+/// A value that may be a password or a token though its name does not say so (`DB_PASS`, `MYSQL_PWD`, a cookie):
+/// one word of letters and digits, long enough, not a path, an address, a number or a flag word. Such a value goes to
+/// the keyring like a named secret instead of being copied as text into more files.
+fn opaque(v: &str) -> bool {
+    let v = v.trim();
+    v.len() >= 12
+        && !v.contains(char::is_whitespace)
+        && !v.starts_with(['/', '~', '.', '-'])
+        && !v.contains("://")
+        && v.chars().all(|c| c.is_ascii_alphanumeric() || "_-+/=.:".contains(c))
+        && v.chars().any(|c| c.is_ascii_digit())
+        && v.chars().any(|c| c.is_ascii_alphabetic())
+}
+
+/// `--api-key`, `--token`, `--password`, `-p`… whose next argument is the secret itself (`scrub::clean` sees only `--x=value`).
+fn secret_flag(a: &str) -> bool {
+    let f = a.trim_start_matches('-').to_ascii_lowercase();
+    a.starts_with('-') && !a.contains('=') && (scrub::is_secret_name(&f) || ["key", "token", "secret", "pass", "pwd", "auth", "cookie"].iter().any(|w| f.contains(w)))
+}
+
+/// Headers that carry a credential without saying «token» or «key» in a way `is_secret_name` knows.
+fn secret_header(h: &str) -> bool {
+    scrub::is_secret_name(h) || ["cookie", "proxy-authorization", "x-api-key", "api-key", "apikey", "x-auth-token"].contains(&h.to_ascii_lowercase().as_str())
 }
 
 fn market_reason(e: MarketError) -> String {
@@ -374,6 +413,10 @@ impl Kits {
     pub fn spread_undo(&self) -> Result<RollbackReport, KitError> {
         let _g = ONE_AT_A_TIME.lock().unwrap_or_else(|e| e.into_inner());
         let mut r = self.spread_last().ok_or_else(|| KitError::NotFound("spread".into()))?;
+        // a second undo would forget a secret the person set again under the same name since
+        if r.undone {
+            return Err(KitError::NotFound("spread_undone".into()));
+        }
         let mut out = RollbackReport::default();
         for id in r.snapshots.iter().rev() {
             let k = self.rollback(id)?;
@@ -487,6 +530,12 @@ impl Kits {
         if texts.iter().any(|s| secret_inline(s, &home)) {
             return Err("secret_inline");
         }
+        // `["--api-key", "<value>"]`: the value cannot become a reference in an argument list - the server stays where it is
+        if let Some((_, a)) = &m.local {
+            if a.windows(2).any(|w| secret_flag(&w[0]) && !w[1].is_empty() && !has_var(&w[1])) {
+                return Err("secret_inline");
+            }
+        }
         let mut keep = |var: String, value: &str| -> Result<String, &'static str> {
             if !env_name_allowed(&var) {
                 return Err("secret_name");
@@ -503,7 +552,7 @@ impl Kits {
         };
         let mut envs = vec![];
         for (k, v) in &m.env {
-            let secret = scrub::is_secret_name(k) && !v.is_empty() && !has_var(v);
+            let secret = (scrub::is_secret_name(k) || opaque(v)) && !v.is_empty() && !has_var(v);
             if secret {
                 envs.push((k.clone(), keep(k.clone(), v)?));
             } else if secret_inline(v, &home) {
@@ -517,7 +566,7 @@ impl Kits {
             Some((t, u, hs)) => {
                 let mut out = vec![];
                 for (h, v) in hs {
-                    if !scrub::is_secret_name(h) || has_var(v) {
+                    if !(secret_header(h) || opaque(v)) || has_var(v) {
                         if secret_inline(v, &home) {
                             return Err("secret_inline");
                         }

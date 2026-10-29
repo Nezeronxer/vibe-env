@@ -235,7 +235,7 @@ fn the_startup_tax_counts_rules_skill_descriptions_and_mcp_servers_and_flags_lon
     // only `name:` and `description:` count: "name: pdf" (9) + "description: Read PDFs" (22) = 31 bytes -> 8 tokens
     assert_eq!((t.skills, t.skill_tokens), (1, 8));
     assert_eq!(t.agents, 1);
-    assert_eq!(t.mcp_servers, vec!["fs", "github", "db"]);
+    assert_eq!(t.mcp_servers, vec!["github", "fs", "db"], "in the order of the config file");
     assert_eq!(t.total_tokens, 625 + 2 + 8 + t.agent_tokens);
 }
 

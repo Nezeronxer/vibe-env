@@ -239,6 +239,8 @@ impl Snaps {
     pub fn restore(&self, m: &Meta, careful: bool) -> Result<Kept, KitError> {
         let mut kept = Kept::default();
         for e in m.entries.iter().rev() {
+            // the read and the write of a shared config under the app's one lock (see kits::CONFIG_LOCK)
+            let _w = (!e.conf.is_empty()).then(|| super::CONFIG_LOCK.lock().unwrap_or_else(|x| x.into_inner()));
             let cur = std::fs::read(&e.path).ok();
             // a file new to the install that no longer holds what the install wrote
             let touched = careful && e.backup.is_none() && e.written.as_ref().is_some_and(|h| cur.as_deref().is_some_and(|c| source::sha256_hex(c) != *h));
