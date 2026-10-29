@@ -35,7 +35,14 @@
   // a unified diff -> lines with a kind for colour (no HTML: the window draws text nodes)
   const diffLines = (text) => String(text || '').split('\n').map((x) => ({ text: x, kind: /^@@/.test(x) ? 'hunk' : /^(\+\+\+|---|diff |index )/.test(x) ? 'meta' : /^\+/.test(x) ? 'add' : /^-/.test(x) ? 'del' : 'ctx' }));
   const TEMPLATES = ['fix', 'tests', 'review', 'explain'];
-  root.NSAgents = { groupTabs, projectOfPath, fmtTok, useText, nextWaiting, diffLines, TEMPLATES };
+  // the tab title (and the merge message of an agent that made no commit) from a task: its first line, cut at a word
+  function shortTitle(text, max = 48) {
+    const line = String(text || '').split('\n')[0].trim();
+    if (line.length <= max) return line;
+    const cut = line.slice(0, max), sp = cut.lastIndexOf(' ');
+    return (sp > max / 2 ? cut.slice(0, sp) : cut).replace(/[\s,.:;—-]+$/, '') + '…';
+  }
+  root.NSAgents = { groupTabs, projectOfPath, fmtTok, useText, nextWaiting, diffLines, shortTitle, TEMPLATES };
   if (typeof document === 'undefined' || !root.NS || !root.NS.h) return;
 
   // ---------- the window ----------
@@ -58,6 +65,8 @@
     if (!pane) return '';
     if (pane.project) return pane.project;
     if (pane.kind === 'agent' && pane.chat && pane.chat !== 'new') { const c = NS.store.findChat(pane.chat); if (c && c.project_id) return c.project_id; }
+    // a chat not started yet takes the project its header shows (chat.js: the head's choice), not «Без проекта»
+    if (pane.kind === 'agent' && (!pane.chat || pane.chat === 'new') && !pane.cwd && NS.projects) return NS.projects.current() || '';
     return projectOfPath(pane.cwd, S().projects);
   }
   function groups(tabs, lead) { return groupTabs(tabs, (tb) => projectOf(lead(tb))); }
@@ -198,7 +207,7 @@
       const fam = model.value, mArg = fam ? root.NSTerm.modelArg({ family: fam, version: null }, cat, envId) : null;
       const prompt = task.value.trim();
       NS.storage.set(LKEY, JSON.stringify({ env: envId, own }));
-      const extra = { model: mArg, prompt: prompt || undefined, title: prompt ? prompt.split('\n')[0].slice(0, 40) : env.name, cwd: proj ? proj.path : undefined };
+      const extra = { model: mArg, prompt: prompt || undefined, title: prompt ? shortTitle(prompt) : env.name, cwd: proj ? proj.path : undefined };
       if (own && proj) {
         go.disabled = true;
         try { const w = await call('agent_worktree', { projectId: proj.id, name: prompt || env.name }); extra.cwd = w.path; extra.branch = w.branch; }
@@ -314,13 +323,14 @@
       if (!(await NS.projects.confirm(t('agents.merge_q', { base: c.base || 'main' }), t('agents.merge_d', { n: c.files.length }), t('agents.merge', { base: c.base || 'main' })))) return;
       try { const r = await call('agent_merge', { cwd: pane.cwd, message: pane.title || 'agent work' }); toast(r && r.merged ? t('agents.merged', { base: c.base || 'main' }) : t('agents.not_merged')); load(); } catch (e) { toast(errText(e), true); }
     }
-    // the pane closes first (its CLI runs inside the copy; a running one asks as any close does), then the core removes
+    // the pane closes first (its CLI runs inside the copy; the question above already said the tab goes), then the core removes
     // the copy - it refuses one with uncommitted changes, and keeps the branch while it holds commits the base lacks
     async function drop() {
       if (!(await NS.projects.confirm(t('agents.wt_drop_q'), t('agents.wt_drop_d'), t('agents.wt_drop')))) return;
       const cwd = pane.cwd;
+      NS.term.answered(pane.id);
       await NS.tabs.closePane(pane.id);
-      if (NS.tabs.placeOf(pane.id)) return;                       // the close was cancelled
+      if (NS.tabs.placeOf(pane.id)) return;                       // the pane is in another tab than the active one
       await new Promise((r) => setTimeout(r, 400));               // the PTY lets go of the folder
       try { await call('agent_worktree_remove', { path: cwd, force: false }); toast(t('agents.wt_dropped')); } catch (e) { toast(errText(e), true); }
     }

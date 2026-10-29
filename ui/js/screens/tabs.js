@@ -376,22 +376,23 @@
       const p = P.findPane(tb.root, tb.focus) || P.leaves(tb.root)[0];
       const n = P.count(tb.root), kind = stateOf(p), title = paneTitle(p), env = p.env ? NS.store.env(p.env) : null;
       const word = { run: 'tabs.st_run', wait: 'tabs.st_wait', done: 'tabs.st_done', fail: 'tabs.st_fail', queue: 'tabs.st_queue', talk: 'tabs.st_talk' }[kind];
-      const el = h('div', { class: 'tab' + (on ? ' on' : ''), role: 'tab', 'aria-selected': String(on), tabIndex: on ? 0 : -1, draggable: 'true',
+      // role=tab sits on the title: WebKit hands an AX press of an element to a control inside it, so a tab holding its × closed on VoiceOver "select"
+      const el = h('div', { class: 'tab' + (on ? ' on' : ''), draggable: 'true',
         title: (env ? env.name + ' · ' : '') + title + ' · ' + t(word) + (i < 9 ? ' · ' + (platform() === 'mac' ? '⌘' : 'Ctrl+') + (i + 1) : ''), dataset: { tab: tb.id },
         onclick: () => { setState(P.wsActivate(state, tb.id)); focusActive(); },
         onauxclick: (e) => { if (e.button === 1) { e.preventDefault(); closeTab(tb.id); } },
         onmousedown: (e) => { if (e.button === 1) e.preventDefault(); },
         oncontextmenu: (e) => { e.preventDefault(); openMenu(tb, el); },
-        onkeydown: (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setState(P.wsActivate(state, tb.id)); } },
+        onkeydown: (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setState(P.wsActivate(state, tb.id)); } else if (e.key === 'Delete') { e.preventDefault(); closeTab(tb.id); } },
         ondragstart: (e) => { dragId = tb.id; e.dataTransfer.effectAllowed = 'move'; try { e.dataTransfer.setData('text/plain', tb.id); } catch (er) { /* some engines refuse */ } el.classList.add('drag'); },
         ondragend: () => { dragId = null; el.classList.remove('drag'); },
         ondragover: (e) => { if (dragId && dragId !== tb.id) { e.preventDefault(); el.classList.add('over'); } },
         ondragleave: () => el.classList.remove('over'),
         ondrop: (e) => { e.preventDefault(); el.classList.remove('over'); if (dragId && dragId !== tb.id) setState(P.wsMove(state, dragId, state.tabs.findIndex((x) => x.id === tb.id))); } },
       h('span', { class: 'tab-ic' + (p.kind === 'term' ? ' is-term' : '') }, p.kind === 'term' && !p.env ? h('span', { class: 't-glyph', 'aria-hidden': 'true', text: '>_' }) : p.env ? envIcon(env && env.custom ? 'custom' : p.env) : ic('i-dash')),
-      h('span', { class: 'tab-t' }, h('span', { class: 'tab-l', text: short(title) })),
+      h('span', { class: 'tab-t', role: 'tab', 'aria-selected': String(on), tabIndex: on ? 0 : -1 }, h('span', { class: 'tab-l', text: short(title) })),
       n > 1 ? h('small', { class: 'tab-n', text: String(n), title: n + ' · ' + t('tabs.label') }) : null,
-      h('button', { type: 'button', class: 'tab-x', 'aria-label': t('tabs.close'), text: '×', onclick: (e) => { e.stopPropagation(); closeTab(tb.id); } }),
+      h('button', { type: 'button', class: 'tab-x', 'aria-label': t('tabs.close'), title: t('tabs.close') + ' · Delete', text: '×', onclick: (e) => { e.stopPropagation(); closeTab(tb.id); } }),
       // v7: the card - the last lines of the terminal (term.js fills them), the spend (agents7.js); v8: the state as a word with
       // its dot under the output, the shortcut only in the tooltip, the env name only in the tooltip (the column says it)
       h('div', { class: 'tab-pv', 'aria-hidden': 'true' }),
@@ -541,13 +542,14 @@
       const env = NS.store.env(curEnv()), name = env ? env.name : '';
       const tab = (tb) => {
         const p = P.findPane(tb.root, tb.focus) || P.leaves(tb.root)[0], on = tb.id === state.active;
-        return h('div', { class: 't8' + (on ? ' on' : ''), role: 'tab', 'aria-selected': String(on), tabIndex: on ? 0 : -1, title: paneTitle(p), dataset: { t8: tb.id, env: p.env ? (String(p.env).startsWith('custom') ? 'custom' : p.env) : '' },
+        return h('div', { class: 't8' + (on ? ' on' : ''), title: paneTitle(p), dataset: { t8: tb.id, env: p.env ? (String(p.env).startsWith('custom') ? 'custom' : p.env) : '' },
           onclick: () => { setState(P.wsActivate(state, tb.id)); focusActive(); },
           onauxclick: (e) => { if (e.button === 1) { e.preventDefault(); closeTab(tb.id); } },
-          onkeydown: (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setState(P.wsActivate(state, tb.id)); focusActive(); } } },
+          onkeydown: (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setState(P.wsActivate(state, tb.id)); focusActive(); } else if (e.key === 'Delete') { e.preventDefault(); closeTab(tb.id); } } },
         h('span', { class: 't8-ic' }, p.kind === 'term' && !p.env ? h('span', { class: 't-glyph', 'aria-hidden': 'true', text: '>_' }) : p.env ? envIcon(String(p.env).startsWith('custom') ? 'custom' : p.env) : ic('i-dash')),
-        h('span', { class: 't8-l', text: short(paneTitle(p)) }),
-        h('button', { type: 'button', class: 't8-x', 'aria-label': t('tabs.close'), text: '×', onclick: (e) => { e.stopPropagation(); closeTab(tb.id); } }));
+        // role=tab on the label, not on the box with the ×: WebKit hands an AX press to a control inside the pressed element
+        h('span', { class: 't8-l', role: 'tab', 'aria-selected': String(on), tabIndex: on ? 0 : -1, text: short(paneTitle(p)) }),
+        h('button', { type: 'button', class: 't8-x', 'aria-label': t('tabs.close'), title: t('tabs.close') + ' · Delete', text: '×', onclick: (e) => { e.stopPropagation(); closeTab(tb.id); } }));
       };
       const add = h('button', { type: 'button', class: 't8-new', title: (name ? t('tabs8.new_d', { env: name }) : t('tabs8.new')) + ' · ' + (platform() === 'mac' ? '⌘T' : 'Ctrl+T'), 'aria-label': t('tabs8.new'), onclick: () => newTab() }, ic('i-plus'));
       const gh = NS.gh8 ? h('button', { type: 'button', class: 't8-gh' + (NS.gh8.open ? ' on' : ''), title: t('gh8.toggle'), 'aria-label': t('gh8.toggle'), 'aria-pressed': String(!!NS.gh8.open), onclick: () => ghShow(!NS.gh8.open) }, ic('i-branch'), h('span', { text: 'GitHub' })) : null;

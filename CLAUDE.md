@@ -38,7 +38,7 @@ cd app && cargo tauri build --bundles app,dmg                          # Nightsh
 
 ## Окружение
 
-`NIGHTSHIFT_GH` (путь к `gh`, по умолчанию `gh` из PATH), `NS_PLAYWRIGHT`, `NS_CHROME` (проверки окна в `scripts/ui-selftest.js`), `SHELL`, `TERMINAL`, `PATH`, `HOME`. Данные - `app_data_dir()` Tauri; конфиг - `~/.config/nightshift/config`.
+`NIGHTSHIFT_GH` (путь к `gh`, по умолчанию `gh` из PATH), `NS_PLAYWRIGHT`, `NS_CHROME` (проверки окна в `scripts/ui-selftest.js`), `NS_RECORD=1` (мак: WebKit рисует закрытое окно - для записи прогона; `open --env NS_RECORD=1`), `SHELL`, `TERMINAL`, `PATH`, `HOME`. Данные - `app_data_dir()` Tauri; конфиг - `~/.config/nightshift/config`.
 
 ## Как здесь работает Autopilot
 

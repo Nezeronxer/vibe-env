@@ -732,6 +732,12 @@ eq('idle shell: a prompt at the cursor is idle; vim / htop (alternate screen) an
 const envC = { id: 'claude', path: '/usr/local/bin/claude' }, envX = { id: 'codex', path: 'codex' };
 eq('env CLI: binary, model flag of the env, resume after an update', [TM.cliArgv(envC, 'opus'), TM.cliArgv(envX, 'gpt-5', true), TM.cliArgv(envC, null, true), TM.cliArgv({ id: 'gemini' }, null)],
   [['/usr/local/bin/claude', '--model', 'opus'], ['codex', 'resume', '--last', '-m', 'gpt-5'], ['/usr/local/bin/claude', '--continue'], ['gemini']]);
+eq('env CLI: the first task - claude and codex take a bare word, opencode --prompt, qwen/gemini stay open with -i',
+  [TM.promptArgv('claude', 'x'), TM.promptArgv('opencode', 'x'), TM.promptArgv('qwen', 'x'), TM.promptArgv('gemini', 'x'), TM.promptArgv(undefined, 'x')],
+  [['x'], ['--prompt', 'x'], ['-i', 'x'], ['-i', 'x'], ['x']]);
+eq('env CLI: opencode got its task on screen - box frames and wraps do not hide it, another text does not count',
+  [TM.promptShown(['┃  Создай index.html: страница с од', '┃  ной буквой'], 'Создай index.html: страница'), TM.promptShown(['Ask anything…'], 'Создай index.html'), TM.promptShown(['x'], '')],
+  [true, false, false]);
 eq('v4 terminal words exist in ru and en', Object.keys(NSI18n.dicts.ru).filter((k) => /^(term|termset)\./.test(k)).filter((k) => !(k in NSI18n.dicts.en)), []);
 } else eq('v4 terminal scripts are loaded', 'missing', 'loaded');
 
@@ -867,6 +873,9 @@ if (typeof NSAgents !== 'undefined') {
     ['54.3k tok', '950 tok · $0.40', '', '', '2.5M']);
   eq('v7 ⌘J: the next waiting one after the focused, wrapping; nobody -> null; focus unknown -> the first waiting in order',
     [A.nextWaiting(['a', 'b', 'c', 'd'], ['a', 'c'], 'c'), A.nextWaiting(['a', 'b', 'c', 'd'], ['a', 'c'], 'a'), A.nextWaiting(['a', 'b'], [], 'a'), A.nextWaiting(['a', 'b', 'c'], ['c', 'b'], null)], ['a', 'c', null, 'b']);
+  eq('v12 task title: short as it is, a long one cut at a word with …, no dangling punctuation, first line only',
+    [A.shortTitle('Скажи привет'), A.shortTitle('Создай index.html: страница с одной большой буквой Ж по центру'), A.shortTitle('a\nb')],
+    ['Скажи привет', 'Создай index.html: страница с одной большой…', 'a']);
   eq('v7 diff lines: hunk, meta, add, del, context (the window draws them as text)', A.diffLines('diff --git a/x b/x\n--- a/x\n+++ b/x\n@@ -1 +1 @@\n-old\n+new\n same').map((l) => l.kind), ['meta', 'meta', 'meta', 'hunk', 'del', 'add', 'ctx']);
   eq('v7 resume after a restart: claude gets --continue after the binary, codex `resume --last`, twice is once, an env without the word -> null',
     [TT.resumeArgv(['claude', '--model', 'opus'], 'claude'), TT.resumeArgv(['codex', '-m', 'o4'], 'codex'), TT.resumeArgv(['claude', '--continue'], 'claude'), TT.resumeArgv(['gemini'], 'gemini'), TT.resumeArgv([], 'claude')],

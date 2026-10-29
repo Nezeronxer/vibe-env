@@ -58,7 +58,15 @@
   // v8 envs from their docs, unverified (research-clis §7-14): amp, crush and goose take no model flag in the TUI; amp has no "continue last"
   const MODEL_FLAG = { claude: '--model', cursor: '--model', codex: '-m', gemini: '-m', opencode: '-m', qwen: '-m', kimi: '-m', copilot: '--model', droid: '-m', aider: '--model', grok: '-m' };
   const RESUME = { claude: ['--continue'], codex: ['resume', '--last'], kimi: ['--continue'], copilot: ['--continue'], crush: ['--continue'], droid: ['--resume'], grok: ['--continue'],
-    goose: ['session', '--resume'], aider: ['--restore-chat-history'] };
+    goose: ['session', '--resume'], aider: ['--restore-chat-history'], qwen: ['--continue'] };
+  // no opencode: its --continue takes the last talk of the git project, and an agent's copy shares it with the main folder
+  // the first task of a CLI that stays open: opencode reads a bare word as the project folder, qwen and gemini as a one-shot run
+  const PROMPT_FLAG = { opencode: '--prompt', qwen: '-i', gemini: '-i' };
+  const promptArgv = (envId, prompt) => (PROMPT_FLAG[envId] ? [PROMPT_FLAG[envId], prompt] : [prompt]);
+  // opencode's --prompt only fills its input: once the task shows on screen the window presses Enter for it
+  const PROMPT_ENTER = { opencode: true };
+  const squeeze = (s) => String(s || '').replace(/[\s\u2500-\u257f\u2580-\u259f]+/g, '');
+  const promptShown = (lines, prompt) => { const want = squeeze(prompt).slice(0, 16); return !!want && squeeze(lines.join('')).includes(want); };
   function cliArgv(env, model, resume) {
     const argv = [env.path || env.id];
     if (resume && RESUME[env.id]) argv.push(...RESUME[env.id]);
@@ -96,7 +104,7 @@
     return out;
   }
 
-  root.NSTerm = { prefixStep, keyName, fileRefs, resolvePath, acker, looksIdle, cliArgv, modelArg, resumeArgv, previewLines };
+  root.NSTerm = { prefixStep, keyName, fileRefs, resolvePath, acker, looksIdle, cliArgv, modelArg, resumeArgv, promptArgv, promptShown, previewLines };
   if (typeof document === 'undefined' || !root.NS || !root.NS.h) return;
 
   // ---------- the window ----------
@@ -218,8 +226,9 @@
     let resumed = null;   // v7: {at, argv} of a run that continues the talk after a restart; its quick failure starts the CLI plain
     let cmdStart = 0, cmdText = '';
     let runSince = 0, lastIn = 0, bytes = 0, rateNow = 0, pvTimer = 0;     // v7: work spans, echo filter, output rate for the aura
+    let enterFor = null;  // {text, until}: the task a CLI only typed into its input (PROMPT_ENTER) - Enter once it shows
     // the first task prompt rides only on the very first start of the pane (pane.started is set then and survives restarts)
-    const spec = () => ({ cwd: pane.cwd || null, argv: (pane.argv || []).concat(!pane.started && pane.prompt ? [pane.prompt] : []), env: [], cols: term.cols, rows: term.rows, title: pane.title || '' });
+    const spec = () => ({ cwd: pane.cwd || null, argv: (pane.argv || []).concat(!pane.started && pane.prompt ? promptArgv(pane.env, pane.prompt) : []), env: [], cols: term.cols, rows: term.rows, title: pane.title || '' });
     const isCli = () => !!(pane.env && pane.argv && pane.argv.length);
     const note = (s, cls) => term.write('\r\n\x1b[' + (cls === 'bad' ? '31' : '2') + 'm' + s + '\x1b[0m\r\n');
     function setState(s) { if (state === s) return; const was = state; state = s; head.dataset.state = s; box.dataset.state = s; markTabs(); if (NS.agents) NS.agents.changed(view, was); }
@@ -243,6 +252,12 @@
     // output went quiet: the env CLI is free again; a shell back at its prompt ends the command (the long-command notice)
     function settle() {
       if (!running) return;
+      if (enterFor) {
+        const b = term.buffer.active, rows = [];
+        for (let y = b.baseY; y < b.baseY + term.rows; y++) { const l = b.getLine(y); if (l) rows.push(l.translateToString(true)); }
+        if (promptShown(rows, enterFor.text)) { enterFor = null; write('\r'); return; }
+        if (Date.now() > enterFor.until) enterFor = null;
+      }
       // v7: an env CLI that went quiet after real work is waiting for the person (its answer or a permission); seen -> just free
       const worked = runSince && Date.now() - runSince > 3000;
       runSince = 0;
@@ -299,6 +314,7 @@
       if (pane.env && !envOk(env)) { note(t('term.cli_missing', { env: env ? env.name : pane.env }), 'bad'); exitCode = -1; setState('fail'); return; }
       try {
         if (!id || fresh) {
+          if (!pane.started && pane.prompt && PROMPT_ENTER[pane.env]) enterFor = { text: pane.prompt, until: Date.now() + 60000 };
           id = await call('term_open', { spec: spec() });
           pane.termId = id;
           if (!pane.started) { pane.started = Date.now(); delete pane.prompt; if (NS.tabs && NS.tabs.save) NS.tabs.save(); }
@@ -312,6 +328,8 @@
       } catch (e) {
         const msg = NS.api.errText(e);
         if (/term_not_found/.test(msg) && !fresh) return restore();
+        // the folder is gone (an agent copy removed outside the tab): say so plainly, nothing to start again here
+        if (/bad_cwd/.test(msg)) { running = false; exitCode = 0; note(t('term.cwd_gone'), 'bad'); setState('done'); drawGone(); return; }
         running = false; exitCode = -1;
         note(t('term.pty_failed', { why: errText(e) }), 'bad');
         setState('fail');
@@ -339,6 +357,11 @@
       clear(dead).append(h('div', { class: 't-dead-card' }, h('b', { text: t('term.dead_t', { name }) }), h('p', { text: t('term.dead_d', { code: code == null || code < 0 ? t('term.signal') : code }) }),
         h('div', { class: 't-dead-b' }, h('button', { type: 'button', class: 'btn primary sm t-dead-run', text: t('term.dead_run'), onclick: () => { restart(); term.focus(); } }),
           WIN ? null : h('button', { type: 'button', class: 'btn sm t-dead-x', text: t('term.dead_close'), onclick: () => { if (NS.tabs && NS.tabs.closePane) NS.tabs.closePane(pane.id); } }))));
+      dead.hidden = false;
+    }
+    function drawGone() {
+      clear(dead).append(h('div', { class: 't-dead-card' }, h('b', { text: t('term.cwd_gone_t') }), h('p', { text: pane.cwd || '' }),
+        h('div', { class: 't-dead-b' }, h('button', { type: 'button', class: 'btn primary sm t-dead-x', text: t('term.dead_close'), onclick: () => { if (NS.tabs && NS.tabs.closePane) NS.tabs.closePane(pane.id); } }))));
       dead.hidden = false;
     }
     function exited(code) {
@@ -575,6 +598,7 @@
     title: (pane) => termTitle(pane),
     // ⌘W / × on a pane with a running process asks first and the layout waits for the answer (253, live run v4)
     async beforeClose(pane) {
+      if (closing.has(pane.id)) return true;                     // answered elsewhere (NS.term.answered)
       const v = live.get(pane.id);
       if (!v && pane.termId && !pane.moved) { call('term_close', { id: pane.termId }).catch(() => {}); return true; }   // evicted from the mount cache: no destroy follows
       if (!v || pane.moved || !v.id() || !v.running() || v.idle()) { closing.add(pane.id); return true; }
@@ -845,5 +869,6 @@
     }).catch((e) => holder.append(h('p', { class: 'hint', text: errText(e) })));
   }
 
-  NS.term = { open: openTerm, envTerm, envFields, detachToWindow, newWindow, offWindow, refreshSessions, views: live, toggleBroadcast };
+  // answered: the caller already asked about closing this pane (removing an agent's copy) - neither ⌘W's question nor the one on destroy
+  NS.term = { open: openTerm, envTerm, envFields, detachToWindow, newWindow, offWindow, refreshSessions, views: live, toggleBroadcast, answered: (id) => closing.add(id) };
 }(typeof window !== 'undefined' ? window : globalThis));

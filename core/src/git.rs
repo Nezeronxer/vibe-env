@@ -402,6 +402,15 @@ pub fn rebase_continue(wt: &Path, protect: bool) -> Result<(), GitError> {
     }
 }
 
+/// The messages of the commits made in `wt` since it forked from `base`, oldest first, joined by a blank line
+/// (a fold of them by `uncommit_hidden` keeps what the agent wrote, not the task text).
+pub fn own_messages(wt: &Path, base: &str) -> String {
+    let range = format!("{}..HEAD", merge_base(wt, base));
+    try_out(wt, &["log", "--reverse", "--format=%B%x00", &range])
+        .map(|o| o.split('\0').map(str::trim).filter(|m| !m.is_empty()).collect::<Vec<_>>().join("\n\n"))
+        .unwrap_or_default()
+}
+
 fn merge_base(wt: &Path, base: &str) -> String {
     try_out(wt, &["merge-base", base, "HEAD"]).unwrap_or_else(|| base.to_string())
 }

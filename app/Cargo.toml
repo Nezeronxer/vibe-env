@@ -19,3 +19,7 @@ serde = { version = "1", features = ["derive"] }
 # DateTime<Local> for the engine clock and summary_since (already in the workspace through core)
 chrono = { version = "0.4", features = ["serde"] }
 nightshift-core = { path = "../core" }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+# NS_RECORD: WKWebView private switch for drawing a covered window (already in the tree through tauri/wry)
+objc2 = "0.6"

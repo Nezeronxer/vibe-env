@@ -1078,6 +1078,19 @@ fn build_app(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     }
     let tray_icon = tb.build(app)?;
     *lk(&app.state::<App>().tray) = Some(Tray { icon: tray_icon, freeze: freeze_i, status, sessions });
+    // NS_RECORD=1: WebKit keeps drawing a covered window (timers, xterm, live output), so a window recording of a run stays live
+    #[cfg(target_os = "macos")]
+    if std::env::var_os("NS_RECORD").is_some() {
+        if let Some(w) = app.get_webview_window("main") {
+            let _ = w.with_webview(|wv| unsafe {
+                let v = &*(wv.inner() as *mut objc2::runtime::AnyObject);
+                let has: bool = objc2::msg_send![v, respondsToSelector: objc2::sel!(_setWindowOcclusionDetectionEnabled:)];
+                if has {
+                    let _: () = objc2::msg_send![v, _setWindowOcclusionDetectionEnabled: false];
+                }
+            });
+        }
+    }
     // our own menu bar: Tauri's standard one takes ⌘W for "Close Window" before the page sees it
     #[cfg(target_os = "macos")]
     {

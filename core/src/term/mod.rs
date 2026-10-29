@@ -182,6 +182,9 @@ impl Terms {
                 cmd.env(k, v);
             }
         }
+        // the app's own PWD (wherever it was started from) would send node CLIs like opencode to a wrong folder
+        cmd.env("PWD", &cwd);
+        cmd.env_remove("OLDPWD");
         cmd.env("TERM", "xterm-256color");
         cmd.env("COLORTERM", "truecolor");
         cmd.env("TERM_PROGRAM", "Nightshift");

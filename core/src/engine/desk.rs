@@ -120,9 +120,11 @@ impl Engine {
         }
         let msg = Some(message.trim()).filter(|m| !m.is_empty()).unwrap_or("Terminal agent changes");
         self.with_git(wt, || {
-            // a key or a copied file the agent itself committed is folded back out first, as for a task
-            git::uncommit_hidden(wt, base, true).map_err(gf)?;
-            git::commit_all(wt, msg, true).map_err(gf)?;
+            // a key or a copied file the agent itself committed is folded back out first, as for a task; the fold keeps
+            // the agent's own commit messages (before, the base got the task text cut at 40 characters)
+            let own = git::own_messages(wt, base);
+            let folded = git::uncommit_hidden(wt, base, true).map_err(gf)?;
+            git::commit_all(wt, if folded && !own.is_empty() { &own } else { msg }, true).map_err(gf)?;
             let keys = git::protected_committed(wt, base).map_err(gf)?;
             if keys.is_empty() { Ok(()) } else { Err(format!("protected_file_committed: {}", keys.join(", "))) }
         })?;

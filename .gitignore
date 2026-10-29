@@ -9,3 +9,6 @@ dist/
 .autopilot/serve.pid
 app/gen/
 graphify-out/
+
+# live-run recordings (big binaries, kept in Dropbox only)
+docs/live-run/*.mp4

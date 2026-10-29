@@ -420,6 +420,15 @@ fn a_gitattributes_the_base_lacks_is_kept_out_of_the_panel_and_the_merge() {
     assert_eq!(r.files(&path), vec![row("f.txt", "?", 1, 0)]);
     r.e.agent_merge(&path, "f").unwrap();
     assert!(!g(&r.env.repo, &["ls-tree", "-r", "--name-only", "main"]).contains(".gitattributes"));
+    // the agent committed the stray file itself: it is folded out and the agent's message goes in, not the task text
+    let (c, _) = r.term("commit");
+    fs::write(c.join(".gitattributes"), "graphify-out/graph.json merge=graphify\n").unwrap();
+    fs::write(c.join("h.txt"), "h\n").unwrap();
+    g(&c, &["add", "-A"]);
+    g(&c, &["-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", "h.txt: the agent's own words"]);
+    r.e.agent_merge(&c, "Task text cut at fort").unwrap();
+    assert_eq!(g(&r.env.repo, &["log", "-1", "--format=%s"]).trim(), "h.txt: the agent's own words");
+    assert!(!g(&r.env.repo, &["ls-tree", "-r", "--name-only", "main"]).contains(".gitattributes"));
     // a project that keeps its own .gitattributes still sees the agent's edits of it
     fs::write(r.env.repo.join(".gitattributes"), "*.png binary\n").unwrap();
     g(&r.env.repo, &["add", ".gitattributes"]);

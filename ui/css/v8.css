@@ -101,7 +101,8 @@
 .t8:hover { color: var(--ink2); background: color-mix(in srgb, var(--ink) 5%, transparent); }
 .t8.on { color: var(--ink); background: var(--raised); box-shadow: inset 0 0 0 1px var(--line2); }
 .t8.on::after { content: ""; position: absolute; left: 10px; right: 10px; bottom: -1px; height: 2px; border-radius: 2px; background: var(--env); }
-.t8:focus-visible { outline: 2px solid var(--env); outline-offset: -2px; }
+.t8:has(.t8-l:focus-visible) { outline: 2px solid var(--env); outline-offset: -2px; }
+.t8-l:focus-visible { outline: none; }
 .t8-ic { display: grid; place-items: center; }
 .t8-ic .ic, .t8-ic img { width: 13px; height: 13px; color: var(--env); }
 .t8-ic .t-glyph { font: 600 10px var(--mono); color: var(--env); }

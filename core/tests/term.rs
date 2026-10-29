@@ -175,3 +175,18 @@ fn a_sink_that_reads_the_list_on_exit_does_not_hang_the_session() {
     t.attach(&id, Box::new(move |_| { let _ = t4.list(); *s5.lock().unwrap() = true; })).unwrap();
     assert!(*s4.lock().unwrap());
 }
+
+#[test]
+fn the_pty_gets_its_own_folder_as_pwd() {
+    let dir = std::env::temp_dir().join(format!("ns-pwd-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let t = Terms::new();
+    let mut sp = spec(&["/usr/bin/printenv", "PWD"]);
+    sp.cwd = Some(dir.clone());
+    let id = t.open(sp).unwrap();
+    let got = Got::default();
+    t.attach(&id, got.sink()).unwrap();
+    wait_for("the exit", 5, || got.exit().is_some());
+    assert_eq!(got.text().trim(), dir.display().to_string());
+    let _ = std::fs::remove_dir(&dir);
+}

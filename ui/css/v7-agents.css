@@ -57,7 +57,8 @@
   color: var(--ink2); background: transparent; box-shadow: none; transition: background var(--t) var(--ease), color var(--t) var(--ease); }
 .rail7-list .tab:hover { background: color-mix(in srgb, var(--ink) 4%, transparent); }
 .rail7-list .tab.on { background: transparent; color: var(--ink); box-shadow: none; }
-.rail7-list .tab:focus-visible { outline: 2px solid var(--amber); outline-offset: -2px; }
+.rail7-list .tab:has(.tab-t:focus-visible) { outline: 2px solid var(--amber); outline-offset: -2px; }
+.rail7-list .tab-t:focus-visible { outline: none; }
 .rail7-list .tab-ic { grid-area: ic; color: var(--env, var(--ink3)); display: grid; place-items: center; }
 .rail7-list .tab-ic .t-glyph { font: 600 10px var(--mono); color: var(--env, var(--ink3)); }
 .rail7-list .tab-t { grid-area: t; }
@@ -109,7 +110,7 @@
 .panes.drop7 { outline: 2px dashed color-mix(in srgb, var(--amber) 70%, transparent); outline-offset: -4px; border-radius: var(--radius-pane); }
 
 /* ---------- the launcher ---------- */
-.launch7 { position: fixed; left: var(--x); top: var(--y); z-index: 60; width: 380px; max-width: calc(100vw - 24px); display: flex; flex-direction: column; gap: 6px; padding: 14px;
+.launch7 { position: fixed; left: var(--x); top: var(--y); z-index: 60; width: 380px; max-width: calc(100vw - 24px); max-height: calc(100vh - var(--y) - 12px); overflow-y: auto; overscroll-behavior: contain; display: flex; flex-direction: column; gap: 6px; padding: 14px;
   background: var(--raised); border: 1px solid var(--line2); border-radius: 14px; box-shadow: var(--shadow); transform-origin: 20px 0; animation: pop7 var(--t2) var(--spring); }
 @keyframes pop7 { from { opacity: 0; transform: translateY(-4px) scale(.97); } }
 .l7-h { display: flex; flex-direction: column; gap: 2px; margin-bottom: 4px; }
