@@ -80,6 +80,8 @@ struct App {
     startup: Startup,
     /// `--new-chat` at the first start: the window gets `focus-input` once it is up.
     first_new_chat: AtomicBool,
+    /// git answered `--version` once: asked again only while it did not (the «Нужен git» screen checks again)
+    git_ok: AtomicBool,
     /// The data folder and the copy of the unreadable state file, when the file could not be read at start (G16.4).
     unreadable: Option<(PathBuf, String)>,
     fresh: startup::FreshGate,
@@ -688,7 +690,20 @@ async fn start_fresh(app: AppHandle, s: State<'_, App>, token: String) -> Res<()
 
 #[tauri::command]
 async fn list_envs(s: State<'_, App>) -> Res<Vec<Value>> {
+    // everything runs through git: without it the window shows «Нужен git» (app.js reads "git not found") instead of a
+    // first run whose «Выбрать папку» fails later; before, only the browser mock ever said so
+    if !s.git_ok.load(Ordering::Relaxed) {
+        if !git_works() {
+            return Err("git not found: install git".into());
+        }
+        s.git_ok.store(true, Ordering::Relaxed);
+    }
     Ok(s.hub.list_envs())
+}
+
+/// `git --version` answers (the macOS /usr/bin/git stub without the developer tools fails it).
+fn git_works() -> bool {
+    std::process::Command::new("git").arg("--version").stdin(std::process::Stdio::null()).output().map(|o| o.status.success()).unwrap_or(false)
 }
 
 /// The envs asked again (a CLI was just installed in the window's terminal): `list_envs` alone answers from its cache.
@@ -1016,6 +1031,7 @@ fn build_app(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
         host: AtomicU8::new(0),
         startup: startup_list.clone(),
         first_new_chat: AtomicBool::new(tray::wants_new_chat(&std::env::args().collect::<Vec<_>>())),
+        git_ok: AtomicBool::new(false),
         unreadable: unreadable.clone().map(|c| (dir.clone(), c)),
         fresh: startup::FreshGate::default(),
     };

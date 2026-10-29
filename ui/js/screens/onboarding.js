@@ -3,6 +3,8 @@
   const NS = window.NS;
   const { h, ic, envIcon, clear } = NS;
   const t = (k, p) => NS.t(k, p);
+  // the command as the column's card shows it: the core's « (не сверено)» is a note for the code, not text for the person
+  const cmdLine = (e) => { const p = window.NSEnvRail && window.NSEnvRail.installPlan(e); return p ? p.line : (e.hint || ''); };
 
   // First run in one step (stories 237-239): the folder; the env and the model are picked by themselves
   // (first signed-in env in the order Claude Code, Codex, opencode, Gemini, Qwen, Cursor; model "as in the CLI").
@@ -33,7 +35,7 @@
       }
       const list = st.s.envs.filter((e) => !e.custom).sort((a, b) => V.ENV_ORDER.indexOf(a.id) - V.ENV_ORDER.indexOf(b.id));
       return h('section', { class: 'onb-env' }, h('h2', { text: t('onb3.none_title') }), h('p', { text: t('onb3.none_d') }),
-        h('ul', { class: 'inst' }, list.map((e) => h('li', {}, envIcon(e.id), h('b', { text: e.name }), e.hint ? h('code', { text: e.hint }) : h('span'),
+        h('ul', { class: 'inst' }, list.map((e) => h('li', {}, envIcon(e.id), h('b', { text: e.name }), cmdLine(e) ? h('code', { text: cmdLine(e) }) : h('span'),
           h('button', { type: 'button', class: 'btn sm', text: t('onb3.install'), onclick: () => call('install_env', { env: e.id }).catch(fail) })))),
         h('div', { class: 'acts-row' }, recheck));
     }
