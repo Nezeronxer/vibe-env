@@ -1,7 +1,7 @@
 //! What the tray, the window's close button and the keys decide from the state, as plain functions (R07.3, R10.1, R10.2, R08.2).
 use nightshift_core::engine::is_active;
 use nightshift_core::model::Task;
-use std::process::{Command, Stdio};
+use std::process::Stdio;
 
 use crate::envs::waits_for_human;
 
@@ -81,7 +81,7 @@ pub fn tray_host() -> Option<bool> {
     if !cfg!(target_os = "linux") {
         return Some(true);
     }
-    let o = Command::new("busctl")
+    let o = nightshift_core::proc::cmd("busctl")
         .args(["--user", "get-property", "org.kde.StatusNotifierWatcher", "/StatusNotifierWatcher", "org.kde.StatusNotifierWatcher", "IsStatusNotifierHostRegistered"])
         .stdin(Stdio::null())
         .stderr(Stdio::null())
@@ -102,7 +102,7 @@ pub fn notification_server() -> Option<bool> {
 }
 
 fn notification_server_with(busctl: &str) -> Option<bool> {
-    let o = Command::new(busctl)
+    let o = nightshift_core::proc::cmd(busctl)
         .args(["--user", "--timeout=2", "call", "org.freedesktop.Notifications", "/org/freedesktop/Notifications", "org.freedesktop.Notifications", "GetServerInformation"])
         .stdin(Stdio::null())
         .stderr(Stdio::null())

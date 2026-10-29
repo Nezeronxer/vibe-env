@@ -6,7 +6,6 @@ use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
 use std::io::Read;
 use std::path::{Path, PathBuf};
-use std::process::Command;
 
 pub(crate) const MAX_FILE: u64 = 10 * 1024 * 1024;
 pub(crate) const MAX_TOTAL: u64 = 50 * 1024 * 1024;
@@ -234,13 +233,15 @@ fn dir_size(p: &Path) -> u64 {
 /// Run git under a time limit, killing its whole process group when the limit or the size of
 /// `watch` is exceeded. Stdout goes to `out_file` when given.
 fn git_limited(dir: &Path, args: &[&str], watch: &Path, err_file: &Path, out_file: Option<&Path>) -> Result<(), KitError> {
-    use std::os::unix::process::CommandExt;
     let err = std::fs::File::create(err_file).map_err(io)?;
     let out = match out_file {
         Some(p) => std::process::Stdio::from(std::fs::File::create(p).map_err(io)?),
         None => std::process::Stdio::null(),
     };
-    let mut child = Command::new("git")
+    let mut git = crate::proc::cmd("git");
+    #[cfg(unix)]
+    std::os::unix::process::CommandExt::process_group(&mut git, 0);
+    let mut child = git
         .current_dir(dir)
         .env("GIT_TERMINAL_PROMPT", "0")
         .env("GIT_ALLOW_PROTOCOL", "https:ssh:file")
@@ -255,12 +256,11 @@ fn git_limited(dir: &Path, args: &[&str], watch: &Path, err_file: &Path, out_fil
         .stdin(std::process::Stdio::null())
         .stdout(out)
         .stderr(err)
-        .process_group(0)
         .spawn()
         .map_err(|e| KitError::CloneFailed(e.to_string()))?;
     let start = std::time::Instant::now();
     let kill = |child: &mut std::process::Child| {
-        let _ = Command::new("kill").args(["-KILL", "--", &format!("-{}", child.id())]).status();
+        crate::agent::kill_group(child.id());
         let _ = child.kill();
         let _ = child.wait();
     };
@@ -359,7 +359,7 @@ pub(crate) fn with_clone<T>(url: &str, scratch: &Path, f: impl FnOnce(&Path, Opt
             }
         }
         git_limited(&dest, &["checkout", "-q", "HEAD", "--", "."], &tmp, &err, None)?;
-        let commit = Command::new("git")
+        let commit = crate::proc::cmd("git")
             .current_dir(&dest)
             .env("LC_ALL", "C")
             .args(["rev-parse", "HEAD"])

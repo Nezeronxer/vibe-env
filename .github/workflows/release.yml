@@ -1,7 +1,7 @@
 name: Release
 
 # Builds installers when a tag v* is pushed and attaches them to a DRAFT release:
-# macOS .dmg (arm64 + x64), Linux .AppImage, .deb, .rpm, plus SHA256SUMS.
+# macOS .dmg (arm64 + x64), Windows setup .exe + .msi, Linux .AppImage, .deb, .rpm, plus SHA256SUMS.
 # Nothing here runs until the repository is published and a tag is pushed.
 
 on:
@@ -45,6 +45,9 @@ jobs:
           - os: ubuntu-22.04
             target: x86_64-unknown-linux-gnu
             bundles: deb,rpm,appimage
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            bundles: nsis,msi
     runs-on: ${{ matrix.os }}
     permissions:
       contents: write # create the draft release and upload assets
@@ -111,6 +114,51 @@ jobs:
           path: target/${{ matrix.target }}/release/bundle/appimage/*.AppImage
           if-no-files-found: error
 
+      - name: Keep the Windows installer for the smoke test
+        if: runner.os == 'Windows'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: windows-setup
+          path: target/${{ matrix.target }}/release/bundle/nsis/*-setup.exe
+          if-no-files-found: error
+
+  # The Windows installer must install silently and the app must start and stay up; a screenshot of the desktop is
+  # kept as an artifact to look at.
+  windows-smoke:
+    needs: build
+    runs-on: windows-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: windows-setup
+          path: setup
+      - name: Install silently, start, stay up 20 s, screenshot
+        shell: pwsh
+        run: |
+          $setup = Get-ChildItem setup\*-setup.exe | Select-Object -First 1
+          Start-Process $setup.FullName -ArgumentList '/S' -Wait
+          $exe = Get-ChildItem "$env:LOCALAPPDATA\Nightshift", "$env:LOCALAPPDATA\Programs\Nightshift" -Filter *.exe -Recurse -ErrorAction SilentlyContinue |
+            Where-Object { $_.Name -notmatch 'uninstall' } | Select-Object -First 1
+          if (-not $exe) { Get-ChildItem $env:LOCALAPPDATA -Depth 2 | Out-String | Write-Host; throw 'installed exe not found' }
+          Write-Host "installed: $($exe.FullName)"
+          $p = Start-Process $exe.FullName -PassThru
+          Start-Sleep 20
+          if ($p.HasExited) { throw "the app exited with code $($p.ExitCode)" }
+          Add-Type -AssemblyName System.Windows.Forms, System.Drawing
+          $b = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
+          $bmp = New-Object System.Drawing.Bitmap $b.Width, $b.Height
+          [System.Drawing.Graphics]::FromImage($bmp).CopyFromScreen($b.Location, [System.Drawing.Point]::Empty, $b.Size)
+          $bmp.Save("$PWD\windows-smoke.png")
+          Stop-Process -Id $p.Id
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: windows-smoke
+          path: windows-smoke.png
+          if-no-files-found: warn
+
   # The AppImage must start on other distributions: run it under a virtual display for a few
   # seconds; "still running when the timeout hits" (exit 124) counts as started.
   appimage-smoke:
@@ -150,7 +198,7 @@ jobs:
   # Waits for the build legs AND the smoke test. The draft is addressed by release id: a draft
   # cannot be found by tag.
   checksums:
-    needs: [release, build, appimage-smoke]
+    needs: [release, build, appimage-smoke, windows-smoke]
     runs-on: ubuntu-22.04
     permissions:
       contents: write # upload SHA256SUMS into the draft release
@@ -162,7 +210,7 @@ jobs:
         run: |
           mkdir assets && cd assets
           gh api --paginate "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID/assets" \
-            --jq '.[] | select(.name | test("\\.(dmg|deb|rpm|AppImage)$")) | "\(.id) \(.name)"' > list.txt
+            --jq '.[] | select(.name | test("\\.(dmg|deb|rpm|AppImage|exe|msi)$")) | "\(.id) \(.name)"' > list.txt
           [ -s list.txt ] || { echo "no installer assets in release $RELEASE_ID" >&2; exit 1; }
           while read -r id name; do
             gh api -H "Accept: application/octet-stream" "repos/$GITHUB_REPOSITORY/releases/assets/$id" > "$name"

@@ -55,7 +55,7 @@ fn identity_args(dir: &Path) -> Vec<String> {
     if SIGNED.lock().unwrap().iter().any(|d| d == dir) {
         return vec![];
     }
-    let out = Command::new("git")
+    let out = crate::proc::cmd("git")
         .current_dir(dir)
         .args(["config", "--get-regexp", r"^user\.(name|email)$"])
         .output()
@@ -78,7 +78,7 @@ fn identity_args(dir: &Path) -> Vec<String> {
 }
 
 fn git_cmd(dir: &Path) -> Command {
-    let mut c = Command::new("git");
+    let mut c = crate::proc::cmd("git");
     c.current_dir(dir)
         .env("GIT_TERMINAL_PROMPT", "0")
         .env("GIT_EDITOR", "true")
@@ -669,7 +669,7 @@ fn gh_bin() -> String {
 }
 
 fn gh(repo: &Path, args: &[&str]) -> Result<String, GitError> {
-    let o = Command::new(gh_bin())
+    let o = crate::proc::cmd(gh_bin())
         .current_dir(repo)
         .args(args)
         .env("GH_PROMPT_DISABLED", "1")
@@ -1290,7 +1290,7 @@ fn clone_source(url: &str) -> Result<String, GitError> {
 pub fn clone_shallow(url: &str, dest: &Path) -> Result<(), GitError> {
     let src = clone_source(url)?;
     let parent = dest.parent().unwrap_or(Path::new("."));
-    let o = Command::new("git")
+    let o = crate::proc::cmd("git")
         .current_dir(parent)
         .env("GIT_TERMINAL_PROMPT", "0")
         .env("LC_ALL", "C")

@@ -84,7 +84,7 @@ impl Adapter for Gemini {
         cli_version(&self.bin)
     }
     fn command(&self, run: &Run) -> Command {
-        let mut c = Command::new(find_bin(&self.bin).unwrap_or_else(|| self.bin.clone().into()));
+        let mut c = crate::proc::cmd(find_bin(&self.bin).unwrap_or_else(|| self.bin.clone().into()));
         let mode = if run.is_read_only() { "plan" } else { "yolo" };
         c.current_dir(&run.cwd).args(["--output-format", "stream-json"]).arg(format!("--approval-mode={mode}"));
         if let Some(m) = cli_model(run) {
@@ -123,7 +123,7 @@ impl Adapter for Gemini {
         crate::agent::inventory::home().map(|h| crate::agent::inventory::scan("gemini", &h, cwd)).unwrap_or_default()
     }
     fn interactive_resume(&self, session: &str, cwd: &std::path::Path) -> Option<Command> {
-        let mut c = Command::new(find_bin(&self.bin).unwrap_or_else(|| self.bin.clone().into()));
+        let mut c = crate::proc::cmd(find_bin(&self.bin).unwrap_or_else(|| self.bin.clone().into()));
         c.current_dir(cwd).args(["--resume", super::claude::valid_session(session)?]);
         Some(c)
     }

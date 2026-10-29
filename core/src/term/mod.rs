@@ -167,7 +167,11 @@ impl Terms {
         if !cwd.is_dir() {
             return Err(TermError::BadCwd(cwd.display().to_string()));
         }
-        let argv = if spec.argv.is_empty() { vec![std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".into()), "-l".into()] } else { spec.argv.clone() };
+        let argv = match () {
+            _ if !spec.argv.is_empty() => spec.argv.clone(),
+            _ if cfg!(windows) => vec!["powershell.exe".into(), "-NoLogo".into()],
+            _ => vec![std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".into()), "-l".into()],
+        };
         let mut cmd = CommandBuilder::new(&argv[0]);
         cmd.args(&argv[1..]);
         cmd.cwd(&cwd);

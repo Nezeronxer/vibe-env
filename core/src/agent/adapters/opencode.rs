@@ -89,7 +89,7 @@ impl Adapter for OpenCode {
         cli_version(&self.bin)
     }
     fn command(&self, run: &Run) -> Command {
-        let mut c = Command::new(find_bin(&self.bin).unwrap_or_else(|| self.bin.clone().into()));
+        let mut c = crate::proc::cmd(find_bin(&self.bin).unwrap_or_else(|| self.bin.clone().into()));
         // --print-logs: with a refused model the JSON stream only says "Unexpected server error"; the reason
         // (`ProviderModelNotFoundError: Model not found: ...`) is on stderr, which `finish` then sees.
         c.current_dir(&run.cwd).args(["run", "--format", "json", "--print-logs", "--log-level", "ERROR", "--dir"]).arg(&run.cwd);
@@ -148,7 +148,7 @@ impl Adapter for OpenCode {
     }
     /// `opencode -s <id>`. unverified: that it works in the interactive mode.
     fn interactive_resume(&self, session: &str, cwd: &std::path::Path) -> Option<Command> {
-        let mut c = Command::new(find_bin(&self.bin).unwrap_or_else(|| self.bin.clone().into()));
+        let mut c = crate::proc::cmd(find_bin(&self.bin).unwrap_or_else(|| self.bin.clone().into()));
         c.current_dir(cwd).args(["-s", super::claude::valid_session(session)?]);
         Some(c)
     }

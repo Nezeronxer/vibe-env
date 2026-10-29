@@ -4,7 +4,7 @@ pub mod release;
 
 use std::collections::BTreeMap;
 use std::io::Read;
-use std::process::{Command, Stdio};
+use std::process::Stdio;
 use std::sync::Mutex;
 
 #[derive(Debug, Clone, PartialEq, thiserror::Error)]
@@ -67,7 +67,7 @@ impl Fetch for CurlFetch {
         let hdr = std::env::temp_dir().join(format!("nightshift-curl-{}", uuid::Uuid::new_v4().simple()));
         // big downloads (archives) get more time: 15 s for a page, about 2 min for 20 MB
         let secs = (15 + max_bytes / 200_000).min(180);
-        let mut cmd = Command::new("curl");
+        let mut cmd = crate::proc::cmd("curl");
         cmd.args(["-sS", "-L", "--proto", "=https", "--proto-redir", "=https", "--max-redirs", "5", "--compressed"])
             .args(["--max-time", &secs.to_string(), "--max-filesize", &max_bytes.to_string()])
             .args(["-A", concat!("nightshift/", env!("CARGO_PKG_VERSION"))])

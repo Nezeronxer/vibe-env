@@ -48,7 +48,7 @@ impl Adapter for Amp {
         cli_version(&self.bin)
     }
     fn command(&self, run: &Run) -> Command {
-        let mut c = Command::new(find_bin(&self.bin).unwrap_or_else(|| self.bin.clone().into()));
+        let mut c = crate::proc::cmd(find_bin(&self.bin).unwrap_or_else(|| self.bin.clone().into()));
         c.current_dir(&run.cwd);
         if let Some(s) = &run.resume {
             c.args(["threads", "continue", s]);
@@ -72,7 +72,7 @@ impl Adapter for Amp {
         crate::agent::resume_words(&self.bin, &["threads", "continue"], session)
     }
     fn interactive_resume(&self, session: &str, cwd: &std::path::Path) -> Option<Command> {
-        let mut c = Command::new(find_bin(&self.bin).unwrap_or_else(|| self.bin.clone().into()));
+        let mut c = crate::proc::cmd(find_bin(&self.bin).unwrap_or_else(|| self.bin.clone().into()));
         c.current_dir(cwd).args(["threads", "continue", super::claude::valid_session(session)?]);
         Some(c)
     }

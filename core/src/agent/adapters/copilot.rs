@@ -96,7 +96,7 @@ impl Adapter for Copilot {
         cli_version(&self.bin)
     }
     fn command(&self, run: &Run) -> Command {
-        let mut c = Command::new(find_bin(&self.bin).unwrap_or_else(|| self.bin.clone().into()));
+        let mut c = crate::proc::cmd(find_bin(&self.bin).unwrap_or_else(|| self.bin.clone().into()));
         c.current_dir(&run.cwd).args(["--output-format=json", "--no-ask-user"]);
         // a read-only role is not auto-approved (and the engine runs it in a throwaway copy)
         if !run.is_read_only() {
@@ -129,7 +129,7 @@ impl Adapter for Copilot {
         Some(v)
     }
     fn interactive_resume(&self, session: &str, cwd: &std::path::Path) -> Option<Command> {
-        let mut c = Command::new(find_bin(&self.bin).unwrap_or_else(|| self.bin.clone().into()));
+        let mut c = crate::proc::cmd(find_bin(&self.bin).unwrap_or_else(|| self.bin.clone().into()));
         c.current_dir(cwd).arg(format!("--resume={}", super::claude::valid_session(session)?));
         Some(c)
     }

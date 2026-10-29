@@ -183,7 +183,7 @@ impl Adapter for FakeAdapter {
                 FakeStep::Tokens(i, o) => sh.push_str(&ev(serde_json::json!({"t":"tokens","input":i,"output":o}))),
             }
         }
-        let mut c = Command::new("sh");
+        let mut c = crate::proc::cmd("sh");
         c.arg("-c").arg(sh).current_dir(&run.cwd).stdout(std::process::Stdio::piped());
         c
     }

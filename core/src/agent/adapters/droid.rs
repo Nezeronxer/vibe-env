@@ -49,7 +49,7 @@ impl Adapter for Droid {
         cli_version(&self.bin)
     }
     fn command(&self, run: &Run) -> Command {
-        let mut c = Command::new(find_bin(&self.bin).unwrap_or_else(|| self.bin.clone().into()));
+        let mut c = crate::proc::cmd(find_bin(&self.bin).unwrap_or_else(|| self.bin.clone().into()));
         c.current_dir(&run.cwd).args(["exec", "-o", "json"]);
         // read-only is the default of `droid exec`
         if !run.is_read_only() {
@@ -83,7 +83,7 @@ impl Adapter for Droid {
         crate::agent::resume_words(&self.bin, &["--resume"], session)
     }
     fn interactive_resume(&self, session: &str, cwd: &std::path::Path) -> Option<Command> {
-        let mut c = Command::new(find_bin(&self.bin).unwrap_or_else(|| self.bin.clone().into()));
+        let mut c = crate::proc::cmd(find_bin(&self.bin).unwrap_or_else(|| self.bin.clone().into()));
         c.current_dir(cwd).args(["--resume", super::claude::valid_session(session)?]);
         Some(c)
     }

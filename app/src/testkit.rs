@@ -14,7 +14,7 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 pub fn g(dir: &Path, args: &[&str]) -> String {
-    let o = Command::new("git").current_dir(dir).args(args).output().unwrap();
+    let o = nightshift_core::proc::cmd("git").current_dir(dir).args(args).output().unwrap();
     assert!(o.status.success(), "git {:?}: {}", args, String::from_utf8_lossy(&o.stderr));
     String::from_utf8_lossy(&o.stdout).trim().to_string()
 }
@@ -141,7 +141,7 @@ impl Adapter for Resumable {
         self.0.finish(ok, all)
     }
     fn interactive_resume(&self, session: &str, cwd: &Path) -> Option<Command> {
-        let mut c = Command::new("/opt/bin/claude");
+        let mut c = nightshift_core::proc::cmd("/opt/bin/claude");
         c.current_dir(cwd).args(["--resume", session]);
         Some(c)
     }
@@ -165,7 +165,7 @@ pub fn fake_gh() -> PathBuf {
         let d = Scratch::new("gh");
         let p = d.0.join("gh");
         std::fs::write(&p, format!("#!/bin/sh\necho \"$@\" >> '{}'\necho https://github.com/o/r/pull/9\n", d.0.join("calls").display())).unwrap();
-        Command::new("chmod").arg("755").arg(&p).status().unwrap();
+        nightshift_core::proc::cmd("chmod").arg("755").arg(&p).status().unwrap();
         std::env::set_var("NIGHTSHIFT_GH", &p);
         d
     });

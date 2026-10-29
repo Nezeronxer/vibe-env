@@ -121,7 +121,7 @@ impl Adapter for Codex {
         cli_version(&self.bin)
     }
     fn command(&self, run: &Run) -> Command {
-        let mut c = Command::new(find_bin(&self.bin).unwrap_or_else(|| self.bin.clone().into()));
+        let mut c = crate::proc::cmd(find_bin(&self.bin).unwrap_or_else(|| self.bin.clone().into()));
         // writes only inside the working copy; the reviewer cannot write at all
         let sandbox = if run.is_read_only() { "read-only" } else { "workspace-write" };
         c.current_dir(&run.cwd).args(["exec", "--json", "--skip-git-repo-check", "--sandbox", sandbox]);
@@ -136,7 +136,7 @@ impl Adapter for Codex {
                 }
                 // the flag must not vanish silently: the run fails and says why
                 Err(e) => {
-                    let mut f = Command::new("sh");
+                    let mut f = crate::proc::cmd("sh");
                     f.current_dir(&run.cwd).arg("-c").arg("echo \"$1\" >&2; exit 1").arg("sh").arg(format!("cannot write the answer schema file: {e}"));
                     return f;
                 }

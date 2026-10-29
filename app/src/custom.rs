@@ -4,7 +4,6 @@ use nightshift_core::agent::adapters::Custom;
 use nightshift_core::agent::{Adapter, Run};
 use nightshift_core::model::RoleKind;
 use std::io::Read;
-use std::os::unix::process::CommandExt;
 use std::process::Stdio;
 use std::time::{Duration, Instant};
 
@@ -42,7 +41,9 @@ impl Hub {
         std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
         let out = (|| {
             let mut c = Custom(agent).command(&Run::new(dir.clone(), PROMPT.into(), String::new(), RoleKind::Worker));
-            c.stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped()).process_group(0);
+            c.stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped());
+            #[cfg(unix)]
+            std::os::unix::process::CommandExt::process_group(&mut c, 0);
             let mut child = c.spawn().map_err(|e| format!("run_failed: {e}"))?;
             let (o, e) = (drain(child.stdout.take().unwrap()), drain(child.stderr.take().unwrap()));
             let t0 = Instant::now();
@@ -52,7 +53,7 @@ impl Hub {
                 }
                 if t0.elapsed() >= wait {
                     // the whole group: the command may have started children
-                    let _ = std::process::Command::new("kill").args(["-KILL", "--", &format!("-{}", child.id())]).status();
+                    nightshift_core::agent::kill_group(child.id());
                     let _ = child.kill();
                     let _ = child.wait();
                     break (None, true);

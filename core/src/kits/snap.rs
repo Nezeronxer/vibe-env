@@ -21,6 +21,8 @@ pub(crate) fn write_atomic(p: &Path, bytes: &[u8], mode: Option<u32>) -> Result<
     std::fs::create_dir_all(dir).map_err(io)?;
     let name = p.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
     let tmp = dir.join(format!(".{name}.ns-tmp-{}", uuid::Uuid::new_v4().simple()));
+    #[cfg(not(unix))]
+    let _ = mode; // Windows has no mode bits
     let mut o = std::fs::OpenOptions::new();
     o.write(true).create_new(true);
     #[cfg(unix)]

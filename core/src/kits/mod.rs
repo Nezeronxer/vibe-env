@@ -724,7 +724,7 @@ impl Kits {
                 snap::write_atomic(&p.join("kit.json"), &kit_json, None)?;
                 if let ExportDest::Git(_) = dest {
                     crate::git::init_repo(p).map_err(|e| KitError::Io(e.to_string()))?;
-                    commit = std::process::Command::new("git")
+                    commit = crate::proc::cmd("git")
                         .current_dir(p)
                         .args(["rev-parse", "HEAD"])
                         .output()

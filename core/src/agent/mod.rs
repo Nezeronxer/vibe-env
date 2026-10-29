@@ -474,12 +474,10 @@ impl Drop for Group {
     }
 }
 
-/// SIGKILL the whole process group of a child started with `process_group(0)`.
-pub(crate) fn kill_group(pid: u32) {
+/// SIGKILL the whole process group of a child started with `process_group(0)`; on Windows the process tree.
+pub fn kill_group(pid: u32) {
     #[cfg(unix)]
-    {
-        let _ = Command::new("kill").args(["-KILL", "--", &format!("-{pid}")]).output();
-    }
-    #[cfg(not(unix))]
-    let _ = pid;
+    let _ = crate::proc::cmd("kill").args(["-KILL", "--", &format!("-{pid}")]).output();
+    #[cfg(windows)]
+    let _ = crate::proc::cmd("taskkill").args(["/T", "/F", "/PID", &pid.to_string()]).output();
 }

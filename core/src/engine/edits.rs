@@ -5,7 +5,7 @@ use crate::agent::actions::{finish_action, unified_diff};
 use crate::agent::{ActionInput, Scrub, ToolAction};
 use std::collections::{BTreeSet, HashMap};
 use std::path::Path;
-use std::process::{Command, Stdio};
+use std::process::Stdio;
 
 /// More changed files than this in one run are not shown one by one.
 const MAX_FILES: usize = 200;
@@ -19,7 +19,7 @@ pub(super) struct Before {
 }
 
 fn git(dir: &Path, args: &[&str]) -> Option<Vec<u8>> {
-    let o = Command::new("git").current_dir(dir).args(args).stdin(Stdio::null()).stderr(Stdio::null()).output().ok()?;
+    let o = crate::proc::cmd("git").current_dir(dir).args(args).stdin(Stdio::null()).stderr(Stdio::null()).output().ok()?;
     o.status.success().then_some(o.stdout)
 }
 

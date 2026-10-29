@@ -48,7 +48,7 @@ impl Adapter for Grok {
         cli_version(&self.bin)
     }
     fn command(&self, run: &Run) -> Command {
-        let mut c = Command::new(find_bin(&self.bin).unwrap_or_else(|| self.bin.clone().into()));
+        let mut c = crate::proc::cmd(find_bin(&self.bin).unwrap_or_else(|| self.bin.clone().into()));
         c.current_dir(&run.cwd).args(["--output-format", "streaming-messages-json"]);
         if run.is_read_only() {
             c.args(["--permission-mode", "dontAsk"]);
@@ -83,7 +83,7 @@ impl Adapter for Grok {
         crate::agent::resume_words(&self.bin, &["--resume"], session)
     }
     fn interactive_resume(&self, session: &str, cwd: &std::path::Path) -> Option<Command> {
-        let mut c = Command::new(find_bin(&self.bin).unwrap_or_else(|| self.bin.clone().into()));
+        let mut c = crate::proc::cmd(find_bin(&self.bin).unwrap_or_else(|| self.bin.clone().into()));
         c.current_dir(cwd).args(["--resume", super::claude::valid_session(session)?]);
         Some(c)
     }

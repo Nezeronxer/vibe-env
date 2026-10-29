@@ -3,7 +3,7 @@
 use crate::ci::{Gh, Issue};
 use serde::{Deserialize, Serialize};
 use std::path::Path;
-use std::process::{Command, Stdio};
+use std::process::Stdio;
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct Suggestion {
@@ -94,7 +94,7 @@ fn find_word(s: &str, word: &str) -> Option<usize> {
 
 /// The pass: `git grep` in the tracked files of `repo` (nothing else is read, nothing is changed).
 pub fn scan(repo: &Path, dismissed: &[String]) -> Vec<Suggestion> {
-    let mut cmd = Command::new("git");
+    let mut cmd = crate::proc::cmd("git");
     cmd.current_dir(repo).args(["grep", "-n", "-I", "--no-color", "-w", "-E", &format!("({})", MARKERS.join("|"))]).stdin(Stdio::null()).stderr(Stdio::null());
     cmd.output().ok().map(|o| parse_grep(&String::from_utf8_lossy(&o.stdout), dismissed)).unwrap_or_default()
 }
@@ -218,7 +218,7 @@ broken line without colons\n";
         let d = std::env::temp_dir().join(format!("ns-suggest-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&d);
         std::fs::create_dir_all(&d).unwrap();
-        let g = |a: &[&str]| assert!(Command::new("git").current_dir(&d).args(a).output().unwrap().status.success());
+        let g = |a: &[&str]| assert!(crate::proc::cmd("git").current_dir(&d).args(a).output().unwrap().status.success());
         g(&["init", "-q"]);
         std::fs::write(d.join("a.txt"), "x\n// TODO: tracked\n").unwrap();
         std::fs::write(d.join("untracked.txt"), "// TODO: not in git\n").unwrap();

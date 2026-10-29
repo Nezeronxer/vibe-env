@@ -3,7 +3,7 @@
 use crate::hub::{lk, Hub};
 use nightshift_core::engine::is_active;
 use nightshift_core::model::Task;
-use std::process::{Child, Command, Stdio};
+use std::process::{Child, Stdio};
 use std::sync::Mutex;
 
 /// Away = the screen is locked, or no input for `away_min` minutes. Unknown idle time (a Linux desktop that does not
@@ -24,7 +24,7 @@ pub fn parse_console_locked(ioreg: &str) -> bool {
 }
 
 fn run(bin: &str, args: &[&str]) -> Option<String> {
-    let o = Command::new(bin).args(args).stdin(Stdio::null()).stderr(Stdio::null()).output().ok().filter(|o| o.status.success())?;
+    let o = nightshift_core::proc::cmd(bin).args(args).stdin(Stdio::null()).stderr(Stdio::null()).output().ok().filter(|o| o.status.success())?;
     Some(String::from_utf8_lossy(&o.stdout).into_owned())
 }
 
@@ -72,7 +72,7 @@ impl KeepAwake {
     pub fn system() -> KeepAwake {
         KeepAwake::with(Box::new(|| {
             let (bin, args) = inhibit_command(cfg!(target_os = "macos"), std::process::id());
-            Command::new(bin).args(args).stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null()).spawn().ok()
+            nightshift_core::proc::cmd(bin).args(args).stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null()).spawn().ok()
         }))
     }
 
@@ -155,7 +155,7 @@ mod tests {
     #[test]
     fn the_hold_is_on_while_agents_work_and_off_when_they_stop_or_the_setting_is_off() {
         let alive = |k: &KeepAwake| lk(&k.child).as_mut().is_some_and(|c| c.try_wait().unwrap().is_none());
-        let k = KeepAwake::with(Box::new(|| Command::new("sleep").arg("30").spawn().ok()));
+        let k = KeepAwake::with(Box::new(|| nightshift_core::proc::cmd("sleep").arg("30").spawn().ok()));
         assert!(k.update(true) && alive(&k));
         let pid = lk(&k.child).as_ref().unwrap().id();
         assert!(k.update(true));

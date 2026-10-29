@@ -284,7 +284,7 @@ mod tests {
         assert_eq!(p.name, "fresh");
         assert!(p.path.join(".git").is_dir());
         assert_eq!(git::repo_info(&p.path).base_branch.as_deref(), Some("main"));
-        let log = std::process::Command::new("git").args(["log", "--oneline"]).current_dir(&p.path).output().unwrap();
+        let log = nightshift_core::proc::cmd("git").args(["log", "--oneline"]).current_dir(&p.path).output().unwrap();
         assert_eq!(String::from_utf8_lossy(&log.stdout).lines().count(), 1);
         assert!(r.hub.project(&p.id).is_ok());
         for bad in ["", "  ", "..", ".", "a/b", "../x", "a\\b"] {

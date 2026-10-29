@@ -121,7 +121,7 @@ fn zone_offset(zone: &str) -> Option<FixedOffset> {
     if !known {
         return None;
     }
-    let out = std::process::Command::new("date").arg("+%z").env("TZ", zone).output().ok()?;
+    let out = crate::proc::cmd("date").arg("+%z").env("TZ", zone).output().ok()?;
     let s = String::from_utf8(out.stdout).ok()?;
     let s = s.trim();
     if !out.status.success() || s.len() != 5 {
@@ -222,7 +222,7 @@ pub fn capture(bin: &str, args: &[&str], timeout: std::time::Duration) -> Result
     use std::io::Read;
     use std::process::Stdio;
     let path = find_bin(bin).ok_or_else(|| format!("not installed: {bin}"))?;
-    let mut child = std::process::Command::new(path)
+    let mut child = crate::proc::cmd(path)
         .args(args)
         .stdin(Stdio::null())
         .stdout(Stdio::piped())

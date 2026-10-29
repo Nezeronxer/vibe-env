@@ -276,7 +276,10 @@ fn relink(link: &Path, old_real: &Path) -> bool {
     }
     let tmp = link.with_file_name(format!(".{}.nightshift-rollback", link.file_name().unwrap_or_default().to_string_lossy()));
     let _ = std::fs::remove_file(&tmp);
-    std::os::unix::fs::symlink(old_real, &tmp).and_then(|_| std::fs::rename(&tmp, link)).is_ok()
+    #[cfg(unix)]
+    return std::os::unix::fs::symlink(old_real, &tmp).and_then(|_| std::fs::rename(&tmp, link)).is_ok();
+    #[cfg(not(unix))] // Windows installs are not links: nothing to point back
+    false
 }
 
 impl Updates {

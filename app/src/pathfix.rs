@@ -1,5 +1,4 @@
 //! GUI apps start with a minimal PATH; agents, gh and node live elsewhere.
-use std::process::Command;
 
 /// Markers of a Claude Code session the app was started from (`open` in its terminal): an agent that inherits them
 /// counts as that session's child, saves no transcript (so no `--continue`) and gets its messaging token.
@@ -24,7 +23,7 @@ pub fn fix_path() {
     let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".into());
     let (tx, rx) = std::sync::mpsc::channel();
     std::thread::spawn(move || {
-        let out = Command::new(shell).args(["-ilc", "printf '\\nNSPATH=%s\\n' \"$PATH\""]).stdin(std::process::Stdio::null()).output();
+        let out = nightshift_core::proc::cmd(shell).args(["-ilc", "printf '\\nNSPATH=%s\\n' \"$PATH\""]).stdin(std::process::Stdio::null()).output();
         let _ = tx.send(out);
     });
     let from_shell = rx

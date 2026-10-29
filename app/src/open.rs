@@ -39,9 +39,14 @@ pub fn check_openable(target: &str, roots: &[PathBuf]) -> Res<Target> {
     if p.is_dir() {
         return Ok(Target::Dir(p));
     }
-    use std::os::unix::fs::PermissionsExt;
     let ext = p.extension().map(|e| e.to_string_lossy().to_lowercase()).unwrap_or_default();
-    let executable = p.metadata().map(|m| m.permissions().mode() & 0o111 != 0).unwrap_or(true);
+    #[cfg(unix)]
+    let executable = {
+        use std::os::unix::fs::PermissionsExt;
+        p.metadata().map(|m| m.permissions().mode() & 0o111 != 0).unwrap_or(true)
+    };
+    #[cfg(not(unix))] // Windows runs by extension, and OPENABLE has no program extensions
+    let executable = false;
     if p.is_file() && REVEAL_ONLY.contains(&ext.as_str()) {
         return Ok(Target::Reveal(p));
     }
@@ -72,8 +77,18 @@ pub fn spawn_reaped(c: &mut Command) -> std::io::Result<u32> {
 }
 
 pub fn opener(target: &Target) -> Res<()> {
+    if cfg!(windows) {
+        // explorer opens a link in the browser and a file in its program; /select, shows a file in its folder
+        let mut c = nightshift_core::proc::cmd("explorer");
+        match target {
+            Target::Url(u) => c.arg(u),
+            Target::File(p) | Target::Dir(p) => c.arg(p),
+            Target::Reveal(p) => c.arg(format!("/select,{}", p.display())),
+        };
+        return spawn_reaped(&mut c).map(|_| ()).map_err(|e| format!("explorer: {e}"));
+    }
     let bin = if cfg!(target_os = "macos") { "open" } else { "xdg-open" };
-    let mut c = Command::new(bin);
+    let mut c = nightshift_core::proc::cmd(bin);
     match target {
         Target::Url(u) => c.arg(u),
         Target::File(p) => c.arg(p),
@@ -102,7 +117,7 @@ impl Hub {
     pub fn open_editor(&self, path: &str) -> Res<()> {
         let dir = check_dir(path, &self.open_roots())?;
         let path = dir.to_string_lossy().to_string();
-        let spawn = |bin: String, args: Vec<String>| spawn_reaped(Command::new(bin).args(args).arg(&path)).map(|_| ()).map_err(|e| e.to_string());
+        let spawn = |bin: String, args: Vec<String>| spawn_reaped(nightshift_core::proc::cmd(bin).args(args).arg(&path)).map(|_| ()).map_err(|e| e.to_string());
         if let Some(mut parts) = gui_editor() {
             let bin = parts.remove(0);
             return spawn(bin, parts);
@@ -110,7 +125,7 @@ impl Hub {
         if exists_in_path("code") {
             return spawn("code".into(), vec![]);
         }
-        if cfg!(target_os = "macos") && Command::new("open").args(["-a", "Visual Studio Code", &path]).status().map(|s| s.success()).unwrap_or(false) {
+        if cfg!(target_os = "macos") && nightshift_core::proc::cmd("open").args(["-a", "Visual Studio Code", &path]).status().map(|s| s.success()).unwrap_or(false) {
             return Ok(());
         }
         opener(&Target::Dir(dir))
@@ -123,7 +138,7 @@ impl Hub {
 }
 
 pub fn exists_in_path(bin: &str) -> bool {
-    std::env::var("PATH").unwrap_or_default().split(':').any(|d| Path::new(d).join(bin).is_file())
+    nightshift_core::proc::which(bin).is_some()
 }
 
 /// `$VISUAL` / `$EDITOR` only when it is not a terminal editor.
@@ -142,18 +157,18 @@ mod tests {
     #[cfg(unix)]
     #[test]
     fn a_process_started_for_the_person_is_waited_for_and_does_not_stay_a_zombie() {
-        let state = |pid: u32| String::from_utf8_lossy(&Command::new("ps").args(["-o", "stat=", "-p", &pid.to_string()]).output().unwrap().stdout).trim().to_string();
+        let state = |pid: u32| String::from_utf8_lossy(&nightshift_core::proc::cmd("ps").args(["-o", "stat=", "-p", &pid.to_string()]).output().unwrap().stdout).trim().to_string();
         let wait_gone = |pid: u32| (0..50).any(|_| { std::thread::sleep(std::time::Duration::from_millis(40)); !state(pid).starts_with('Z') });
         // the cause: a child that is dropped without `wait` stays a zombie after it ended
-        let lost = Command::new("true").spawn().unwrap();
+        let lost = nightshift_core::proc::cmd("true").spawn().unwrap();
         let lost_pid = lost.id();
         drop(lost);
         std::thread::sleep(std::time::Duration::from_millis(300));
         assert!(state(lost_pid).starts_with('Z'), "the reproduction: {:?}", state(lost_pid));
         // the helper reaps it
-        let pid = spawn_reaped(&mut Command::new("true")).unwrap();
+        let pid = spawn_reaped(&mut nightshift_core::proc::cmd("true")).unwrap();
         assert!(wait_gone(pid), "still {:?}", state(pid));
-        assert!(spawn_reaped(&mut Command::new("/nonexistent/program")).is_err());
+        assert!(spawn_reaped(&mut nightshift_core::proc::cmd("/nonexistent/program")).is_err());
     }
 
     use super::*;
