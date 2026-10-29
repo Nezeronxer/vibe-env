@@ -776,6 +776,8 @@ fn the_base_does_not_move_under_a_rebase_the_person_has_going() {
     assert!(revert(&repo, "main", &sha).is_err());
     assert_eq!(g(&repo, &["rev-parse", "refs/heads/main"]), before, "main stays where the rebase expects it");
     let _ = Command::new("git").current_dir(&repo).args(["rebase", "--abort"]).output();
+}
+
 // --- an agent cannot make the app's git run a program (audit 29.10.2026) ---
 mod config_guard {
     use nightshift_core::git;
