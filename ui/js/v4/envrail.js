@@ -86,7 +86,9 @@
 
   // ---------- the card of an agent to add ----------
   const closeCard = () => { if (pop) { pop.remove(); pop = null; document.removeEventListener('mousedown', onDoc, true); document.removeEventListener('keydown', onKey, true); } };
-  const onDoc = (e) => { if (pop && !pop.contains(e.target)) closeCard(); };
+  // the card's own icon is not «outside»: its click closes the card (before, mousedown closed it and the click opened it again)
+  const onDoc = (e) => { if (pop && !pop.contains(e.target) && !(popAnchor && popAnchor.contains(e.target))) closeCard(); };
+  let popAnchor = null;
   const onKey = (e) => { if (e.key === 'Escape') { e.stopPropagation(); closeCard(); } };
   function openCard(env, anchor) {
     if (pop && pop.dataset.env === env.id) { closeCard(); return; }
@@ -102,6 +104,7 @@
     const r = anchor.getBoundingClientRect();
     setVars(pop, { '--x': (r.right + 8) + 'px', '--y': Math.min(r.top, window.innerHeight - 220) + 'px' });
     document.body.append(pop);
+    popAnchor = anchor;
     setTimeout(() => { document.addEventListener('mousedown', onDoc, true); document.addEventListener('keydown', onKey, true); }, 0);
     const go = pop.querySelector('.er8-go'); if (go) go.focus();
   }

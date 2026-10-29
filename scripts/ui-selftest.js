@@ -242,6 +242,13 @@ async function f8(b, base, out) {
   // v10: one way to the settings - the gear at the foot of the agents column; no second "Настройки" by the search
   const vis = await p.evaluate(() => ['.er8-set', '.navb.nb-pal', '.navb.nb-set'].map((q) => { const e = document.querySelector(q); const r = e && e.getBoundingClientRect(); return e ? { w: r.width, text: e.textContent.trim(), label: e.getAttribute('aria-label') } : null; }));
   ok('v10 F8 2: the settings gear is under the agents, "⌘K Поиск и команды" by the search, no second settings button', vis[0] && vis[0].w > 20 && /Настройки/.test(vis[0].label) && vis[1] && /Поиск и команды/.test(vis[1].text) && !vis[2], vis);
+  // v12: the card of an agent to add closes on a second click of its own icon (mousedown closed it, the click opened it again)
+  const miss = p.locator('.er8-i.miss').first(), cards = () => p.locator('.er8-card').count();
+  await miss.click(); await p.waitForTimeout(200); const c1 = await cards();
+  await miss.click(); await p.waitForTimeout(200); const c2 = await cards();
+  await miss.click(); await p.waitForTimeout(200); const c3 = await cards();
+  await p.mouse.click(700, 400); await p.waitForTimeout(200); const c4 = await cards();
+  ok('v12: an agent card opens on its icon, closes on the same icon, opens again, closes outside', [c1, c2, c3, c4].join() === '1,0,1,0', [c1, c2, c3, c4]);
   await p.click('.rail7-new'); await p.waitForTimeout(300);
   await p.click('.l7-more-b:has-text("Фабрика")'); await p.waitForTimeout(500);
   const fact = await here();
