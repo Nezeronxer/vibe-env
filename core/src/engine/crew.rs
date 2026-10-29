@@ -15,7 +15,7 @@ use std::path::Path;
 /// Puts the files of a part (relative paths git reported) from its copy into the task's copy; a file
 /// the part deleted is deleted there. Only regular files, and only inside the task's copy.
 fn apply_files(from: &Path, to: &Path, paths: &[String]) -> Result<(), String> {
-    let root = to.canonicalize().map_err(|e| format!("{}: {e}", to.display()))?;
+    let root = crate::proc::canon(&to).map_err(|e| format!("{}: {e}", to.display()))?;
     for rel in paths {
         let (src, dst) = (from.join(rel), to.join(rel));
         if rel.split('/').any(|c| c == ".." || c.is_empty()) || Path::new(rel).is_absolute() {
@@ -23,7 +23,7 @@ fn apply_files(from: &Path, to: &Path, paths: &[String]) -> Result<(), String> {
         }
         let parent = dst.parent().ok_or_else(|| format!("part_unsafe_path: {rel}"))?;
         std::fs::create_dir_all(parent).map_err(|e| format!("{rel}: {e}"))?;
-        if !parent.canonicalize().is_ok_and(|p| p.starts_with(&root)) {
+        if !crate::proc::canon(&parent).is_ok_and(|p| p.starts_with(&root)) {
             return Err(format!("part_unsafe_path: {rel}"));
         }
         match src.symlink_metadata() {

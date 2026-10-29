@@ -17,6 +17,11 @@ pub fn cmd<S: AsRef<OsStr>>(program: S) -> Command {
     Command::new(program)
 }
 
+/// `canonicalize` without the `\\?\` prefix Windows adds (git and Node CLIs stumble on it); the same as std elsewhere.
+pub fn canon<P: AsRef<std::path::Path>>(p: P) -> std::io::Result<std::path::PathBuf> {
+    dunce::canonicalize(p)
+}
+
 /// `sh -c <line>`; on Windows `cmd /C <line>`, the line given to cmd exactly as written.
 pub fn shell(line: &str) -> Command {
     #[cfg(windows)]

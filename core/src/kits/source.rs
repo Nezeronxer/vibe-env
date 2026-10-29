@@ -212,7 +212,7 @@ fn clone_url(url: &str) -> Result<String, KitError> {
     }
     let local = Path::new(u);
     if local.is_absolute() && local.is_dir() {
-        let canon = local.canonicalize().map_err(io)?;
+        let canon = crate::proc::canon(&local).map_err(io)?;
         return Ok(format!("file://{}", canon.display()));
     }
     Err(bad("not a remote and not an existing local folder"))

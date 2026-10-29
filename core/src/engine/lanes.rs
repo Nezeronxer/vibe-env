@@ -114,7 +114,7 @@ impl Engine {
     /// Runs a git operation that writes into the `.git` of the project of `path`, alone.
     pub(crate) fn with_git<R>(&self, path: &std::path::Path, f: impl FnOnce() -> R) -> R {
         let key = Self::git_dir_of(path);
-        let key = key.canonicalize().unwrap_or(key); // /var and /private/var are one place
+        let key = crate::proc::canon(&key).unwrap_or(key); // /var and /private/var are one place
         let lock = lk(&self.repo_locks).entry(key).or_default().clone();
         let _one = lock.lock().unwrap_or_else(|e| e.into_inner());
         f()

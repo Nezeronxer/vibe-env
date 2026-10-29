@@ -65,7 +65,7 @@ impl DiskTree<'_> {
 
     /// A symlink is followed only into the allowed folder and never into key stores.
     fn inside(&self, p: &Path) -> bool {
-        p.canonicalize().map(|c| c.starts_with(&self.allowed) && !forbidden(&c)).unwrap_or(false)
+        crate::proc::canon(&p).map(|c| c.starts_with(&self.allowed) && !forbidden(&c)).unwrap_or(false)
     }
 
     fn walk(&self, dir: &Path, rel: &str, depth: usize, out: &mut Vec<String>) {

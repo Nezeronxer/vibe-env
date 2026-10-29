@@ -113,12 +113,12 @@ impl Chats {
     /// The real path of a file kept by `attach`: a regular file right inside a folder of `attachments_dir()`
     /// (never a symlink, never deeper, never outside).
     fn own_attachment(&self, file: &Path) -> Option<PathBuf> {
-        let root = self.attachments_dir().canonicalize().ok()?;
+        let root = crate::proc::canon(&self.attachments_dir()).ok()?;
         let meta = std::fs::symlink_metadata(file).ok()?;
         if !meta.is_file() {
             return None;
         }
-        let real = file.canonicalize().ok()?;
+        let real = crate::proc::canon(&file).ok()?;
         (real.parent()?.parent()? == root).then_some(real)
     }
 
@@ -143,7 +143,7 @@ impl Chats {
         }
         let dir = self.attach_dir(Some(chat));
         private_dir(&dir).map_err(|e| format!("attach_failed: {e}"))?;
-        let real = dir.canonicalize().unwrap_or_else(|_| dir.clone());
+        let real = crate::proc::canon(&dir).unwrap_or_else(|_| dir.clone());
         let mut out = vec![];
         for f in own {
             // the path as the app names its folder (not the resolved one), the same the window and the feed get

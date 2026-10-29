@@ -59,13 +59,13 @@ pub(super) fn before(dir: &Path) -> Option<Before> {
 /// A path of an action relative to the copy (CLIs give absolute paths).
 pub(super) fn rel_path(dir: &Path, p: &str) -> String {
     let path = Path::new(p);
-    for base in [dir.to_path_buf(), dir.canonicalize().unwrap_or_else(|_| dir.to_path_buf())] {
+    for base in [dir.to_path_buf(), crate::proc::canon(&dir).unwrap_or_else(|_| dir.to_path_buf())] {
         if let Ok(r) = path.strip_prefix(&base) {
             return r.to_string_lossy().into_owned();
         }
     }
-    if let Ok(c) = path.canonicalize() {
-        if let Ok(r) = c.strip_prefix(dir.canonicalize().unwrap_or_else(|_| dir.to_path_buf())) {
+    if let Ok(c) = crate::proc::canon(&path) {
+        if let Ok(r) = c.strip_prefix(crate::proc::canon(&dir).unwrap_or_else(|_| dir.to_path_buf())) {
             return r.to_string_lossy().into_owned();
         }
     }

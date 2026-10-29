@@ -453,7 +453,7 @@ impl Kits {
             .flatten()
             .filter_map(|e| {
                 let name = e.file_name().to_string_lossy().to_string();
-                let real = e.path().canonicalize().ok()?;
+                let real = crate::proc::canon(&e.path()).ok()?;
                 (ok_name(&name) && real.starts_with(&home) && !units::forbidden(&real) && real.join("SKILL.md").is_file()).then_some((name, real))
             })
             .collect()
@@ -477,7 +477,7 @@ impl Kits {
                 skip.push((r, "too_large"));
                 return;
             }
-            let Ok(real) = e.path().canonicalize() else { continue };
+            let Ok(real) = crate::proc::canon(&e.path()) else { continue };
             let link = e.file_type().is_ok_and(|t| t.is_symlink());
             if !real.starts_with(dir) {
                 skip.push((r, "symlink_outside"));

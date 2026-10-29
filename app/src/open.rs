@@ -32,8 +32,8 @@ pub fn check_openable(target: &str, roots: &[PathBuf]) -> Res<Target> {
         return Ok(Target::Url(target.to_string()));
     }
     let bad = || format!("cannot open: {target}");
-    let p = std::fs::canonicalize(target).map_err(|_| bad())?;
-    if !roots.iter().filter_map(|r| std::fs::canonicalize(r).ok()).any(|r| p.starts_with(r)) {
+    let p = nightshift_core::proc::canon(target).map_err(|_| bad())?;
+    if !roots.iter().filter_map(|r| nightshift_core::proc::canon(r).ok()).any(|r| p.starts_with(r)) {
         return Err(bad());
     }
     if p.is_dir() {
@@ -177,7 +177,7 @@ mod tests {
         let d = std::env::temp_dir().join(format!("ns-app-{name}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&d);
         std::fs::create_dir_all(&d).unwrap();
-        d.canonicalize().unwrap()
+        nightshift_core::proc::canon(&d).unwrap()
     }
 
     #[test]

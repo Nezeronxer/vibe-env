@@ -1100,7 +1100,7 @@ fn safe_rel(p: &str) -> Result<(), GitError> {
 fn inside(root: &Path, full: &Path, shown: &str) -> Result<(), GitError> {
     let mut dir = full.parent();
     while let Some(d) = dir {
-        if let Ok(real) = d.canonicalize() {
+        if let Ok(real) = crate::proc::canon(&d) {
             return if real.starts_with(root) { Ok(()) } else { Err(GitError::Other(format!("path leaves the copy: {shown}"))) };
         }
         dir = d.parent();
@@ -1261,7 +1261,7 @@ pub fn changed_paths(wt: &Path, from: &str, to: &str) -> Vec<String> {
 /// not exist in `from` is deleted. For a part of a crew that touched files it does not own.
 pub fn restore_paths(wt: &Path, from: &str, paths: &[String]) -> Result<(), GitError> {
     // every path is checked first, so a bad one changes nothing
-    let root = wt.canonicalize().map_err(|e| GitError::Other(format!("{}: {e}", wt.display())))?;
+    let root = crate::proc::canon(&wt).map_err(|e| GitError::Other(format!("{}: {e}", wt.display())))?;
     for p in paths {
         safe_rel(p)?;
         inside(&root, &wt.join(p), p)?;
@@ -1318,7 +1318,7 @@ fn clone_source(url: &str) -> Result<String, GitError> {
     let local = Path::new(u);
     if local.is_absolute() && local.is_dir() {
         // file:// so that --depth is honoured (a plain path makes a full local clone)
-        let canon = local.canonicalize().map_err(|e| GitError::Other(e.to_string()))?;
+        let canon = crate::proc::canon(&local).map_err(|e| GitError::Other(e.to_string()))?;
         return Ok(format!("file://{}", canon.display()));
     }
     Err(bad("not a remote and not an existing local folder"))

@@ -12,11 +12,11 @@ use nightshift_core::kits::CONFIG_LOCK as ONE;
 /// The file itself: a `~/.claude.json` that is a link (dotfiles) is written through, not replaced by a plain file.
 fn config(home: &Path) -> PathBuf {
     let p = home.join(".claude.json");
-    std::fs::canonicalize(&p).unwrap_or(p)
+    nightshift_core::proc::canon(&p).unwrap_or(p)
 }
 
 fn key(p: &Path) -> String {
-    std::fs::canonicalize(p).unwrap_or_else(|_| p.to_path_buf()).to_string_lossy().into_owned()
+    nightshift_core::proc::canon(p).unwrap_or_else(|_| p.to_path_buf()).to_string_lossy().into_owned()
 }
 
 fn accepted(cfg: &Value, dir: &str) -> bool {
