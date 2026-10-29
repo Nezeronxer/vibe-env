@@ -229,6 +229,8 @@ fn marketplace(m: &Market, src: &Source, q: &str, at: Option<&str>) -> Result<Fo
                     all.push(Item {
                         id: format!("{}:{name}/{sname}", src.id),
                         name: sname,
+                        // the plugin's text describes the whole set (every skill showed «Collection of …»); the card reads the skill's own SKILL.md
+                        description: String::new(),
                         origin: Origin::Github { repo: repo.clone(), path: join(path, &sp), git_ref: git_ref.clone(), skill: None },
                         ..item.clone()
                     });

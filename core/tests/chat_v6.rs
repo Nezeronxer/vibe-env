@@ -133,7 +133,7 @@ fn a_queued_message_is_edited_or_dropped_by_its_id_and_the_edit_survives_a_resta
     advance(&now, 31 * 60);
     let m = app.wait_feed(&id, "the queue is answered", |m| m.iter().filter(|x| x.who == Who::Model).count() == 3 || m.iter().any(|x| x.kind == Some(ChatKind::Error)));
     let humans: Vec<&str> = m.iter().filter(|x| x.who == Who::Human).map(|x| x.text.as_str()).collect();
-    assert_eq!(humans, ["first", "second", "third"], "the edited text goes, the dropped one does not");
+    assert_eq!(humans, ["first", "second", "third"], "the edited text goes, the dropped one does not; feed: {:?}", m.iter().map(|x| (&x.who, &x.text)).collect::<Vec<_>>());
 }
 
 #[test]

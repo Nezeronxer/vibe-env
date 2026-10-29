@@ -346,6 +346,8 @@ fn a_failed_answer_shows_the_reason_and_retry_repeats_it() {
     assert_eq!(m.iter().filter(|x| x.who == Who::Human).count(), 1, "retry does not add the message again");
     assert_eq!(m.iter().find(|x| x.who == Who::Model).unwrap().text, "Now it works.");
     assert!(r.chats.retry(&id, "no-such-message").is_err());
+    // the answer lands in the feed a moment before the chat stops answering (a retry then is a quiet no-op): wait for the end
+    until("the answer is over", || r.e.store().lock().unwrap().chat(&id).unwrap().answering.is_none());
     // the old "not answered" line is still on the screen: a click there does not pay for a second answer
     assert_eq!(r.chats.retry(&id, "m1").unwrap_err(), "already_answered");
     assert_eq!(r.fa.calls().len(), 2);

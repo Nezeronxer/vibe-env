@@ -120,8 +120,9 @@ impl Chats {
 
     fn hold_for_limit(&self, c: &Chat, job: &Job, until: DateTime<Local>) {
         let at = until.format("%H:%M").to_string();
-        self.line(&c.id, keys::WILL_ANSWER_AFTER, &at, Some(ChatKind::Warn), Some(&job.msg.id), None);
+        // the wait is on disk before the line that announces it: whoever sees the line sees the wait
         self.wait_until(&c.id, job.clone(), until);
+        self.line(&c.id, keys::WILL_ANSWER_AFTER, &at, Some(ChatKind::Warn), Some(&job.msg.id), None);
     }
 
     /// Answers one message. Everything that goes wrong ends as a line "not answered" in the feed. While the answer

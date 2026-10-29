@@ -163,9 +163,11 @@
       return h('label', { class: 'mk-scoperow' }, h('span', { class: 'mute', text: t('mk.scope') }), sel);
     }
     function drawItem() {
-      const it = st.sel;
-      if (!it) return h('div', { class: 'mk-empty' }, h('p', { text: t('mk.pick') }), h('p', { class: 'mute', text: t('mk.trust') }));
-      const s = itemState(it, st.installed), d = st.detail && !st.detail.error ? st.detail : null;
+      if (!st.sel) return h('div', { class: 'mk-empty' }, h('p', { text: t('mk.pick') }), h('p', { class: 'mute', text: t('mk.trust') }));
+      const d = st.detail && !st.detail.error ? st.detail : null;
+      // the card's own data (SKILL.md: description, license) wins over the list row: a skill of a plugin set or from skills.sh has none there
+      const it = d && d.item ? Object.assign({}, st.sel, { description: d.item.description || st.sel.description, license: d.item.license || st.sel.license }) : st.sel;
+      const s = itemState(it, st.installed);
       const home = safeHttps(it.homepage);
       const out = h('div', { class: 'mk-card' },
         h('h2', { text: it.name }),

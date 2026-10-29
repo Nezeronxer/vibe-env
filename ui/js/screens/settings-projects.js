@@ -27,7 +27,9 @@
   K.def('projects', { live: ['project'], build(env, fx) {
     const nodes = [];
     if (!S.projects.length) return [h('p', { class: 'empty-note', text: t('proj.none') })];
-    if (!selId || !st.project(selId)) selId = S.lastProject && st.project(S.lastProject) ? S.lastProject : S.projects[0].id;
+    // the project picked in the column head first (before, a stale «last» one with no folder came up)
+    const head = NS.projects && NS.projects.current && NS.projects.current();
+    if (!selId || !st.project(selId)) selId = head && st.project(head) ? head : S.lastProject && st.project(S.lastProject) ? S.lastProject : S.projects[0].id;
     const p = st.project(selId);
     if (S.projects.length > 1) {
       const sel = h('select', { 'aria-label': t('proj.pick') }, S.projects.map((x) => h('option', { value: x.id, text: x.name, selected: x.id === p.id })));

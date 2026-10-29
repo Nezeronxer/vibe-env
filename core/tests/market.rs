@@ -116,6 +116,12 @@ fn marketplace_lists_skills_of_a_plugin_and_pages_a_big_index() {
     let pdf = p.items.iter().find(|i| i.name == "pdf").expect("skill listed by the plugin");
     assert_eq!(pdf.id, "anthropic-skills:document-skills/pdf");
     assert_eq!(pdf.origin, Origin::Github { repo: "anthropics/skills".into(), path: "skills/pdf".into(), git_ref: Some("main".into()), skill: None });
+    // the plugin's text is about the whole set: the skill has none in the list, its card reads its own SKILL.md
+    assert_eq!(pdf.description, "");
+    let t2 = setup(FakeFetch::new().with(url, fx("mp-anthropic-skills.json")).with("https://raw.githubusercontent.com/anthropics/skills/main/skills/pdf/SKILL.md", SKILL_MD.as_bytes().to_vec()));
+    only(&t2.m, "anthropic-skills", vec![]);
+    let _ = t2.m.search(Kind::Skill, "pdf", None).unwrap();
+    assert_eq!(t2.m.item(&pdf.id).unwrap().item.description, "PDF things");
 
     // the official index: plugins with url / relative sources
     let off = "https://raw.githubusercontent.com/anthropics/claude-plugins-official/main/.claude-plugin/marketplace.json";

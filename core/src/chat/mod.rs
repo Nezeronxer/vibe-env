@@ -1017,7 +1017,14 @@ impl Chats {
     pub(crate) fn wait_until(&self, chat: &str, job: Job, until: DateTime<Local>) {
         let msg_id = job.msg.id.clone();
         lk(&self.waiting).push(Held { chat: chat.to_string(), job, until });
-        self.update_chat(chat, |c| c.wait = Some(ChatWait { msg_id, resets_at: until }));
+        // a held message is not being written any more: in the same write, or an app closed right after the limit line
+        // kept both on disk and the restart called the wait "not answered: interrupted"
+        self.update_chat(chat, |c| {
+            if c.answering.as_deref() == Some(msg_id.as_str()) {
+                c.answering = None;
+            }
+            c.wait = Some(ChatWait { msg_id, resets_at: until });
+        });
         self.queue_changed(chat);
     }
 

@@ -181,12 +181,15 @@ fn the_pty_gets_its_own_folder_as_pwd() {
     let dir = std::env::temp_dir().join(format!("ns-pwd-{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
     let t = Terms::new();
-    let mut sp = spec(&["/usr/bin/printenv", "PWD"]);
+    // the process stays a moment: an exit before the attach would race the output (seen once in 6 runs)
+    let mut sp = spec(&["/bin/sh", "-c", "printenv PWD; sleep 1"]);
     sp.cwd = Some(dir.clone());
     let id = t.open(sp).unwrap();
     let got = Got::default();
     t.attach(&id, got.sink()).unwrap();
-    wait_for("the exit", 5, || got.exit().is_some());
-    assert_eq!(got.text().trim(), dir.display().to_string());
+    let want = dir.display().to_string();
+    wait_for("PWD in the output", 5, || got.text().contains(&want));
+    assert_eq!(got.text().trim(), want);
+    t.close(&id).unwrap();
     let _ = std::fs::remove_dir(&dir);
 }

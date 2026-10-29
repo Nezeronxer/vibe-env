@@ -518,18 +518,67 @@ pub fn revert(repo: &Path, base: &str, sha: &str) -> Result<String, GitError> {
     let parent = ok(repo, &["rev-parse", &format!("{sha}^")])?;
     let mb = format!("--merge-base={sha}");
     let o = run(repo, &["merge-tree", "--write-tree", &mb, &old, &parent])?;
-    if o.code == Some(1) {
+    let tree = if o.code == Some(1) {
         return Err(GitError::Conflict(format!("{}\n{}", o.stdout, o.stderr).trim().to_string()));
-    }
-    if !o.ok {
+    } else if o.ok {
+        o.stdout.lines().next().unwrap_or("").to_string()
+    } else if o.stderr.contains("unknown option") {
+        // git before 2.40 (Debian 12, Ubuntu 22.04) has no --merge-base: the same three-way merge in a scratch index
+        revert_tree_compat(repo, sha, &old, &parent)?
+    } else {
         return Err(GitError::Other(format!("git merge-tree: {}", o.stderr)));
-    }
-    let tree = o.stdout.lines().next().unwrap_or("").to_string();
+    };
     let subject = ok(repo, &["log", "-1", "--format=%s", sha])?;
     let msg = format!("Revert \"{subject}\"\n\nThis reverts commit {sha}.");
     let new = ok(repo, &["commit-tree", &tree, "-p", &old, "-m", &msg])?;
     advance(repo, base, &old, &new)?;
     Ok(new)
+}
+
+/// The tree of `ours` with `base`→`theirs` applied, for a git without `merge-tree --merge-base`: a three-way
+/// `read-tree` in a scratch index, then a line merge of each file both sides changed. Files and the real index stay.
+fn revert_tree_compat(repo: &Path, base: &str, ours: &str, theirs: &str) -> Result<String, GitError> {
+    let gd = hidden_list(repo).ok_or_else(|| GitError::Other("not a repository".into()))?;
+    let ix = TmpIndex(gd.with_file_name(format!("ns-revert-index-{}", std::process::id())));
+    ix.run(repo, &["read-tree", "-i", "-m", "--aggressive", base, ours, theirs])?;
+    // "<mode> <oid> <stage>\t<path>" per stage of each path both sides changed
+    let mut paths: Vec<(String, [Option<(String, String)>; 3])> = vec![];
+    for e in ix.run(repo, &["ls-files", "-u", "-z"])?.split('\0').filter(|e| !e.is_empty()) {
+        let (meta, path) = e.split_once('\t').ok_or_else(|| GitError::Other(format!("ls-files -u: {e}")))?;
+        let f: Vec<&str> = meta.split(' ').collect();
+        let stage: usize = f.get(2).and_then(|x| x.parse().ok()).filter(|x| (1..=3).contains(x)).ok_or_else(|| GitError::Other(format!("ls-files -u: {e}")))?;
+        if paths.last().map(|(p, _)| p != path).unwrap_or(true) {
+            paths.push((path.to_string(), [None, None, None]));
+        }
+        paths.last_mut().unwrap().1[stage - 1] = Some((f[0].to_string(), f[1].to_string()));
+    }
+    let tmp = tempfile_dir(&gd)?;
+    for (path, st) in &paths {
+        let [Some(b), Some(o), Some(t)] = st else { return Err(GitError::Conflict(format!("CONFLICT (modify/delete): {path}"))) };
+        let files: Vec<PathBuf> = [b, o, t].iter().enumerate().map(|(i, (_, oid))| {
+            let f = tmp.join(format!("{i}"));
+            let blob = git_cmd(repo).args(["cat-file", "blob", oid]).output().map(|x| x.stdout).unwrap_or_default();
+            std::fs::write(&f, blob).map(|_| f)
+        }).collect::<Result<_, _>>().map_err(|e| GitError::Other(format!("revert scratch: {e}")))?;
+        let m = git_cmd(repo).arg("merge-file").arg("-p").args(&files[1..2]).args(&files[0..1]).args(&files[2..3]).output()
+            .map_err(|e| GitError::Other(format!("git merge-file: {e}")))?;
+        if !m.status.success() {
+            return Err(GitError::Conflict(format!("CONFLICT (content): {path}")));
+        }
+        std::fs::write(&files[1], &m.stdout).map_err(|e| GitError::Other(format!("revert scratch: {e}")))?;
+        let oid = ok(repo, &["hash-object", "-w", &files[1].to_string_lossy()])?;
+        let mode = if o.0 == b.0 { &t.0 } else { &o.0 };
+        ix.run(repo, &["update-index", "--force-remove", "--", path])?;
+        ix.run(repo, &["update-index", "--add", "--cacheinfo", &format!("{mode},{oid},{path}")])?;
+    }
+    let _ = std::fs::remove_dir_all(&tmp);
+    ix.run(repo, &["write-tree"])
+}
+
+fn tempfile_dir(gd: &Path) -> Result<PathBuf, GitError> {
+    let d = gd.with_file_name(format!("ns-revert-files-{}", std::process::id()));
+    std::fs::create_dir_all(&d).map_err(|e| GitError::Other(format!("revert scratch: {e}")))?;
+    Ok(d)
 }
 
 /// Plain push of `branch` to origin. There is deliberately no force variant.

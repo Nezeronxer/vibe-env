@@ -312,8 +312,20 @@ pub(crate) fn with_clone<T>(url: &str, scratch: &Path, f: impl FnOnce(&Path, Opt
         git_limited(&tmp, &["clone", "--depth", "1", "--no-tags", "--single-branch", "--no-checkout", "--filter=blob:limit=10m", "-q", "--", &src, &d], &tmp, &err, None)?;
         // same limits as the clone; with lazy fetch off a blob the filter left out shows as "BAD"
         let listing = tmp.join("ls-tree");
-        git_limited(&dest, &["ls-tree", "-r", "-l", "-z", "HEAD"], &tmp, &err, Some(&listing))
-            .map_err(|e| if matches!(e, KitError::CloneFailed(_)) { KitError::CloneFailed("empty repository".into()) } else { e })?;
+        match git_limited(&dest, &["ls-tree", "-r", "-l", "-z", "HEAD"], &tmp, &err, Some(&listing)) {
+            // git before 2.44 stops `ls-tree -l` at the blob the filter left out ("could not fetch <oid> from promisor
+            // remote") instead of printing no size: name that file as too large, not the repo as empty
+            Err(KitError::CloneFailed(msg)) if msg.contains("promisor remote") => {
+                let oid = msg.split_whitespace().find(|w| w.len() >= 40 && w.bytes().all(|b| b.is_ascii_hexdigit())).unwrap_or("").to_string();
+                git_limited(&dest, &["ls-tree", "-r", "-z", "HEAD"], &tmp, &err, Some(&listing)).map_err(|_| KitError::CloneFailed("empty repository".into()))?;
+                let all = std::fs::read(&listing).map_err(io)?;
+                let path = all.split(|b| *b == 0).map(String::from_utf8_lossy).find(|r| !oid.is_empty() && r.split('\t').next().is_some_and(|m| m.ends_with(&oid)))
+                    .and_then(|r| r.split_once('\t').map(|(_, p)| p.to_string())).unwrap_or_default();
+                return Err(KitError::FileTooLarge { path, size: MAX_FILE });
+            }
+            Err(KitError::CloneFailed(_)) => return Err(KitError::CloneFailed("empty repository".into())),
+            r => r?,
+        }
         let listing = std::fs::read(&listing).map_err(io)?;
         let mut total = 0u64;
         let mut count = 0usize;
