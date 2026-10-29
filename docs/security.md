@@ -56,7 +56,7 @@ file with mode 0600 (the app says so). Git copies live in a worktrees folder nex
 
 ## Audit report
 
-Status: **run.** Last audit: 23.10.2026 (v4). Each audit was a set of independent checkers, and every finding
+Status: **run.** Last audit: 29.10.2026 (1.0.0: Windows, «С GitHub…»). Each audit was a set of independent checkers, and every finding
 was re-checked by a fresh agent before it counted. Threat model: the attacker is the author of a foreign kit or
 catalog item, a models.dev entry, or the contents of a repository an agent works on; the user and the machine
 are trusted.
@@ -87,6 +87,26 @@ gitleaks for v1-v3: no record of a run is kept in the repository or the task not
 | F4.3 | Secrets | `terms.json` kept up to 2 MB of terminal output per session, mode 0644, never removed (low) | fixed: written 0600, removed right after it is loaded at start | `cargo test -p nightshift-app` |
 | F4.4 | Rights and boundaries | 0x1E/0x1F bytes in a commit subject forged history rows, so "Revert" on a forged row reverted a commit the attacker chose (low) | fixed: `log_page` reads NUL-separated records and stops at a record that is not 7 fields with a hex sha, hex parents and a numeric time (see D2) | `cargo test -p nightshift-core --test git_v4` |
 | D2 | Rights and boundaries | deviation from F4.4: a bad record cuts the history list short instead of being skipped | kept on purpose: after a bad record the fields are shifted, so skipping it would let it forge the rows next to it; a bad record only appears for objects made with `hash-object --literally` | `cargo test -p nightshift-core --test git_v4` |
+
+### 1.0.0 (29.10.2026): Windows, a project from GitHub, before the public release
+
+Three independent checkers (commands and processes on all three systems; the window and IPC; untrusted content and
+secrets). Each finding below was reproduced (a marker file a hostile program created) and is now a test.
+
+| Id | Area | Finding | Status | Re-check command |
+|---|---|---|---|---|
+| R1.1 | Sandbox escape | the app's own git (commit, diff, rebase of a copy) ran hooks, filters and diff drivers from a repository config an agent can write (the main `.git` is writable from Claude's sandbox; or the copy's `.git` file swapped for a repository / a pointer into the copy) (high) | fixed: hooks off (`core.hooksPath`); program-running config keys recorded at the first look per repository, a change after that refuses git; a swapped `.git` refuses git | `cargo test -p nightshift-core --test git config_guard a_copy_turned` |
+| R1.2 | Sandbox escape | `claude -p` asks no folder trust: hooks of a cloned repository's `.claude/settings.json` ran before the first word, outside the sandbox (high) | fixed: `disableAllHooks` in `--settings` (CLAUDE.md is still read); `--strict-mcp-config` when the project has `.mcp.json` (its servers started too) - checked on Claude Code 2.1.312 | `cargo test -p nightshift-core --test adapters claude` |
+| R1.3 | Kits | a skill with a fenced ```` ```! ```` block (Claude Code runs it) installed switched on (medium) | fixed: counted as running code, held until ticked | `cargo test -p nightshift-core --lib runs_tests` |
+| R1.4 | Prompt injection | the failed CI log was fenced with backticks it can close (low) | fixed: `prompt::fenced` with a random tag | `cargo test -p nightshift-core --lib ci` |
+| R1.5 | Open a file | `.js`/`.py`/`.rb`/`.php` opened with the system handler (Windows Script Host runs `.js`); `http://` and links with quotes reached `explorer` (low, Windows medium) | fixed: scripts are only shown in the folder; links only https without spaces or quotes | `cargo test -p nightshift-app open` |
+| R1.6 | Dependencies | tokio 1.54.0 RUSTSEC-2026-0384 | fixed: 1.54.1; `cargo audit` lists only unmaintained crates under Tauri/zbus | `cargo audit` |
+
+Kept by design, written down: a project's setup and test commands come from its files (`package.json`) and run
+outside the agent's sandbox, as they would in the person's own terminal; a "custom" agent template that hands
+`{prompt}` to an inner shell (`bash -lc '… {prompt}'`) makes the prompt code - write such templates with `"$1"`.
+Not reproduced (no Windows machine at hand; the release runner only installs and starts the app): how
+`explorer`, `cmd /k` and npm `.cmd` shims split arguments.
 
 No v4 finding was refuted. gitleaks v4 (tree and whole history): only false positives, `api_message_id` in a test
 fixture and the minified xterm bundle.
