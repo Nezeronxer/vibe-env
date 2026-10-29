@@ -165,11 +165,12 @@
     'err.not a git repo': 'This is not a git repository',
   };
   const dicts = { ru, en };
-  let current = 'en';
   function resolve(setting) {
     if (setting === 'ru' || setting === 'en') return setting;
     return /^ru\b/i.test((root.navigator && root.navigator.language) || '') ? 'ru' : 'en';
   }
+  // the system language until the settings are read: the screens shown before them (no git, unreadable data) spoke English
+  let current = resolve('auto');
   const api = {
     dicts,
     setLang(setting) { current = resolve(setting); },

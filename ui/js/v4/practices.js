@@ -74,7 +74,8 @@
   function taxBlock(env, fx) {
     const body = h('div', { class: 'srows' }, h('p', { class: 'hint', text: '…' }));
     const projects = S.projects || [];
-    let project = S.lastProject && projects.some((p) => p.id === S.lastProject) ? S.lastProject : (projects[0] || {}).id || '';
+    const cur = NS.projects.current();
+    let project = cur && projects.some((p) => p.id === cur) ? cur : (projects[0] || {}).id || '';
     const sel = h('select', { 'aria-label': t('pr.tax_project') }, h('option', { value: '', text: t('pr.tax_global') }), projects.map((p) => h('option', { value: p.id, text: p.name, selected: p.id === project })));
     async function load() {
       let x;

@@ -266,7 +266,9 @@
     const title = h('input', { type: 'text', maxLength: 80, placeholder: t('auto.f_title_ph'), ...NS_QUIET() });
     const prompt = h('textarea', { rows: 4, placeholder: t('auto.f_prompt_ph'), ...NS_QUIET() });
     const projects = () => S.projects.map((p) => [p.id, p.name]);
-    const project = select(projects(), (S.projects[0] || {}).id);
+    // the project of the column head, as the other screens (before: always the first one, even one whose folder is gone)
+    const cur = NS.projects && NS.projects.current && NS.projects.current();
+    const project = select(projects(), (cur && S.projects.some((p) => p.id === cur)) ? cur : (S.projects[0] || {}).id);
     const envs = () => [['', t('auto.f_env_def')], ...S.envs.filter((e) => e.state === 'ok').map((e) => [e.id, e.name])];
     const env = select(envs(), '');
     const model = select([['', t('auto.f_model_def')]], '');

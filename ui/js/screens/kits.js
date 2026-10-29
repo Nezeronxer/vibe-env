@@ -173,7 +173,7 @@
       const source = fx.extra.source;
       if (!plan) return [h('p', { class: 'empty-note', text: t('import.none') }), h('button', { type: 'button', class: 'btn', text: t('kits.back'), onclick: () => fx.ctx.nav('kits', { env: env.id }) })];
       const root = h('div', { class: 'importpage' });
-      let scope = null, projectId = (S.projects.find((p) => p.id === S.lastProject) || S.projects[0] || {}).id || null;     // scope: null | 'global' | 'project' - nothing is chosen for the person
+      let scope = null, projectId = (S.projects.find((p) => p.id === NS.projects.current()) || S.projects[0] || {}).id || null;     // scope: null | 'global' | 'project' - nothing is chosen for the person
       const coreScope = () => (scope === 'project' ? { project: projPath(projectId) } : 'global');
       const enabled = new Set();                    // every held entry is off until ticked (story 208)
       const secrets = new Map();

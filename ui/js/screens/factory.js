@@ -120,7 +120,7 @@
 
     // ---------- "Поручить" ----------
     const input = h('input', { type: 'text', id: 'ol', placeholder: t('factory.one_line_ph'), 'aria-label': t('factory.one_line') });
-    const projSel = h('select', { 'aria-label': t('chat.project'), hidden: S.projects.length < 2 }, S.projects.map((p) => h('option', { value: p.id, text: p.name, selected: p.id === (S.lastProject || (S.projects[0] || {}).id) })));
+    const projSel = h('select', { 'aria-label': t('chat.project'), hidden: S.projects.length < 2 }, S.projects.map((p) => h('option', { value: p.id, text: p.name, selected: p.id === (NS.projects.current() || (S.projects[0] || {}).id) })));   // the project of the column head
     const goBtn = h('button', { class: 'btn primary', type: 'submit', text: t('factory.assign') });
     const form = h('form', { class: 'oneline', onsubmit: async (e) => {
       e.preventDefault();
