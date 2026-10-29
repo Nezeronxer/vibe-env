@@ -483,3 +483,20 @@ fn merge_refuses_to_overwrite_an_ignored_file_of_the_person() {
     assert!(err.starts_with("base_untracked") && err.contains("local.json"), "{err}");
     assert_eq!(fs::read_to_string(repo.join("local.json")).unwrap(), "{\"my\":\"settings\"}\n");
 }
+
+#[test]
+fn a_copy_is_removed_without_force_and_git_keeps_work_written_after_the_check() {
+    let r = rig();
+    fs::write(r.env.repo.join(".env"), "KEY=1\n").unwrap();
+    // the app's own copy of .env does not block an ordinary «Удалить копию»
+    let (path, _) = r.term("clean");
+    assert!(path.join(".env").exists(), "the copy got the project's .env");
+    r.e.agent_worktree_remove(&path, false).unwrap();
+    assert!(!path.exists());
+    // a file that appears after the check (a process of the agent still writing): git refuses, the file stays
+    let (path, _) = r.term("late");
+    fs::write(path.join("late.txt"), "written after the check\n").unwrap();
+    let repo = r.env.repo.clone();
+    assert!(matches!(nightshift_core::git::remove_worktree_careful(&repo, &path, false), Err(nightshift_core::git::GitError::AdvanceBlocked(_))));
+    assert_eq!(fs::read_to_string(path.join("late.txt")).unwrap(), "written after the check\n");
+}

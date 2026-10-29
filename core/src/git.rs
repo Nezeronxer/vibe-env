@@ -219,9 +219,38 @@ pub fn create_worktree(repo: &Path, worktrees_dir: &Path, task_id: &str, branch:
 /// Removes the worktree (it is the app's own, so `--force` is fine). The branch is deleted only
 /// when `delete_branch` is set and it is an `ns/*` branch.
 pub fn remove_worktree(repo: &Path, wt: &Path, delete_branch: bool) -> Result<(), GitError> {
+    remove_wt(repo, wt, delete_branch, true)
+}
+
+/// `remove_worktree` without `--force`, for a copy the person asked to remove: the files the app copied in (`.env*`,
+/// listed in `ns-hidden`) go first, then git itself refuses a copy that still holds modified or untracked work - a
+/// file written after the app's own check (a process of the agent that outlived its tab) is not deleted with it.
+pub fn remove_worktree_careful(repo: &Path, wt: &Path, delete_branch: bool) -> Result<(), GitError> {
+    if wt.exists() {
+        if let Some(list) = hidden_list(wt) {
+            let root = wt.canonicalize().map_err(|e| GitError::Other(format!("{}: {e}", wt.display())))?;
+            for p in std::fs::read_to_string(&list).unwrap_or_default().lines().filter(|l| !l.is_empty()) {
+                // only an untracked copy the app made, inside the copy
+                let full = wt.join(p);
+                let tracked = run(wt, &["ls-files", "--error-unmatch", "--", &literal(p)]).map(|o| o.ok).unwrap_or(true);
+                if safe_rel(p).is_ok() && inside(&root, &full, p).is_ok() && !tracked && full.is_file() {
+                    let _ = std::fs::remove_file(&full);
+                }
+            }
+        }
+    }
+    remove_wt(repo, wt, delete_branch, false)
+}
+
+fn remove_wt(repo: &Path, wt: &Path, delete_branch: bool, force: bool) -> Result<(), GitError> {
     let branch = if wt.exists() { try_out(wt, &["symbolic-ref", "--short", "-q", "HEAD"]) } else { None };
     if wt.exists() {
-        ok(repo, &["worktree", "remove", "--force", &wt.to_string_lossy()])?;
+        let path = wt.to_string_lossy();
+        let args: Vec<&str> = if force { vec!["worktree", "remove", "--force", &path] } else { vec!["worktree", "remove", &path] };
+        let o = run(repo, &args)?;
+        if !o.ok {
+            return Err(if o.stderr.contains("modified or untracked") { GitError::AdvanceBlocked("uncommitted changes in the copy".into()) } else { GitError::Other(format!("git worktree remove: {}", o.stderr)) });
+        }
     }
     let _ = run(repo, &["worktree", "prune"]);
     // the snapshots of a task go with its copy (the copy's folder is named by the task id)

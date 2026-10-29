@@ -53,7 +53,15 @@ impl Engine {
         }
         let branch = ctx.branch().ok_or("not_own_worktree")?;
         let delete = force || self.base_of(&ctx).is_some_and(|b| git::desk::branch_merged(&repo, &b, &branch));
-        self.rm_wt(&repo, &ctx.root, delete).map_err(gf)?;
+        if force {
+            self.rm_wt(&repo, &ctx.root, delete).map_err(gf)?;
+        } else {
+            // without --force: git refuses work written after the check above instead of deleting it with the copy
+            self.with_git(&repo, || git::remove_worktree_careful(&repo, &ctx.root, delete)).map_err(|e| match e {
+                git::GitError::AdvanceBlocked(_) => "uncommitted_changes".to_string(),
+                e => gf(e),
+            })?;
+        }
         Ok(delete)
     }
 
