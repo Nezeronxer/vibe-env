@@ -1,7 +1,7 @@
 # Maintainer: Nezeronxer <73632219+Nezeronxer@users.noreply.github.com>
 # Builds Nightshift from a release source tarball. Not yet tested on Arch: no Arch machine was available.
 pkgname=nightshift
-pkgver=1.0.0
+pkgver=1.0.1
 pkgrel=1
 pkgdesc='Hand work to coding agents and stay away until they call you'
 arch=('x86_64')

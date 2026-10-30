@@ -296,6 +296,13 @@ fn on_notification_click(app: &AppHandle, a: &tauri_plugin_notification::ActionP
     show_window(app);
     // a terminal agent's notification names its pane; a task's names its task
     if let Some(pane) = a.notification().and_then(|n| agentcmds::pane_of(n.id())) {
+        // an agent in an extra window: that window comes up (before, the main one did and the agent was not there)
+        if let Some(w) = pane.strip_prefix("win:").and_then(|id| app.get_webview_window(&format!("{}{id}", windows::PREFIX))) {
+            let _ = w.show();
+            let _ = w.unminimize();
+            let _ = w.set_focus();
+            return;
+        }
         let _ = app.emit("agent-notify-click", json!({ "pane": pane }));
         return;
     }

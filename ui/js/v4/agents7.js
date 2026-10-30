@@ -135,7 +135,8 @@
     // one sound: the notification's own when it goes out, else the chime in the window (before: both, and in quiet hours too)
     if (loud && !away) chime();
     if (away) {
-      call('notify_agent', { title: t('agents.wait_t', { name }), body, pane: view.pane.id, sound: loud }).catch(() => {
+      const win = new URLSearchParams(location.search).get('window');   // an extra window: its own id, so the click brings it up
+      call('notify_agent', { title: t('agents.wait_t', { name }), body, pane: win ? 'win:' + win : view.pane.id, sound: loud }).catch(() => {
         try { if (root.Notification && root.Notification.permission === 'granted') new root.Notification(t('agents.wait_t', { name }), { body }); } catch (e) { /* none */ }
       });
     }
