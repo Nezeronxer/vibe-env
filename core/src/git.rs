@@ -196,7 +196,9 @@ fn common_dir(dir: &Path) -> Result<PathBuf, GitError> {
     }
     let o = crate::proc::cmd("git").current_dir(dir).args(["rev-parse", "--path-format=absolute", "--git-common-dir"]).output().ok();
     let k = o.filter(|o| o.status.success()).map(|o| PathBuf::from(String::from_utf8_lossy(&o.stdout).trim())).filter(|p| !p.as_os_str().is_empty());
-    let k = k.map(|k| crate::proc::canon(&k).unwrap_or(k)).unwrap_or_else(|| dir.to_path_buf());
+    // git did not answer (not a repository yet, or git failing for a moment): nothing is remembered, the next look asks
+    // again - a remembered fallback would key the first look of the repository to the wrong place for good
+    let Some(k) = k.map(|k| crate::proc::canon(&k).unwrap_or(k)) else { return Ok(dir.to_path_buf()) };
     if let Some((was, old)) = &before {
         if !was.is_empty() && was != "dir" && !kind.is_empty() && (kind == "dir" || k.to_string_lossy() != *old) {
             return replaced();
@@ -213,11 +215,17 @@ fn common_dir(dir: &Path) -> Result<PathBuf, GitError> {
 /// Refuses git in `dir` when its repository's own config got a key that is not plain (it may make git run a
 /// program: a filter, a driver, a config hook, a remote program, gpg...) since the app first looked at it, or when
 /// a copy's `.git` was replaced (see `common_dir`). What the person had set up (a merge driver of a tool, git-lfs) is
-/// seen first and goes on working; to accept a key added since, remove it from `<app data>/git-seen.json`.
-fn check_repo_config(dir: &Path) -> Result<(), GitError> {
+/// seen first and goes on working; a key added since is shown to the person, who may trust it (`trust_config`).
+/// The repository's common git dir (as `common_dir` keys it) and its own config entries outside `plain_key`, sorted;
+/// None = no git to ask.
+fn repo_runs(dir: &Path) -> Result<Option<(String, Vec<String>)>, GitError> {
     let key = common_dir(dir)?;
     let o = crate::proc::cmd("git").current_dir(dir).args(["config", "--list", "--show-scope"]).stdin(std::process::Stdio::null()).output();
-    let Ok(o) = o else { return Ok(()) }; // no git: the real call says so
+    let Ok(o) = o else { return Ok(None) };
+    // a failed listing is not an empty config: taken as the first look, every entry would count as added later
+    if !o.status.success() {
+        return Err(GitError::Other(format!("git config --list: {}", String::from_utf8_lossy(&o.stderr).trim())));
+    }
     let mut runs: Vec<String> = String::from_utf8_lossy(&o.stdout)
         .lines()
         .filter_map(|l| l.split_once('\t'))
@@ -226,7 +234,33 @@ fn check_repo_config(dir: &Path) -> Result<(), GitError> {
         .filter(|kv| !plain_key(kv.split('=').next().unwrap_or("")))
         .collect();
     runs.sort();
-    let key = key.to_string_lossy().to_string();
+    Ok(Some((key.to_string_lossy().to_string(), runs)))
+}
+
+/// What `check_repo_config` refuses git in `dir` for: the entries (`key=value`) of the repository's own config added
+/// since the app first looked at it. The window shows them to the person before "Доверять" (`trust_config`).
+pub fn unseen_config(dir: &Path) -> Result<Vec<String>, GitError> {
+    let Some((key, runs)) = repo_runs(dir)? else { return Ok(vec![]) };
+    // no first look yet: nothing stops git, the next call takes what is there as the first look
+    Ok(with_seen(|s| (s.runs.get(&key).map(|first| runs.into_iter().filter(|r| !first.contains(r)).collect()).unwrap_or_default(), false)))
+}
+
+/// The person looked at `unseen_config` and trusts it (a click in the window, never an agent's run): the entries of
+/// `shown` still in the config become part of the first look. One added after the person looked is not taken in,
+/// so git stays refused for it. Returns how many were taken in.
+pub fn trust_config(dir: &Path, shown: &[String]) -> Result<usize, GitError> {
+    let Some((key, runs)) = repo_runs(dir)? else { return Ok(0) };
+    Ok(with_seen(|s| {
+        let Some(first) = s.runs.get_mut(&key) else { return (0, false) };
+        let add: Vec<String> = runs.into_iter().filter(|r| shown.contains(r) && !first.contains(r)).collect();
+        first.extend(add.iter().cloned());
+        first.sort();
+        (add.len(), !add.is_empty())
+    }))
+}
+
+fn check_repo_config(dir: &Path) -> Result<(), GitError> {
+    let Some((key, runs)) = repo_runs(dir)? else { return Ok(()) }; // no git: the real call says so
     with_seen(|s| match s.runs.get(&key) {
         None => {
             s.runs.insert(key, runs);

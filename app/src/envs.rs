@@ -22,6 +22,8 @@ pub struct EnvInfo {
     pub path: Option<String>,
     /// What `--version` printed; empty when it cannot be read (no CLI, an own command).
     pub version: String,
+    /// `Adapter::efforts`: the thinking levels the window offers for this env.
+    pub efforts: Vec<String>,
 }
 
 /// Where the CLI of an env is, as its adapter knows it (the settings' path, else the PATH).
@@ -55,6 +57,7 @@ impl Hub {
                         "writes_outside_copy": sb.writes_outside_copy, "note": sb.note }),
                     path: a.cli_path().map(|p| p.to_string_lossy().into_owned()),
                     version: if r_ok { a.version().unwrap_or_default() } else { String::new() },
+                    efforts: a.efforts().iter().map(|e| e.to_string()).collect(),
                     id,
                 }
             })
@@ -136,7 +139,7 @@ fn env_json(e: &EnvInfo, tasks: &[Task]) -> Value {
     json!({
         "id": e.id, "name": e.name, "installed": e.installed, "needs_login": needs_login, "error": e.error,
         "version": e.version, "install_hint": e.install_hint, "kit_dir": e.kit_dir, "custom": e.custom, "configured": e.configured,
-        "sandbox": e.sandbox, "path": e.path, "install": install_json(e.install_hint.as_deref()),
+        "sandbox": e.sandbox, "path": e.path, "install": install_json(e.install_hint.as_deref()), "efforts": e.efforts,
         "waiting": waiting, "badge": badge(waiting), "working": mine().any(|t| is_active(&t.status)),
     })
 }

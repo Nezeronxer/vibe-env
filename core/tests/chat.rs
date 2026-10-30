@@ -816,6 +816,7 @@ fn the_chat_and_the_tasks_of_one_env_get_the_same_vendor_and_the_same_model() {
             EnvSettings {
                 custom_models: vec!["gpt-5.1".into()],
                 default_model: Some(ModelChoice { family: "gpt-5.1".into(), version: None }),
+                effort: Some("high".into()),
                 ask_push: false,
                 ask_pr: false,
                 ..EnvSettings::default()
@@ -834,6 +835,7 @@ fn the_chat_and_the_tasks_of_one_env_get_the_same_vendor_and_the_same_model() {
     let chat_run = calls.iter().find(|c| c.role == RoleKind::Chat).unwrap();
     let worker_run = calls.iter().find(|c| c.role == RoleKind::Worker).unwrap();
     assert_eq!((chat_run.model.as_deref(), worker_run.model.as_deref()), (Some("gpt-5.1"), Some("gpt-5.1")));
+    assert_eq!((chat_run.effort.as_deref(), worker_run.effort.as_deref()), (Some("high"), Some("high")), "the env's thinking level reaches both");
     assert!(chat_run.system.starts_with("# Identity") && worker_run.system.starts_with("# Identity"), "both are OpenAI forms:\n{}\n{}", chat_run.system, worker_run.system);
 }
 

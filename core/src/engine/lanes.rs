@@ -362,6 +362,7 @@ impl Engine {
             run.extra_env = self.env_vars_of(&env, Some(l.task_id));
             run.json_schema = l.schema.clone();
             run.extra_args = env_set.extra_args.clone();
+            run.effort = env_set.effort.clone();
             run.attachments = self.state(l.task_id).attachments;
             if a.reports_cost() {
                 let fresh = self.task(l.task_id).unwrap_or_else(|| t.clone());

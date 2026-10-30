@@ -12,6 +12,28 @@
     const l = L.modelLabel(choiceOf(envId), NS.store.s.catalogs.get(envId));
     return l === '' ? t('model.cli_default') : l;   // null (no catalog yet) stays null
   }
+  // the thinking level (EnvSettings.effort) among the words the env's CLI takes (env.efforts from the core); '' = as the CLI decides
+  const effortsOf = (envId) => (NS.store.env(envId) || {}).efforts || [];
+  const effortOf = (envId) => { const e = NS.store.envSettings(envId).effort; return effortsOf(envId).includes(e) ? e : ''; };
+  // the composer button: "Opus 5.5 · Высокое"
+  function buttonLabel(envId) {
+    const m = label(envId), e = effortOf(envId);
+    return m && e ? m + ' · ' + t('effort.' + e) : m;
+  }
+  // "Мышление": chips under the model list; a pick is saved at once and the menu stays open
+  function effortRow(envId, after) {
+    const levels = effortsOf(envId);
+    if (!levels.length) return null;
+    const cur = effortOf(envId);
+    const pick = async (e) => {
+      try { await NS.store.saveEnvSettings(envId, { effort: e || null }); } catch (er) { NS.shell.toast(NS.errHuman(NS.api.errText(er)), true); return; }
+      after();
+    };
+    return h('div', { class: 'effort-row', title: t('effort.d') }, h('span', { class: 'hint', text: t('effort.title') }),
+      h('div', { class: 'vers', role: 'radiogroup', 'aria-label': t('effort.title') },
+        [''].concat(levels).map((l) => h('button', { type: 'button', class: 'v' + (l === cur ? ' on' : ''), role: 'radio', 'aria-checked': String(l === cur),
+          text: l ? t('effort.' + l) : t('effort.cli'), onclick: (ev) => { ev.stopPropagation(); pick(l); } }))));
+  }
   // story 240: the core sends model.desc.<id>; "(… docs, …; не сверено с CLI)" is only a tooltip
   const descOf = (f) => { const d = window.NSLive.modelDesc(f, t, (k) => window.NSI18n.has(k)); return { desc: d.text, note: d.note }; };
   const fmtDate = (iso) => new Date(iso).toLocaleDateString(NS.lang() === 'ru' ? 'ru-RU' : 'en-GB', { day: 'numeric', month: 'long' });
@@ -138,6 +160,8 @@
         foot.append(h('div', { class: 'mrow own' }, h('span', { class: 'mlogo' }), own));
         queueMicrotask(() => own.focus());
       } else foot.append(row({ on: customOn, title: t('model.own') + '…', small: customOn ? cur.family : null, tip: t('model.own_d'), onpick: () => { ownOpen = true; draw(); } }));
+      const eff = effortRow(envId, draw);
+      if (eff) foot.append(eff);
       foot.append(h('div', { class: 'catline' },
         h('span', { class: 'hint', text: cat ? t('model.list_from', { date: fmtDate(cat.at) }) : t('model.no_list') }),
         h('button', { type: 'button', class: 'linkb', text: t('model.refresh'), onclick: async (e) => {
@@ -173,9 +197,13 @@
     const cur = choiceOf(envId), curFam = cur ? cur.family : (L.defaultFamily(st.s.catalogs.get(envId)) || {}).id;
     const mk = (id, name, family, on) => ({ id: 'model.' + id, label: t('cmd.model_row', { m: name }), keywords: 'модель model ' + id, group: 'cmd.g.env', badge: on ? t('model.current') : null,
       def: { run: () => save(envId, { family, version: null }) } });
+    const curEff = effortOf(envId), levels = effortsOf(envId);
+    const eff = (levels.length ? [''].concat(levels) : []).map((l) => ({ id: 'effort.' + (l || 'cli'),
+      label: t('cmd.effort_row', { e: l ? t('effort.' + l) : t('effort.cli') }), keywords: 'мышление думать effort thinking reasoning ' + l, group: 'cmd.g.env',
+      badge: l === curEff ? t('model.current') : null, def: { run: () => NS.store.saveEnvSettings(envId, { effort: l || null }).catch((er) => NS.shell.toast(NS.errHuman(NS.api.errText(er)), true)) } }));
     return catFamilies(envId).map((f) => mk(f.id, titleOf(f, null), f.id, f.id === curFam))
-      .concat(mk('cli-default', t('model.cli_default'), CLI_DEFAULT, !!cur && cur.family === CLI_DEFAULT));
+      .concat(mk('cli-default', t('model.cli_default'), CLI_DEFAULT, !!cur && cur.family === CLI_DEFAULT), eff);
   }
 
-  NS.models = { label, picker, menu, commands, CLI_DEFAULT };
+  NS.models = { label, buttonLabel, picker, menu, commands, CLI_DEFAULT };
 })();

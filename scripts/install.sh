@@ -45,7 +45,8 @@ KIND=""; ASSET=""
 case "$OS" in
   Darwin)
     case "$MACHINE" in arm64|aarch64) ARCH=aarch64 ;; x86_64) ARCH=x64 ;; *) die "unsupported CPU: $MACHINE" ;; esac
-    KIND=dmg; ASSET=$(pick_asset "_$ARCH\\.dmg")
+    # one universal .dmg since 1.0.1; older releases have one per CPU
+    KIND=dmg; ASSET=$(pick_asset "_universal\\.dmg"); [ -n "$ASSET" ] || ASSET=$(pick_asset "_$ARCH\\.dmg")
     ;;
   Linux)
     case "$MACHINE" in x86_64|amd64) : ;; *) die "no Linux build for $MACHINE yet (only x86_64). Build from source: see README." ;; esac

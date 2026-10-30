@@ -60,7 +60,7 @@
   function item(env, c, i) {
     const on = filter === env.id, miss = missing(env);
     const n = c ? c.wait || c.run : 0, mac = /Mac/i.test(navigator.platform || '');
-    const tip = miss ? env.name + ' · ' + t('env8.missing') : t('env8.pick_d', { env: env.name }) + (i < 9 ? ' · ' + (mac ? '⌥⌘' : 'Ctrl+Alt+') + (i + 1) : '');
+    const tip = miss ? env.name + ' · ' + t('env8.missing') : t('env8.pick_d', { env: env.name }) + (i < 7 ? ' · ' + (mac ? '⌥⌘' : 'Ctrl+Alt+') + (i + 1) : '');
     return h('button', { type: 'button', class: 'er8-i' + (on ? ' on' : '') + (miss ? ' miss' : ''), role: miss ? null : 'tab', 'aria-selected': miss ? null : String(on), title: tip,
       dataset: { env: String(env.id).startsWith('custom') ? 'custom' : env.id }, onclick: (e) => (miss ? openCard(env, e.currentTarget) : setFilter(env.id)) },
     h('span', { class: 'er8-ic' }, envIcon(env.custom ? 'custom' : env.id)), h('span', { class: 'er8-n', text: shortName(env) }),

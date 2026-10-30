@@ -1,7 +1,7 @@
 name: Release
 
 # Builds installers when a tag v* is pushed and attaches them to a DRAFT release:
-# macOS .dmg (arm64 + x64), Windows setup .exe + .msi, Linux .AppImage, .deb, .rpm, plus SHA256SUMS.
+# macOS .dmg (universal: arm64 + x64 in one), Windows setup .exe + .msi, Linux .AppImage, .deb, .rpm, plus SHA256SUMS.
 # Nothing here runs until the repository is published and a tag is pushed.
 
 on:
@@ -36,11 +36,9 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          # one .dmg for every Mac: with two (aarch64 / x64) a person on an M-chip Mac took the x64 one (live run 30.10.2026)
           - os: macos-latest
-            target: aarch64-apple-darwin
-            bundles: app,dmg
-          - os: macos-latest
-            target: x86_64-apple-darwin
+            target: universal-apple-darwin
             bundles: app,dmg
           - os: ubuntu-22.04
             target: x86_64-unknown-linux-gnu

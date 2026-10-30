@@ -33,6 +33,8 @@ pub struct Run {
     pub role: Role,
     /// Model flag value for the CLI (from `models::resolve`); None = no flag.
     pub model: Option<String>,
+    /// `EnvSettings.effort`; the adapter passes it only when it is one of its `efforts()`.
+    pub effort: Option<String>,
     /// Ask the CLI for its own read-only mode where it has one (`Adapter::read_only_native`).
     /// A Reviewer run is read-only whatever this says.
     pub read_only: bool,
@@ -61,6 +63,7 @@ impl Run {
             resume: None,
             role,
             model: None,
+            effort: None,
             read_only: false,
             extra_env: vec![],
             json_schema: None,
@@ -214,6 +217,10 @@ pub trait Adapter: Send + Sync {
     /// runs such a role in a throwaway copy.
     fn read_only_native(&self) -> bool {
         false
+    }
+    /// The thinking levels the CLI takes, lowest first; empty = it has no such flag.
+    fn efforts(&self) -> &'static [&'static str] {
+        &[]
     }
     /// The CLI reports the cost of a run (`AgentEvent::Cost`).
     fn reports_cost(&self) -> bool {

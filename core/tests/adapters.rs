@@ -404,6 +404,22 @@ fn args(a: &dyn Adapter, r: &Run) -> Vec<String> {
     a.command(r).get_args().map(|s| s.to_string_lossy().into_owned()).collect()
 }
 
+#[test]
+fn the_thinking_level_goes_as_the_cli_flag_only_when_the_cli_takes_that_word() {
+    let mut r = run(Role::Worker);
+    r.effort = Some("xhigh".into());
+    assert_eq!(arg_after(&args(&Claude::new(), &r), "--effort"), "xhigh");
+    assert_eq!(arg_after(&args(&Codex::new(), &r), "-c"), "model_reasoning_effort=xhigh");
+    // a word the CLI does not know (a hand-edited state.json, another env's level) is dropped, not passed through
+    r.effort = Some("max\nsandbox_mode=\"danger-full-access\"".into());
+    assert!(!args(&Claude::new(), &r).iter().any(|a| a == "--effort"));
+    assert!(!args(&Codex::new(), &r).iter().any(|a| a.starts_with("model_reasoning_effort")));
+    r.effort = Some("max".into());
+    assert!(!args(&Codex::new(), &r).iter().any(|a| a.starts_with("model_reasoning_effort")), "max is Claude's word, not Codex's");
+    r.effort = None;
+    assert!(!args(&Claude::new(), &r).iter().any(|a| a == "--effort"), "no level = as the CLI decides");
+}
+
 fn arg_after(v: &[String], flag: &str) -> String {
     let i = v.iter().position(|a| a == flag).unwrap_or_else(|| panic!("{flag} missing in {v:?}"));
     v[i + 1].clone()

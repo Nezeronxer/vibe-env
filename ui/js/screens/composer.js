@@ -144,7 +144,7 @@
 
     // ---- label, placeholder, switches ----
     function refresh() {
-      const e = st.env(envId), m = NS.models.label(envId);
+      const e = st.env(envId), m = NS.models.buttonLabel(envId);
       envText.textContent = m || e.name;
       pickBtn.title = e.name + (m ? ' · ' + m : '');
       readSettings(); readStart();
@@ -273,7 +273,7 @@
     const onDoc = (e) => { if (e.target.isConnected && !form.contains(e.target)) closePops(); };
     const onKey = (e) => { if (e.key === 'Escape' && closePops()) e.preventDefault(); };
     document.addEventListener('click', onDoc); document.addEventListener('keydown', onKey);
-    const offSettings = st.on('settings', (id) => { if (id === envId || id == null) { const m = NS.models.label(envId); envText.textContent = m || st.env(envId).name; } });   // a model chosen in the palette
+    const offSettings = st.on('settings', (id) => { if (id === envId || id == null) { const m = NS.models.buttonLabel(envId); envText.textContent = m || st.env(envId).name; } });   // a model or a thinking level chosen in the palette
     form.addEventListener('click', (e) => { if (e.target.isConnected && !e.target.closest('.pop') && !e.target.closest('.envpick') && e.target !== tuneBtn) closePops(); });
 
     // the menu hangs over the button: its right edge on the button's, never past the pane, and no taller than the room above it

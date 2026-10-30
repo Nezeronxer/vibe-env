@@ -143,6 +143,9 @@ impl Adapter for Claude {
         if let Some(m) = cli_model(run) {
             c.args(["--model", m]);
         }
+        if let Some(e) = cli_effort(run, self.efforts()) {
+            c.args(["--effort", e]);
+        }
         if let Some(s) = &run.json_schema {
             c.args(["--json-schema", s]);
         }
@@ -196,6 +199,10 @@ impl Adapter for Claude {
     }
     fn reports_cost(&self) -> bool {
         true
+    }
+    /// `claude --help`, 2.1.314: `--effort <level>  (low, medium, high, xhigh, max)`
+    fn efforts(&self) -> &'static [&'static str] {
+        &["low", "medium", "high", "xhigh", "max"]
     }
     /// `/compact <what to keep>` sent as the prompt of a `--resume` run. // unverified: the slash command in `-p` mode
     fn compact_prompt(&self, keep: &str) -> Option<String> {

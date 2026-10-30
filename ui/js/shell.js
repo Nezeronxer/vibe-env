@@ -271,7 +271,7 @@
     const pattern = window.NSLive.migrateSwitchEnv(((s.settings || {}).keys || {}).switch_env, plat());
     const accel = L.accelFromEvent(e, plat()), d = /^Digit([1-7])$/.exec(code);
     if (!accel || !d || accel !== pattern.replace('{n}', d[1])) return;
-    const env = s.envs[+d[1] - 1];
+    const env = railEnvs()[+d[1] - 1];
     if (env) { e.preventDefault(); pickEnv(env.id); }
   });
 
@@ -290,9 +290,11 @@
     { id: 'shell.settings_adv', labelKey: 'cmd.settings_adv', order: 61, run: () => nav('settings', { env: s.lastEnv, section: 'advanced' }) },
   ].forEach((c) => R.extend('command', c));
   // model commands ("Модель: Opus 5.5"...) are built by the palette from NS.models.commands for the env in focus
+  // the numbers of ⌥⌘1…7 are the places in the agents column (installed first), not in the core's list
+  const railEnvs = () => (window.NSEnvRail ? window.NSEnvRail.railOrder(s.envs || []).ok : s.envs || []);
   function envCommands() {
     const mod = plat() === 'mac' ? 'Alt+Cmd+' : 'Ctrl+Alt+';
-    s.envs.forEach((e, i) => R.extend('command', { id: 'env.' + e.id, label: t('cmd.env', { env: e.name }), group: 'cmd.g.env', keys: i < 7 ? mod + (i + 1) : null, order: 40 + i / 100, run: () => pickEnv(e.id) }));
+    railEnvs().forEach((e, i) => R.extend('command', { id: 'env.' + e.id, label: t('cmd.env', { env: e.name }), group: 'cmd.g.env', keys: i < 7 ? mod + (i + 1) : null, order: 40 + i / 100, run: () => pickEnv(e.id) }));
     // screens that used to sit on the rail (factory, settings) are commands now
     for (const d of R.list().filter((x) => x.rail && !x.placeholder)) if (d.id !== 'settings') R.extend('command', { id: 'screen.' + d.id, labelKey: d.rail.labelKey, order: 50 + d.rail.order, run: () => nav(d.id, d.keepEnv ? { env: s.lastEnv } : {}) });
   }

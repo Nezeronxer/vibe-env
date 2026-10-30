@@ -31,7 +31,7 @@
     'window_detach', 'window_tab', 'window_return',
     'market_search', 'market_item', 'market_plan', 'market_apply', 'market_installed', 'market_remove', 'market_sources', 'market_set_sources',
     'task_snapshots', 'restore_snapshot', 'todo_add', 'todo_set', 'todo_remove', 'take_to_main', 'give_to_agent',
-    'cli_status', 'cli_update', 'updates_history', 'gh_publish', 'git_log_page', 'git_revert_commit', 'config_open', 'config_errors',
+    'cli_status', 'cli_update', 'updates_history', 'gh_publish', 'git_log_page', 'git_revert_commit', 'git_config_unseen', 'git_config_trust', 'config_open', 'config_errors',
     // v6 (task 27): the queue of a chat on disk, stopping an answer, the words of the spinner
     'chat_queue', 'chat_queue_add', 'chat_queue_edit', 'chat_queue_drop', 'chat_stop', 'ui_hints',
     // v6 (task 28): spending by day, the error report, the app's own release

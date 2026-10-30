@@ -14,7 +14,9 @@
   const gh = new Map();          // project id -> github_info (or null while unknown)
 
   async function save(p, patch) {
-    const next = Object.assign({}, p, patch);
+    // the stored project, not the one the form was drawn with: the form is not redrawn after our own save, so a second
+    // field saved from the drawn copy sent the first field's old value back (QA 30.10.2026)
+    const next = Object.assign({}, st.project(p.id) || p, patch);
     K.touch();                                   // the echo of our own change must not redraw the form under the cursor
     await call('update_project', { project: next });
     const i = S.projects.findIndex((x) => x.id === p.id);

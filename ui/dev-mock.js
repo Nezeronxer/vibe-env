@@ -26,8 +26,8 @@
     o.envs = {}; for (const [id, b] of Object.entries(st.envs || {})) o.envs[id] = Object.assign({}, ENV_DEFAULTS, b); return o; };
   let settings = withDefaults({ language: q.get('lang') || 'auto', look: { theme: q.get('theme') || 'system', font_px: q.get('font') ? Number(q.get('font')) : 13, role_labels: q.get('labels') !== 'off' } });
   const envs = [
-    { id: 'claude', name: 'Claude Code', installed: true, version: '2.1.4', kit_dir: '~/.claude', path: '/usr/local/bin/claude', sandbox: { sandboxed: true, push_blocked: true, network_open: false, writes_outside_copy: false, note: 'песочница среды включена, git push запрещён' } },
-    { id: 'codex', name: 'Codex', installed: true, version: '0.48', kit_dir: '~/.codex', path: '/usr/local/bin/codex', sandbox: { sandboxed: true, push_blocked: false, network_open: false, writes_outside_copy: false, note: '' } },
+    { id: 'claude', name: 'Claude Code', installed: true, version: '2.1.4', kit_dir: '~/.claude', path: '/usr/local/bin/claude', efforts: ['low', 'medium', 'high', 'xhigh', 'max'], sandbox: { sandboxed: true, push_blocked: true, network_open: false, writes_outside_copy: false, note: 'песочница среды включена, git push запрещён' } },
+    { id: 'codex', name: 'Codex', installed: true, version: '0.48', kit_dir: '~/.codex', path: '/usr/local/bin/codex', efforts: ['minimal', 'low', 'medium', 'high', 'xhigh'], sandbox: { sandboxed: true, push_blocked: false, network_open: false, writes_outside_copy: false, note: '' } },
     { id: 'gemini', name: 'Gemini', installed: true, version: '0.9', path: '/opt/homebrew/bin/gemini', sandbox: { sandboxed: false, push_blocked: false, network_open: true, writes_outside_copy: true, note: '' } },
     { id: 'opencode', name: 'opencode', installed: true, version: '0.15', path: '/usr/local/bin/opencode', sandbox: { sandboxed: false, push_blocked: false, network_open: true, writes_outside_copy: true, note: '' } },
     { id: 'cursor', name: 'Cursor', installed: false, install_hint: 'curl https://cursor.com/install -fsS | bash' },

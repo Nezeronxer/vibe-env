@@ -57,6 +57,8 @@
   // the CLI of an env in a terminal (251, 298): its binary, the model flag that env takes, resume where the CLI can (299)
   // v8 envs from their docs, unverified (research-clis §7-14): amp, crush and goose take no model flag in the TUI; amp has no "continue last"
   const MODEL_FLAG = { claude: '--model', cursor: '--model', codex: '-m', gemini: '-m', opencode: '-m', qwen: '-m', kimi: '-m', copilot: '--model', droid: '-m', aider: '--model', grok: '-m' };
+  // the thinking level in the TUI (env.efforts from the core lists the words): claude `--effort`, codex its config key
+  const EFFORT_ARGV = { claude: (e) => ['--effort', e], codex: (e) => ['-c', 'model_reasoning_effort=' + e] };
   const RESUME = { claude: ['--continue'], codex: ['resume', '--last'], kimi: ['--continue'], copilot: ['--continue'], crush: ['--continue'], droid: ['--resume'], grok: ['--continue'],
     goose: ['session', '--resume'], aider: ['--restore-chat-history'], qwen: ['--continue'] };
   // no opencode: its --continue takes the last talk of the git project, and an agent's copy shares it with the main folder
@@ -67,12 +69,15 @@
   const PROMPT_ENTER = { opencode: true };
   const squeeze = (s) => String(s || '').replace(/[\s\u2500-\u257f\u2580-\u259f]+/g, '');
   const promptShown = (lines, prompt) => { const want = squeeze(prompt).slice(0, 16); return !!want && squeeze(lines.join('')).includes(want); };
-  function cliArgv(env, model, resume) {
+  function cliArgv(env, model, resume, effort) {
     const argv = [env.path || env.id];
     if (resume && RESUME[env.id]) argv.push(...RESUME[env.id]);
     if (model && MODEL_FLAG[env.id]) argv.push(MODEL_FLAG[env.id], model);
+    if (effort && EFFORT_ARGV[env.id] && (env.efforts || []).includes(effort)) argv.push(...EFFORT_ARGV[env.id](effort));
     return argv;
   }
+  // the levels a terminal of this env can be started with (the core's list, where the TUI has the flag too)
+  const effortsOf = (env) => (env && EFFORT_ARGV[env.id] ? env.efforts || [] : []);
   // a model choice -> the CLI argument, as core::models::resolve does: no flag for "Как в CLI", a pinned version's exact id, else latest
   function modelArg(choice, catalog, envId) {
     if (!choice || choice.family === 'default') return null;
@@ -104,7 +109,7 @@
     return out;
   }
 
-  root.NSTerm = { prefixStep, keyName, fileRefs, resolvePath, acker, looksIdle, cliArgv, modelArg, resumeArgv, promptArgv, promptShown, previewLines };
+  root.NSTerm = { prefixStep, keyName, fileRefs, resolvePath, acker, looksIdle, cliArgv, effortsOf, modelArg, resumeArgv, promptArgv, promptShown, previewLines };
   if (typeof document === 'undefined' || !root.NS || !root.NS.h) return;
 
   // ---------- the window ----------
@@ -436,7 +441,7 @@
       if (tab && broadcast.has(tab)) strips.append(h('div', { class: 't-strip bcast', role: 'status' }, h('span', { text: t('term.bcast_on') }), h('kbd', { text: keyText('Alt+Cmd+I') })));
       if (updateTo) {
         strips.append(h('div', { class: 't-strip upd', role: 'status' }, h('span', { text: t('term.cli_updated', { env: env ? env.name : pane.env, v: updateTo }) }),
-          h('button', { type: 'button', class: 'btn sm', text: t('term.restart_tab'), onclick: () => { updateTo = null; drawStrips(); restart(env ? cliArgv(env, modelArg(NS.store.envSettings(env.id).default_model, S().catalogs.get(env.id), env.id), true) : null); } }),
+          h('button', { type: 'button', class: 'btn sm', text: t('term.restart_tab'), onclick: () => { updateTo = null; drawStrips(); restart(env ? cliArgv(env, modelArg(NS.store.envSettings(env.id).default_model, S().catalogs.get(env.id), env.id), true, NS.store.envSettings(env.id).effort) : null); } }),
           h('button', { type: 'button', class: 'pt', 'aria-label': t('term.later'), title: t('term.later'), text: '×', onclick: () => { updateTo = null; drawStrips(); } })));
       }
       if (fit) setTimeout(() => { try { fit.fit(); } catch (e) { /* hidden */ } }, 0);
@@ -672,12 +677,13 @@
     if (!envOk(env)) { toast(t('term.cli_missing', { env: env.name }), true); return; }
     openTerm(envFields(env.id, extra), where);
   }
-  // v7: what a fresh agent terminal of an env is made of; extra = { cwd, model (CLI id), prompt, title, branch } from the launcher
+  // v7: what a fresh agent terminal of an env is made of; extra = { cwd, model (CLI id), effort, prompt, title, branch } from the launcher
   function envFields(envId, extra) {
     const env = NS.store.env(envId), p = project(), x = extra || {};
     if (!env) return null;
     const model = x.model !== undefined ? x.model : modelArg(NS.store.envSettings(env.id).default_model, S().catalogs.get(env.id), env.id);
-    return { env: env.id, argv: cliArgv(env, model), cwd: x.cwd || (p ? p.path : null), title: x.title || env.name, prompt: x.prompt || undefined, branch: x.branch || undefined };
+    const effort = x.effort !== undefined ? x.effort : NS.store.envSettings(env.id).effort;
+    return { env: env.id, argv: cliArgv(env, model, false, effort), cwd: x.cwd || (p ? p.path : null), title: x.title || env.name, prompt: x.prompt || undefined, branch: x.branch || undefined };
   }
   // "Продолжить в терминале" for the chat in focus: the built-in tab, or the system terminal with the setting "Внешний терминал"
   async function continueChat() {

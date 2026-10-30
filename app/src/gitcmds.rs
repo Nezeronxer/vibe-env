@@ -61,6 +61,21 @@ pub async fn gh_publish(s: State<'_, App>, path: String, name: String, private: 
         .map_err(|e| serde_json::to_value(&e).unwrap_or_else(|_| json!({ "kind": "publish_failed" })))
 }
 
+/// What makes git refuse the project (`unsafe_repo_config`): entries of its own config added since the app first
+/// looked at it, `key=value`, for the person to read before trusting them.
+#[tauri::command]
+pub async fn git_config_unseen(s: State<'_, App>, path: String) -> Res<Vec<String>> {
+    let p = project_path(&s, &path)?;
+    tauri::async_runtime::spawn_blocking(move || git::unseen_config(&p)).await.map_err(e2s)?.map_err(e2s)
+}
+
+/// "Доверять": the entries the person was shown (`git_config_unseen`) are taken in; anything added since stays refused.
+#[tauri::command]
+pub async fn git_config_trust(s: State<'_, App>, path: String, shown: Vec<String>) -> Res<usize> {
+    let p = project_path(&s, &path)?;
+    tauri::async_runtime::spawn_blocking(move || git::trust_config(&p, &shown)).await.map_err(e2s)?.map_err(e2s)
+}
+
 /// `[CommitRow]`: `{sha, parents, author, time (Unix s), subject, refs, task, lane, edges: [[from, to]]}`.
 #[tauri::command]
 pub async fn git_log_page(s: State<'_, App>, path: String, skip: usize, limit: usize) -> Res<Value> {

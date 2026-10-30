@@ -186,6 +186,7 @@ impl Chats {
             run.model = model.cli_arg.clone();
             run.read_only = true;
             run.extra_args = env_set.extra_args.clone();
+            run.effort = env_set.effort.clone();
             run.extra_env = self.engine.env_vars_of(&c.env, None);
             run.attachments = msg.attachments.clone();
             let mut on = |e: &agent::AgentEvent| match e {
@@ -268,6 +269,7 @@ impl Chats {
         run.model = model.cli_arg.clone();
         run.read_only = true;
         run.extra_args = env_set.extra_args.clone();
+        run.effort = env_set.effort.clone();
         run.extra_env = self.engine.env_vars_of(&c.env, None);
         let events = agent::run_blocking(&*a, &run, &mut |_| {}, &self.stop).map_err(|e| format!("{}: {e}", reason::RUN_FAILED))?;
         match self.read_outcome(&c.env, &c.project_id, false, &events) {

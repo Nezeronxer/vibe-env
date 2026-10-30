@@ -128,6 +128,9 @@ impl Adapter for Codex {
         if let Some(m) = cli_model(run) {
             c.args(["-m", m]);
         }
+        if let Some(e) = cli_effort(run, self.efforts()) {
+            c.arg("-c").arg(format!("model_reasoning_effort={e}"));
+        }
         if let Some(schema) = run.json_schema.as_deref() {
             let dir = self.schema_dir.lock().unwrap_or_else(|e| e.into_inner()).clone();
             match dir.ok_or_else(|| std::io::Error::other("no private folder for it")).and_then(|d| schema_file(&d, schema)) {
@@ -162,6 +165,11 @@ impl Adapter for Codex {
     }
     fn finish(&self, exit_ok: bool, all_text: &str) -> Vec<AgentEvent> {
         synth_done(scan, exit_ok, all_text)
+    }
+    /// `-c model_reasoning_effort=<level>` (developers.openai.com/codex/config-reference; по документации, the CLI is
+    /// not on this machine)
+    fn efforts(&self) -> &'static [&'static str] {
+        &["minimal", "low", "medium", "high", "xhigh"]
     }
     fn read_only_native(&self) -> bool {
         true

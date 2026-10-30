@@ -732,6 +732,12 @@ eq('idle shell: a prompt at the cursor is idle; vim / htop (alternate screen) an
 const envC = { id: 'claude', path: '/usr/local/bin/claude' }, envX = { id: 'codex', path: 'codex' };
 eq('env CLI: binary, model flag of the env, resume after an update', [TM.cliArgv(envC, 'opus'), TM.cliArgv(envX, 'gpt-5', true), TM.cliArgv(envC, null, true), TM.cliArgv({ id: 'gemini' }, null)],
   [['/usr/local/bin/claude', '--model', 'opus'], ['codex', 'resume', '--last', '-m', 'gpt-5'], ['/usr/local/bin/claude', '--continue'], ['gemini']]);
+const envCe = Object.assign({ efforts: ['low', 'medium', 'high', 'xhigh', 'max'] }, envC), envXe = Object.assign({ efforts: ['minimal', 'low', 'medium', 'high', 'xhigh'] }, envX);
+eq('env CLI: the thinking level - claude --effort, codex its config key, a word the CLI does not take and a CLI without the flag get nothing',
+  [TM.cliArgv(envCe, 'opus', false, 'high'), TM.cliArgv(envXe, null, false, 'xhigh'), TM.cliArgv(envXe, null, false, 'max'), TM.cliArgv({ id: 'qwen', efforts: ['high'] }, null, false, 'high'), TM.cliArgv(envCe, null, false, null)],
+  [['/usr/local/bin/claude', '--model', 'opus', '--effort', 'high'], ['codex', '-c', 'model_reasoning_effort=xhigh'], ['codex'], ['qwen'], ['/usr/local/bin/claude']]);
+eq('env list: the thinking levels of the core reach the window, none when the core sends none', [L.normalizeEnv({ id: 'claude', efforts: ['low', 'high'] }).efforts, L.normalizeEnv({ id: 'qwen' }).efforts], [['low', 'high'], undefined]);
+eq('env CLI: the launcher offers a level only where the terminal can take it', [TM.effortsOf(envCe).length, TM.effortsOf({ id: 'opencode', efforts: ['high'] }).length, TM.effortsOf(null).length], [5, 0, 0]);
 eq('env CLI: the first task - claude and codex take a bare word, opencode --prompt, qwen/gemini stay open with -i',
   [TM.promptArgv('claude', 'x'), TM.promptArgv('opencode', 'x'), TM.promptArgv('qwen', 'x'), TM.promptArgv('gemini', 'x'), TM.promptArgv(undefined, 'x')],
   [['x'], ['--prompt', 'x'], ['-i', 'x'], ['-i', 'x'], ['x']]);

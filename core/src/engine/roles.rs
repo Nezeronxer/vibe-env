@@ -234,6 +234,7 @@ impl Engine {
             run.extra_env.extend(Self::copy_env(t));
             run.json_schema = call.schema.clone();
             run.extra_args = env_set.extra_args.clone();
+            run.effort = env_set.effort.clone();
             run.attachments = self.state(&t.id).attachments;
             run.allowed_tools = settings.role_tools.get(&role).cloned().unwrap_or_else(|| agent::default_tools(role, &check_cmds(p)));
             if a.reports_cost() {

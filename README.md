@@ -59,7 +59,7 @@ becomes a project in `~/Projects`.
 2. A project: the column head → "Create project…" (a name is enough: a folder in `~/Projects`, git and a first commit)
    or "Open folder…" or "From GitHub…" (sign in once with GitHub CLI, pick one of your repositories or paste
    `owner/name` or a link to any public one: it is cloned into `~/Projects` and becomes the project).
-3. "New agent": environment, model, project and where to work - "In its own copy" (its own `ns/term-*` branch, your
+3. "New agent": environment, model, thinking level (Claude Code and Codex: "Low" to "Max"; also in the chat's model menu and ⌘K), project and where to work - "In its own copy" (its own `ns/term-*` branch, your
    files untouched) or right in the folder. Write the task → "Run".
 4. The agent works in the terminal of its CLI. Done or asking - the card says "waits for you", a system notification
    fires, ⌘J jumps to it. "Chat | Terminal" in the session head shows the same talk as a chat or in the CLI itself.
@@ -183,7 +183,7 @@ macOS and Linux. Prefer to read the script first:
 Debian family and `.rpm` for Fedora/openSUSE (it prints the `sudo` command, it does not run sudo), the AppImage
 in `~/.local/bin` plus a `.desktop` entry for everything else.
 
-**By hand:** download from the Releases page (https://github.com/Nezeronxer/vibe-env/releases): `-setup.exe` / `.msi` (Windows), `.dmg` (macOS), `.AppImage` (any Linux),
+**By hand:** download from the Releases page (https://github.com/Nezeronxer/vibe-env/releases): `-setup.exe` / `.msi` (Windows), `.dmg` (macOS: from 1.0.1 one `_universal.dmg` for any Mac; in 1.0.0 an M1-M5 Mac takes `_aarch64.dmg`, an Intel one `_x64.dmg`), `.AppImage` (any Linux),
 `.deb`, `.rpm`. Compare the file with `SHA256SUMS` from the same release (this catches corruption, not a replaced release).
 
 **macOS and the missing signature.** The macOS build is not signed or notarized yet (that needs a paid Apple Developer

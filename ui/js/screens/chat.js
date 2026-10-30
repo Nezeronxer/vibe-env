@@ -199,8 +199,11 @@
         out.push(h('div', { class: 'sysline calm' }, ic('i-warn'), h('span', { text: t('feed.stopped') }),
           h('button', { type: 'button', class: 'linkb', text: t('feed.retry'), onclick: () => NS.api.call('retry_chat', { id: chatId, msgId: m.reply_to || m.id }).catch((e) => NS.shell.toast(NS.errHuman(NS.api.errText(e)), true)) })));
       } else if (m.kind === 'error') {
+        const retry = () => NS.api.call('retry_chat', { id: chatId, msgId: m.reply_to || m.id }).catch((e) => NS.shell.toast(NS.errHuman(NS.api.errText(e)), true));
+        const proj = NS.projects.gitUnseen(m.text) && NS.store.project((NS.store.findChat(chatId) || {}).project_id);
         out.push(h('div', { class: 'sysline bad' }, ic('i-fail'), h('span', { text: t('feed.no_answer', { why: sysHuman(String(m.text).replace(/^not_answered:\s*/, '')) }) }),
-          h('button', { type: 'button', class: 'linkb', text: t('feed.retry'), onclick: () => NS.api.call('retry_chat', { id: chatId, msgId: m.reply_to || m.id }).catch((e) => NS.shell.toast(NS.errHuman(NS.api.errText(e)), true)) })));
+          proj ? h('button', { type: 'button', class: 'linkb', text: t('git.trust_btn'), onclick: async () => { if (await NS.projects.trustGit(proj.path)) retry(); } }) : null,
+          h('button', { type: 'button', class: 'linkb', text: t('feed.retry'), onclick: retry })));
       } else out.push(h('div', { class: 'sysline' + (m.kind === 'warn' ? ' bad' : '') }, ic(m.kind === 'warn' ? 'i-warn' : 'i-check'), h('span', { text: sysHuman(m.text) })));
       return out;
     }

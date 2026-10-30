@@ -90,6 +90,9 @@
     const s = String(raw == null ? '' : raw).trim();
     if (!s) return '';
     const I = window.NSI18n;
+    // core::git::check_repo_config, wherever it sits in the chain ("copy_failed: git: unsafe_repo_config: ...")
+    const u = /unsafe_repo_config: the repository config got (.+?) since the app first looked at it/.exec(s);
+    if (u) return NS.t('err.unsafe_cfg_new', { keys: u[1] });
     if (I.has('err.' + s)) return NS.t('err.' + s);
     const m = /^([a-z_]+):\s*(.*)$/.exec(s);
     return m && I.has('err.' + m[1]) ? NS.t('err.' + m[1], { detail: m[2] }) : s;

@@ -17,6 +17,28 @@
     });
   }
 
+  // git refused the project for config entries added since the app first looked (core::git::unseen_config): show
+  // them, and on "Доверять" take in exactly what was shown. -> true when something was trusted (the caller retries)
+  const gitUnseen = (err) => /unsafe_repo_config: the repository config got/.test(String(err || ''));
+  async function trustGit(path) {
+    const call = NS.api.call;
+    let shown;
+    try { shown = await call('git_config_unseen', { path }); } catch (e) { NS.shell.toast(NS.errHuman(NS.api.errText(e)), true); return false; }
+    if (!shown.length) { NS.shell.toast(t('git.trust_none')); return false; }
+    const ok = await new Promise((resolve) => {
+      const dlg = document.getElementById('dlg');
+      const done = (v) => { dlg.close(); dlg.replaceChildren(); resolve(v); };
+      dlg.replaceChildren(h('h2', { text: t('git.trust_title') }), h('p', { text: t('git.trust_text') }),
+        h('pre', { class: 'act-log' }, h('code', { text: shown.join('\n') })),
+        h('div', { class: 'dlg-acts' }, h('button', { type: 'button', class: 'btn', text: t('dlg.cancel'), onclick: () => done(false) }),
+          h('button', { type: 'button', class: 'btn primary', text: t('git.trust_ok'), onclick: () => done(true) })));
+      dlg.oncancel = () => resolve(false);
+      dlg.showModal();
+    });
+    if (!ok) return false;
+    try { return (await call('git_config_trust', { path, shown })) > 0; } catch (e) { NS.shell.toast(NS.errHuman(NS.api.errText(e)), true); return false; }
+  }
+
   async function pickFolder() {
     const d = window.__TAURI__ && window.__TAURI__.dialog;
     if (!d || !d.open) return null;
@@ -144,5 +166,5 @@
     return { el, open, close, label, destroy: () => document.removeEventListener('click', onDoc) };   // 19: the pane that made it removes it
   }
 
-  NS.projects = { addByPath, addByDialog, pickFolder, confirm, current, choose, createDialog, picker };
+  NS.projects = { addByPath, addByDialog, pickFolder, confirm, gitUnseen, trustGit, current, choose, createDialog, picker };
 })();

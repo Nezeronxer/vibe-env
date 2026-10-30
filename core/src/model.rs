@@ -808,6 +808,8 @@ pub struct EnvSettings {
     pub default_model: Option<ModelChoice>,
     pub roles: BTreeMap<RoleKind, ModelChoice>,
     pub fallback: Option<ModelChoice>,
+    /// How hard the model thinks, as the CLI names it (`Adapter::efforts`); None = as the CLI decides.
+    pub effort: Option<String>,
     pub custom_models: Vec<String>,
     pub cli_path: Option<PathBuf>,
     /// Passed to the CLI as separate arguments, never through a shell.
@@ -825,6 +827,7 @@ impl Default for EnvSettings {
             default_model: None,
             roles: BTreeMap::new(),
             fallback: None,
+            effort: None,
             custom_models: vec![],
             cli_path: None,
             extra_args: vec![],

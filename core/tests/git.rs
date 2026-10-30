@@ -867,6 +867,47 @@ mod config_guard {
         assert!(!pwn.exists() && e.is_err(), "{e:?}");
     }
 
+    // live run 30.10.2026: graphify's hooks (git template) wrote merge.graphify.* into the project's config on an
+    // agent's commit, and every chat of the project stopped with no way out but editing git-seen.json
+    #[test]
+    fn a_driver_added_later_is_shown_with_its_command_and_works_once_the_person_trusts_what_they_saw() {
+        let d = tempfile::tempdir().unwrap();
+        let (repo, wt) = setup(&d);
+        sh(&repo, "git config merge.graphify.name 'graphify union' && git config merge.graphify.driver 'graphify merge-driver %O %A %B'");
+        std::fs::write(wt.join("b.txt"), "b").unwrap();
+        assert!(git::commit_all(&wt, "m", false).is_err());
+        let shown = git::unseen_config(&repo).unwrap();
+        assert_eq!(shown, ["merge.graphify.driver=graphify merge-driver %O %A %B", "merge.graphify.name=graphify union"]);
+        assert_eq!(git::unseen_config(&wt).unwrap(), shown, "the copy shares the project's config");
+        // planted between the look and the click: not taken in
+        sh(&repo, "git config filter.x.clean 'cat'");
+        assert_eq!(git::trust_config(&repo, &shown).unwrap(), 2);
+        assert_eq!(git::unseen_config(&repo).unwrap(), ["filter.x.clean=cat"]);
+        assert!(git::commit_all(&wt, "m", false).unwrap_err().to_string().contains("filter.x.clean"));
+        sh(&repo, "git config --unset filter.x.clean");
+        git::commit_all(&wt, "m", false).unwrap();
+        assert_eq!(git::trust_config(&repo, &shown).unwrap(), 0, "trusted once");
+    }
+
+    // the same live run: the first look of three projects held nothing and a key without `.git` - git had failed on
+    // that look, and every driver the person had counted as added later
+    #[test]
+    fn a_first_look_on_which_git_failed_is_not_remembered() {
+        let d = tempfile::tempdir().unwrap();
+        let repo = d.path().join("repo");
+        std::fs::create_dir_all(&repo).unwrap();
+        sh(&repo, "git init -q -b main && git config merge.tool1.driver 'tool1 %O %A %B' && echo a > a.txt && git add . && git -c user.name=x -c user.email=x@x commit -qm init");
+        let cfg = std::fs::read_to_string(repo.join(".git/config")).unwrap();
+        std::fs::write(repo.join(".git/config"), format!("{cfg}[broken\n")).unwrap();
+        assert!(git::unseen_config(&repo).is_err(), "a failed listing is an error, not an empty config");
+        let _ = git::diff(&repo, "main", 100); // the app's first look, while git fails
+        std::fs::write(repo.join(".git/config"), cfg).unwrap();
+        let _ = git::diff(&repo, "main", 100);
+        assert_eq!(git::unseen_config(&repo).unwrap(), Vec::<String>::new(), "the driver the person had is part of the first look");
+        std::fs::write(repo.join("b.txt"), "b").unwrap();
+        git::commit_all(&repo, "msg", false).unwrap();
+    }
+
     #[test]
     fn a_merge_driver_the_person_had_before_keeps_working() {
         let d = tempfile::tempdir().unwrap();

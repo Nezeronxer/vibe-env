@@ -163,8 +163,11 @@
   // ---------- "Новый агент": env, model, where, the task ----------
   let pop = null;
   const LKEY = 'ns.launch7';
-  const closePop = () => { if (pop) { pop.remove(); pop = null; document.removeEventListener('mousedown', onDocPop, true); } };
+  const closePop = () => { if (pop) { pop.remove(); pop = null; document.removeEventListener('mousedown', onDocPop, true); document.removeEventListener('keydown', onKeyPop, true); } };
   const onDocPop = (e) => { if (pop && !pop.contains(e.target)) closePop(); };
+  // Esc wherever the focus is: a click on an env redraws its button and the focus falls to the page (QA 30.10.2026)
+  const onKeyPop = (e) => { if (pop && e.key === 'Escape' && !pop.contains(document.activeElement)) { e.preventDefault(); e.stopPropagation(); const a = popFrom; closePop(); if (a) a.focus(); } };
+  let popFrom = null;
   async function launcher(anchor) {
     if (pop) { closePop(); return; }
     const last = (() => { try { return JSON.parse(NS.storage.get(LKEY) || '{}'); } catch (e) { return {}; } })();
@@ -178,13 +181,15 @@
       h('option', { value: '', text: t('agents.no_project') }), ...S().projects.map((p) => h('option', { value: p.id, text: p.name, selected: !!proj && p.id === proj.id }))) : null;
     const envRow = h('div', { class: 'l7-envs', role: 'radiogroup', 'aria-label': t('agents.l_env') });
     const model = h('select', { class: 'l7-model', 'aria-label': t('agents.l_model') });
+    const effort = h('select', { class: 'l7-model', 'aria-label': t('effort.title'), title: t('effort.d') });
+    const effortLbl = h('label', { class: 'l7-lbl', text: t('effort.title') });
     const task = h('textarea', root.NSPalette.quiet({ class: 'l7-task', rows: 3, placeholder: t('agents.l_task_ph'), 'aria-label': t('agents.l_task') }));
     const where = h('div', { class: 'l7-where', role: 'radiogroup', 'aria-label': t('agents.l_where') });
     const tpl = h('div', { class: 'l7-tpl' }, TEMPLATES.map((k) => h('button', { type: 'button', class: 'chip7', text: t('agents.tpl_' + k), onclick: () => { task.value = t('agents.tpl_' + k + '_p'); task.focus(); } })));
     const go = h('button', { type: 'button', class: 'btn primary l7-go', onclick: () => run() }, h('span', { text: t('agents.l_go') }), h('kbd', { text: mac() ? '⌘↵' : 'Ctrl+↵' }));
     function drawEnvs() {
       clear(envRow).append(...envs.map((e) => h('button', { type: 'button', role: 'radio', 'aria-checked': String(e.id === envId), class: 'l7-env' + (e.id === envId ? ' on' : ''), dataset: { env: e.id },
-        onclick: () => { envId = e.id; drawEnvs(); drawModels(); } }, envIcon(e.id), h('span', { text: e.name }))));
+        onclick: () => { envId = e.id; drawEnvs(); drawModels(); drawEffort(); } }, envIcon(e.id), h('span', { text: e.name }))));
       if (!envs.length) envRow.append(h('p', { class: 'mute', text: t('agents.l_no_env') }));
     }
     function drawModels() {
@@ -195,7 +200,14 @@
       const cur = NS.store.envSettings(envId).default_model, curFam = cur && cur.family;
       clear(model).append(h('option', { value: '', text: t('model.cli_default') }), ...fams.map((f) => h('option', { value: f.id, text: f.label, selected: f.id === curFam })));
     }
+    // the thinking level of the env: hidden for a CLI that has no such flag
+    function drawEffort() {
+      const levels = root.NSTerm.effortsOf(NS.store.env(envId)), cur = NS.store.envSettings(envId).effort || '';
+      effort.hidden = effortLbl.hidden = !levels.length;
+      clear(effort).append(h('option', { value: '', text: t('effort.cli') }), ...levels.map((l) => h('option', { value: l, text: t('effort.' + l), selected: l === cur })));
+    }
     function drawWhere() {
+      if (!proj) own = false;   // the copy needs a project: a choice remembered from the last run stayed on, greyed out
       const opt = (val, label, desc, off) => h('button', { type: 'button', role: 'radio', 'aria-checked': String(own === val), class: 'l7-w' + (own === val ? ' on' : ''), disabled: !!off, title: desc,
         onclick: () => { own = val; drawWhere(); } }, h('b', { text: label }), h('small', { text: desc }));
       clear(where).append(opt(false, t('agents.l_here', { name: proj ? proj.name : '~' }), t('agents.l_here_d')),
@@ -207,11 +219,18 @@
       const fam = model.value, mArg = fam ? root.NSTerm.modelArg({ family: fam, version: null }, cat, envId) : null;
       const prompt = task.value.trim();
       NS.storage.set(LKEY, JSON.stringify({ env: envId, own }));
-      const extra = { model: mArg, prompt: prompt || undefined, title: prompt ? shortTitle(prompt) : env.name, cwd: proj ? proj.path : undefined };
+      // the level picked here stays the env's level: the next agent, the chat and the tasks of this env think the same way
+      const eff = effort.hidden ? null : effort.value || null;
+      if (!effort.hidden && eff !== (NS.store.envSettings(envId).effort || null)) NS.store.saveEnvSettings(envId, { effort: eff }).catch((e) => toast(errText(e), true));
+      const extra = { model: mArg, effort: eff, prompt: prompt || undefined, title: prompt ? shortTitle(prompt) : env.name, cwd: proj ? proj.path : undefined };
       if (own && proj) {
         go.disabled = true;
         try { const w = await call('agent_worktree', { projectId: proj.id, name: prompt || env.name }); extra.cwd = w.path; extra.branch = w.branch; }
-        catch (e) { go.disabled = false; toast(errText(e), true); return; }
+        catch (e) {
+          go.disabled = false;
+          if (NS.projects.gitUnseen(errText(e))) { closePop(); if (await NS.projects.trustGit(proj.path)) toast(NS.t('git.trust_again')); return; }
+          toast(NS.errHuman(errText(e)), true); return;
+        }
       }
       closePop();
       const f = NS.term.envFields(envId, extra);
@@ -227,6 +246,7 @@
     h('div', { class: 'l7-h' }, h('b', { text: t('agents.new') }), h('small', { text: t('agents.new_d') })),
     h('label', { class: 'l7-lbl', text: t('agents.l_env') }), envRow,
     h('label', { class: 'l7-lbl', text: t('agents.l_model') }), model,
+    effortLbl, effort,
     projSel ? h('label', { class: 'l7-lbl', text: t('agents.l_project') }) : null, projSel,
     h('label', { class: 'l7-lbl', text: t('agents.l_where') }), where,
     h('label', { class: 'l7-lbl', text: t('agents.l_task') }), task, tpl,
@@ -236,11 +256,13 @@
       more(h('span', { class: 't-glyph', text: '>_' }), t('agents.m_shell'), () => NS.term.open()),
       more(ic('i-swarm'), t('agents.m_swarm'), () => swarmChat()),
       more(ic('i-fact'), t('nav.factory'), () => NS.shell.nav('factory', { env: S().lastEnv }))));
-    drawEnvs(); drawModels(); drawWhere();
+    drawEnvs(); drawModels(); drawEffort(); drawWhere();
     const r = anchor.getBoundingClientRect();
     NS.setVars(pop, { '--x': r.left + 'px', '--y': (r.bottom + 8) + 'px' });
     document.body.append(pop);
     setTimeout(() => document.addEventListener('mousedown', onDocPop, true), 0);
+    document.addEventListener('keydown', onKeyPop, true);
+    popFrom = anchor;
     task.focus();
   }
   // "Рой": a chat of the env in focus with the swarm switched on for the next task
@@ -274,7 +296,7 @@
   cmd({ id: 'agents.next', labelKey: 'agents.wait_jump', group: 'cmd.g.agents', keys: 'Cmd+J', order: 2, run: jumpNext });
   cmd({ id: 'agents.chat', labelKey: 'agents.m_chat', group: 'cmd.g.agents', order: 3, run: () => NS.tabs.newTab('chat') });
   cmd({ id: 'agents.swarm', labelKey: 'agents.m_swarm', group: 'cmd.g.agents', order: 4, run: swarmChat });
-  cmd({ id: 'agents.factory', labelKey: 'nav.factory', group: 'cmd.g.agents', order: 5, run: () => NS.shell.nav('factory', { env: curEnv() }) });
+  // «Фабрика» is in ⌘K once, as the screen command of the shell (it was listed twice)
   cmd({ id: 'agents.quality', group: 'cmd.g.agents', order: 6, get label() { const e = curEnv(), q = e && NS.store.envSettings(e).last_quality; return t(q && q.on === false ? 'agents.q_on' : 'agents.q_off'); },
     when: () => !!curEnv(), run: () => { const e = curEnv(), q = NS.store.envSettings(e).last_quality || { on: true }; NS.store.saveEnvSettings(e, { last_quality: Object.assign({}, q, { on: q.on === false }) }).then(() => toast(t(q.on === false ? 'agents.q_now_on' : 'agents.q_now_off'))).catch((er) => toast(errText(er), true)); } });
   cmd({ id: 'agents.sound', group: 'cmd.g.agents', order: 7, get label() { return t(prefs().sound ? 'agents.sound_off' : 'agents.sound_on'); }, run: () => { setPref('sound', !prefs().sound); if (prefs().sound) chime(); } });
@@ -286,7 +308,8 @@
     const old = anchorPane.querySelector('.chg7');
     if (old) { old.remove(); return; }
     const list = h('div', { class: 'chg7-list' }), diff = h('div', { class: 'chg7-diff' }), head = h('div', { class: 'chg7-h' });
-    const panel = h('aside', { class: 'chg7', 'aria-label': t('agents.chg') }, head, list, diff);
+    // tabIndex: a click on the diff puts the focus in the panel and Esc reaches it; Esc in the terminal stays the CLI's
+    const panel = h('aside', { class: 'chg7', tabIndex: -1, 'aria-label': t('agents.chg'), onkeydown: (e) => { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); panel.remove(); } } }, head, list, diff);
     anchorPane.append(panel);
     async function load() {
       clear(list).append(h('p', { class: 'mute', text: t('agents.chg_loading') }));
@@ -307,7 +330,7 @@
       show(c.files[0]);
     }
     async function show(f) {
-      for (const el of list.querySelectorAll('.chg7-f')) el.classList.toggle('on', el.querySelector('.chg7-p').textContent === f.path);
+      for (const el of list.querySelectorAll('.chg7-f')) el.classList.toggle('on', el.querySelector('.chg7-p').title === f.path);   // the text carries direction marks
       clear(diff).append(h('p', { class: 'mute', text: t('agents.chg_loading') }));
       try {
         const d = await call('agent_file_diff', { cwd: pane.cwd, file: f.path });

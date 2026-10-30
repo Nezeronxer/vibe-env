@@ -1390,7 +1390,7 @@ fn main() {
             market::market_search, market::market_item, market::market_plan, market::market_apply, market::market_installed,
             market::market_remove, market::market_sources, market::market_set_sources,
             updates::cli_status, updates::cli_update, updates::updates_history, updates::cli_update_mode,
-            gitcmds::gh_publish, gitcmds::gh_prs, gitcmds::gh_account, gitcmds::gh_repos, gitcmds::clone_project, gitcmds::git_log_page, gitcmds::git_revert_commit, gitcmds::startup_tax, gitcmds::compact, gitcmds::commit_stat, gitcmds::commit_file_diff,
+            gitcmds::gh_publish, gitcmds::gh_prs, gitcmds::gh_account, gitcmds::gh_repos, gitcmds::clone_project, gitcmds::git_log_page, gitcmds::git_revert_commit, gitcmds::git_config_unseen, gitcmds::git_config_trust, gitcmds::startup_tax, gitcmds::compact, gitcmds::commit_stat, gitcmds::commit_file_diff,
             config::config_open, config::config_errors,
             auto::auto_get, auto::auto_schedule_save, auto::auto_schedule_remove, auto::auto_schedule_toggle, auto::auto_suggest_scan,
             auto::auto_issue_answer, sessions::sessions_list, sessions::session_continue, auto::auto_suggest_do, auto::auto_suggest_dismiss, auto::auto_suggest_nightly, auto::auto_ci_set, auto::auto_ci_poll,

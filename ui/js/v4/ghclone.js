@@ -76,19 +76,24 @@
           h('span', { class: 'mn' }, full, sub ? h('small', { class: 'pj-sub', text: sub }) : null), small ? h('small', { text: small }) : null);
         };
         function draw() {
-          const v = q.value.trim().toLowerCase(), typed = fullName(q.value);
+          // a pasted link is looked up by its owner/name (the whole link matched nothing, though the repository was in the list)
+          const typed = fullName(q.value), v = (typed || q.value.trim()).toLowerCase();
           const found = repos.filter((r) => !v || r.nameWithOwner.toLowerCase().includes(v) || String(r.description || '').toLowerCase().includes(v));
           clear(rows);
-          if (typed && !repos.some((r) => r.nameWithOwner.toLowerCase() === typed.toLowerCase())) rows.append(row(typed, t('ghc.by_name'), ''));
+          const shown = [];
+          if (typed && !repos.some((r) => r.nameWithOwner.toLowerCase() === typed.toLowerCase())) { rows.append(row(typed, t('ghc.by_name'), '')); shown.push(typed); }
           for (const r of found.slice(0, 100)) {
             const tags = [r.isPrivate ? t('ghc.private') : '', r.isFork ? t('ghc.fork') : '', r.primaryLanguage && r.primaryLanguage.name].filter(Boolean).join(' · ');
             rows.append(row(r.nameWithOwner, r.description || '', tags));
+            shown.push(r.nameWithOwner);
           }
+          // the choice lives only while its row is on screen: "Склонировать" cloned a repository the search had hidden
+          if (pick && !shown.includes(pick)) pick = null;
           if (!rows.children.length) rows.append(h('p', { class: 'hint', text: repos.length ? t('ghc.none_q') : t('ghc.none') }));
         }
-        q.addEventListener('input', () => { const typed = fullName(q.value); if (typed) pick = typed; draw(); sync(); });
+        q.addEventListener('input', () => { const typed = fullName(q.value); if (typed) pick = (repos.find((r) => r.nameWithOwner.toLowerCase() === typed.toLowerCase()) || {}).nameWithOwner || typed; draw(); sync(); });
         rows.append(h('p', { class: 'hint', text: t('ghc.loading') }));
-        call('gh_repos').then((r) => { repos = Array.isArray(r) ? r : []; }).catch((e) => { err.textContent = NS.api.errText(e); err.hidden = false; }).then(() => { if (dlg.open) draw(); });
+        call('gh_repos').then((r) => { repos = Array.isArray(r) ? r : []; }).catch((e) => { err.textContent = NS.api.errText(e); err.hidden = false; }).then(() => { if (dlg.open) { draw(); sync(); } });
         setTimeout(() => q.focus(), 0);
       }
       async function clone() {

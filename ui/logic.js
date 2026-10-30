@@ -334,6 +334,7 @@
     if (raw.sandbox) env.sandbox = raw.sandbox;      // SandboxInfo from the adapter (rights screen, R17i.3)
     if (raw.path) env.path = raw.path;               // where the CLI was found
     if (raw.install) env.install = raw.install;      // v8: {line, argv|null, piped} - the agents column installs by it
+    if (Array.isArray(raw.efforts) && raw.efforts.length) env.efforts = raw.efforts;   // Adapter::efforts: the thinking levels of the CLI
     return env;
   }
 

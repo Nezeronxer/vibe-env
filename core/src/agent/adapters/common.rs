@@ -282,6 +282,11 @@ pub fn cli_model(run: &crate::agent::Run) -> Option<&str> {
     run.model.as_deref().filter(|m| is_model_id(m))
 }
 
+/// The run's thinking level, only when the CLI takes that word (a hand-edited settings file can hold anything).
+pub fn cli_effort<'a>(run: &'a crate::agent::Run, levels: &[&str]) -> Option<&'a str> {
+    run.effort.as_deref().filter(|e| levels.contains(e))
+}
+
 pub fn strip_ansi(s: &str) -> String {
     static ANSI: OnceLock<Regex> = OnceLock::new();
     re(&ANSI, r"\x1b\[[0-9;]*[A-Za-z]").replace_all(s, "").into_owned()
