@@ -380,7 +380,7 @@ pub fn remove_worktree(repo: &Path, wt: &Path, delete_branch: bool) -> Result<()
 pub fn remove_worktree_careful(repo: &Path, wt: &Path, delete_branch: bool) -> Result<(), GitError> {
     if wt.exists() {
         if let Some(list) = hidden_list(wt) {
-            let root = wt.canonicalize().map_err(|e| GitError::Other(format!("{}: {e}", wt.display())))?;
+            let root = crate::proc::canon(wt).map_err(|e| GitError::Other(format!("{}: {e}", wt.display())))?;
             for p in std::fs::read_to_string(&list).unwrap_or_default().lines().filter(|l| !l.is_empty()) {
                 // only an untracked copy the app made, inside the copy
                 let full = wt.join(p);
