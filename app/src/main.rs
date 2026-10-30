@@ -1403,6 +1403,9 @@ fn main() {
         // the window only hides; the process ends via tray "Quit"
         tauri::RunEvent::ExitRequested { code: None, api, .. } => api.prevent_exit(),
         tauri::RunEvent::Exit => shut_down(app),
+        // a click on the Dock icon brings back a window hidden by "Отключить окно" (before, only the tray or a second start did)
+        #[cfg(target_os = "macos")]
+        tauri::RunEvent::Reopen { .. } => show_window(app),
         _ => {}
     });
 }
@@ -1503,10 +1506,11 @@ mod tests {
         assert_eq!(sources, ["http://ipc.localhost"], "the only address is Tauri's own IPC");
         assert!(conf["app"]["windows"].as_array().unwrap().iter().all(|w| w.get("url").is_none()), "the window loads the bundled ui, no remote URL");
         let caps: serde_json::Value = serde_json::from_str(include_str!("../capabilities/default.json")).unwrap();
-        assert_eq!(caps["permissions"], serde_json::json!(["core:event:default", "dialog:allow-open"]));
+        // hide / close of the window itself: «Отключить окно» (⌘⇧W) calls them, and without them it always ended in a toast
+        assert_eq!(caps["permissions"], serde_json::json!(["core:event:default", "dialog:allow-open", "core:window:allow-hide"]));
         assert_eq!(caps["windows"], serde_json::json!(["main"]));
         let extra: serde_json::Value = serde_json::from_str(include_str!("../capabilities/windows.json")).unwrap();
-        assert_eq!((&extra["windows"], &extra["permissions"]), (&serde_json::json!(["w-*"]), &serde_json::json!(["core:event:default"])));
+        assert_eq!((&extra["windows"], &extra["permissions"]), (&serde_json::json!(["w-*"]), &serde_json::json!(["core:event:default", "core:window:allow-close"])));
         let targets: Vec<&str> = conf["bundle"]["targets"].as_array().unwrap().iter().filter_map(|t| t.as_str()).collect();
         for t in ["app", "dmg", "deb", "appimage"] {
             assert!(targets.contains(&t), "{t}");

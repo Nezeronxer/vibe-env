@@ -3,8 +3,8 @@
 // An agent whose CLI is not found is dimmed under «Добавить»; its card installs it in a built-in terminal tab (install()).
 (function (root) {
   // ---------- pure (selftest) ----------
-  const SHORT = { codex: 'ChatGPT', claude: 'Claude', opencode: 'opencode', copilot: 'Copilot', droid: 'Droid', grok: 'Grok' };
-  // "Claude Code" -> "Claude", "Gemini CLI" -> "Gemini", "Qwen Code" -> "Qwen"; Codex is what people call ChatGPT
+  const SHORT = { codex: 'Codex', claude: 'Claude', opencode: 'opencode', copilot: 'Copilot', droid: 'Droid', grok: 'Grok' };
+  // "Claude Code" -> "Claude", "Gemini CLI" -> "Gemini", "Qwen Code" -> "Qwen"; Codex stays Codex: the launcher, ⌘K and the CLI itself say so (it was «ChatGPT» here only)
   function shortName(env) {
     if (!env) return '';
     if (SHORT[env.id]) return SHORT[env.id];

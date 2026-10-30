@@ -166,8 +166,8 @@ impl Adapter for Codex {
     fn finish(&self, exit_ok: bool, all_text: &str) -> Vec<AgentEvent> {
         synth_done(scan, exit_ok, all_text)
     }
-    /// `-c model_reasoning_effort=<level>` (developers.openai.com/codex/config-reference; по документации, the CLI is
-    /// not on this machine)
+    /// `-c model_reasoning_effort=<level>`: codex-cli 0.166.0 prints «reasoning effort: xhigh» for it (checked 30.10.2026,
+    /// without a login); it echoes any word, `bogus` too, so only these go
     fn efforts(&self) -> &'static [&'static str] {
         &["minimal", "low", "medium", "high", "xhigh"]
     }

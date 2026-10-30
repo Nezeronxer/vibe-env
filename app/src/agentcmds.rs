@@ -127,12 +127,13 @@ fn cut(s: &str, n: usize) -> String {
 /// A system notification for a terminal agent. A click brings the main window up and emits the window event
 /// `agent-notify-click` with `{pane}`. Err: `bad_pane`, `notify_failed` (the system refuses notifications).
 #[tauri::command]
-pub fn notify_agent(app: AppHandle, s: State<'_, App>, title: String, body: String, pane: String) -> Res<()> {
+pub fn notify_agent(app: AppHandle, s: State<'_, App>, title: String, body: String, pane: String, sound: Option<bool>) -> Res<()> {
     if pane.is_empty() || pane.chars().count() > 128 {
         return Err("bad_pane".into());
     }
     let (title, body) = (clean(cut(&title, 120)), clean(cut(&body, 400)));
-    let sound = sound_for(&lk(&s.notify_cfg), chrono::Local::now());
+    // `sound: false`: the window's own switch "Звук агентов" is off (the settings' sound and quiet hours are checked here too)
+    let sound = sound.unwrap_or(true).then(|| sound_for(&lk(&s.notify_cfg), chrono::Local::now())).flatten();
     if crate::tray::notification_server() == Some(false) {
         return Err("notify_failed".into());
     }

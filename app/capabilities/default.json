@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Main window: listen to events and pick a folder. Notifications and the hotkey are driven from Rust.",
+  "description": "Main window: listen to events, pick a folder and hide itself («Отключить окно»: sessions keep running). Notifications and the hotkey are driven from Rust.",
   "windows": ["main"],
-  "permissions": ["core:event:default", "dialog:allow-open"]
+  "permissions": ["core:event:default", "dialog:allow-open", "core:window:allow-hide"]
 }

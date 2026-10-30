@@ -42,7 +42,7 @@
 .er8-add { flex: none; display: flex; flex-direction: column; gap: 2px; margin-top: auto; padding-top: 8px; border-top: 1px solid var(--line); }
 /* pinned: a long list of agents to add scrolls under it */
 .er8-foot { flex: none; display: flex; flex-direction: column; margin-top: auto; padding-top: 8px; border-top: 1px solid var(--line);
-  position: sticky; bottom: -8px; z-index: 1; margin-bottom: -8px; padding-bottom: 8px; background: var(--panel); }
+  position: sticky; bottom: -8px; z-index: 1; margin-bottom: -8px; padding-bottom: 8px; background: inherit; }
 .er8-add + .er8-foot { margin-top: 0; }
 .er8-set .er8-ic .ic { color: var(--ink2); }
 .er8-set .er8-n { font-size: 9.5px; letter-spacing: -.01em; }   /* «Настройки» fits the 72px column */

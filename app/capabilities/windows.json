@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "windows",
-  "description": "Extra windows with a tab taken out of the main one (story 260): only listening to events.",
+  "description": "Extra windows with a tab taken out of the main one (story 260): listening to events and closing themselves («Отключить окно»).",
   "windows": ["w-*"],
-  "permissions": ["core:event:default"]
+  "permissions": ["core:event:default", "core:window:allow-close"]
 }

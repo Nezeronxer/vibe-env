@@ -84,7 +84,7 @@
     'pj.pick': 'Выбрать проект', 'pj.cur': 'Проект: {name}', 'pj.recent': 'Недавние', 'pj.open': 'Открыть папку…', 'pj.create': 'Создать проект…', 'pj.need': 'Сначала выбери проект: туда пойдёт работа.',
     'pj.gone': 'папки нет', 'gh8.gone': 'Папки проекта больше нет: {path}. Выбери другой проект или открой папку заново.', 'pj.new_title': 'Новый проект', 'pj.where': 'Где создать', 'pj.no_folder': 'Папка не выбрана', 'pj.choose': 'Выбрать папку…', 'pj.name': 'Имя проекта', 'pj.name_ph': 'например, my-site', 'pj.make': 'Создать',
     'pj.new_text': 'Создам папку, git-репозиторий и первый пустой коммит.', 'pj.none': 'Проектов пока нет.',
-    'err.bad_project_name': 'Имя пустое или с символами / \\ и «..»', 'err.folder_exists': 'Папка уже есть: {detail}. Выбери другое имя.', 'err.path_missing': 'Папки нет: {detail}',
+    'err.bad_project_name': 'Имя пустое или с символами / \\ и «..»', 'err.folder_exists': 'Папка уже есть: {detail}. Выбери другое имя или другую папку.', 'err.path_missing': 'Папки нет: {detail}',
     'proj.added': 'Проект добавлен: {name}', 'ph.soon': 'Этот экран подключит следующая волна.', 'ph.factory': 'Фабрика', 'ph.settings': 'Настройки', 'ph.swarm': 'Рой', 'ph.kits': 'Наборы', 'ph.import': 'Импорт', 'ph.summary': 'Пока тебя не было',
     // core error keys
     'err.tests still failing after 3 attempts': 'Тесты не проходят после трёх попыток', 'err.hidden_file_committed': 'Агент закоммитил скрытый файл, вливание остановлено', 'err.internal_error': 'Внутренняя ошибка: {detail}',
@@ -165,7 +165,7 @@
     'pj.pick': 'Choose project', 'pj.cur': 'Project: {name}', 'pj.recent': 'Recent', 'pj.open': 'Open folder…', 'pj.create': 'Create project…', 'pj.need': 'Choose a project first: the work goes there.',
     'pj.gone': 'folder missing', 'gh8.gone': 'The project folder is gone: {path}. Pick another project or open the folder again.', 'pj.new_title': 'New project', 'pj.where': 'Where to create it', 'pj.no_folder': 'No folder chosen', 'pj.choose': 'Choose folder…', 'pj.name': 'Project name', 'pj.name_ph': 'for example, my-site', 'pj.make': 'Create',
     'pj.new_text': 'I will create the folder, a git repository and a first empty commit.', 'pj.none': 'No projects yet.',
-    'err.bad_project_name': 'The name is empty or has / \\ or “..”', 'err.folder_exists': 'The folder already exists: {detail}. Pick another name.', 'err.path_missing': 'No such folder: {detail}',
+    'err.bad_project_name': 'The name is empty or has / \\ or “..”', 'err.folder_exists': 'The folder already exists: {detail}. Pick another name or another folder.', 'err.path_missing': 'No such folder: {detail}',
     'proj.added': 'Project added: {name}', 'ph.soon': 'The next wave connects this screen.', 'ph.factory': 'Factory', 'ph.settings': 'Settings', 'ph.swarm': 'Swarm', 'ph.kits': 'Kits', 'ph.import': 'Import', 'ph.summary': 'While you were away',
     'err.tests still failing after 3 attempts': 'Tests still fail after three attempts', 'err.hidden_file_committed': 'The agent committed a hidden file, the merge was stopped', 'err.internal_error': 'Internal error: {detail}',
     'err.not a git repo': 'This is not a git repository',

@@ -405,7 +405,8 @@
     function drawStrip() {
       // v7: cards grouped by project (the order of the groups = where each first appears); ⌘1…9 follow what is on screen
       const f = fEnv(), vis = visTabs();
-      const G = NS.agents ? NS.agents.groups(vis, (tb) => P.findPane(tb.root, tb.focus) || P.leaves(tb.root)[0]) : null;
+      // a split tab goes by its first pane: by the focused one it jumped between two projects on every click (QA 30.10.2026)
+      const G = NS.agents ? NS.agents.groups(vis, (tb) => P.leaves(tb.root)[0]) : null;
       // the saved order follows the groups only while every tab is on screen (a filtered list must not drop the others)
       if (G && !f && G.order.join() !== state.tabs.map((x) => x.id).join()) { state = Object.assign({}, state, { tabs: G.order.map((id) => state.tabs.find((x) => x.id === id)) }); persist(); }
       let at = 0;
@@ -553,7 +554,8 @@
       };
       const add = h('button', { type: 'button', class: 't8-new', title: (name ? t('tabs8.new_d', { env: name }) : t('tabs8.new')) + ' · ' + (platform() === 'mac' ? '⌘T' : 'Ctrl+T'), 'aria-label': t('tabs8.new'), onclick: () => newTab() }, ic('i-plus'));
       const gh = NS.gh8 ? h('button', { type: 'button', class: 't8-gh' + (NS.gh8.open ? ' on' : ''), title: t('gh8.toggle'), 'aria-label': t('gh8.toggle'), 'aria-pressed': String(!!NS.gh8.open), onclick: () => ghShow(!NS.gh8.open) }, ic('i-branch'), h('span', { text: 'GitHub' })) : null;
-      NS.append(clear(tabs8), [h('div', { class: 't8-list' }, visTabs().map(tab)), add, h('span', { class: 'grow' }), gh]);
+      const list8 = h('div', { class: 't8-list', onwheel: (e) => { if (!e.deltaX && e.deltaY && list8.scrollWidth > list8.clientWidth) { e.preventDefault(); list8.scrollLeft += e.deltaY; } } }, visTabs().map(tab));
+      NS.append(clear(tabs8), [list8, add, h('span', { class: 'grow' }), gh]);
       const a = tabs8.querySelector('.t8.on');
       if (a && a.scrollIntoView) a.scrollIntoView({ block: 'nearest', inline: 'nearest' });
     }

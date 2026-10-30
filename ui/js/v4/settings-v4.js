@@ -366,7 +366,9 @@
   }
   function advanced(env, fx) {
     const k = K(), SEC = k.SEC;
-    const search = h('input', window.NSPalette.quiet({ type: 'search', class: 'adv-q', placeholder: t('adv.search'), 'aria-label': t('adv.search') }));
+    // Esc: a typed query is cleared first, an empty field leaves the settings as Esc does in every other section
+    const search = h('input', window.NSPalette.quiet({ type: 'search', class: 'adv-q', placeholder: t('adv.search'), 'aria-label': t('adv.search'),
+      onkeydown: (e) => { if (e.key === 'Escape' && !search.value && !document.querySelector('dialog[open]') && NS.shell.back) { e.preventDefault(); NS.shell.back(); } } }));
     const none = h('p', { class: 'hint adv-none', hidden: true, text: t('adv.none') });
     const parts = [];
     for (const { id } of window.NSLogic.SETTINGS_SECTIONS) {

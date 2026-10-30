@@ -217,6 +217,9 @@
         if ((e.code === 'KeyC') && term.hasSelection()) { copy(term.getSelection()); return false; }
         return false;
       }
+      // Linux/Windows: the app's keys from inside a terminal - Ctrl+Shift+K/T/J and Ctrl+Alt+1…7 are left to the window
+      // (xterm took them: Ctrl+Alt+1 went to the shell as ESC 1); Ctrl+C/D/W stay the shell's
+      if (!mac() && ((e.ctrlKey && e.altKey && /^Digit[1-7]$/.test(e.code)) || (e.ctrlKey && e.shiftKey && ['KeyK', 'KeyT', 'KeyJ'].includes(e.code)))) return false;
       if (!mac() && e.ctrlKey && e.shiftKey && (e.code === 'KeyC' || e.code === 'KeyV')) {
         if (e.code === 'KeyC') copy(term.getSelection());
         else if (navigator.clipboard) navigator.clipboard.readText().then((s) => term.paste(s)).catch(() => {});
@@ -237,8 +240,12 @@
     const isCli = () => !!(pane.env && pane.argv && pane.argv.length);
     const note = (s, cls) => term.write('\r\n\x1b[' + (cls === 'bad' ? '31' : '2') + 'm' + s + '\x1b[0m\r\n');
     function setState(s) { if (state === s) return; const was = state; state = s; head.dataset.state = s; box.dataset.state = s; markTabs(); if (NS.agents) NS.agents.changed(view, was); }
+    let replayUntil = 0;
     function activity(n) {
       lastOut = Date.now();
+      // the core replays the whole buffer on a re-attach (window shown again, pane moved): that is not new work - the
+      // state stays (before, «ждёт тебя» became «свободна», and a CLI with a question on screen called again with a sound)
+      if (lastOut < replayUntil) return;
       // the echo of what the person types is not work: no aura, no "ждёт тебя" after it
       if (lastOut - lastIn < 150 && n < 96) return;
       bytes += n;
@@ -513,7 +520,7 @@
       },
       taken() { attached = false; note('── ' + t('term.taken') + ' ──'); },
       async detach(onHide) { if (attaching) await attaching.catch(() => {}); if (onHide && !document.hidden) return; if (id && attached) { attached = false; await call('term_detach', { id }).catch(() => {}); } },
-      async reattach() { if (attaching) await attaching.catch(() => {}); if (!id || exitCode !== null || attached) return; term.reset(); await attach().catch(() => {}); },
+      async reattach() { if (attaching) await attaching.catch(() => {}); if (!id || exitCode !== null || attached) return; term.reset(); replayUntil = Date.now() + 1500; await attach().catch(() => {}); },
       text: () => { const b = term.buffer.active, out = []; for (let i = 0; i < b.length; i++) { const l = b.getLine(i); if (l) out.push(l.translateToString(true)); } return out.join('\n'); },
       async close() { const x = id; id = null; running = false; if (x) await call('term_close', { id: x }).catch(() => {}); refreshSessions(); },
       idle, what: () => cmdText || pane.ptitle || (env ? env.name : pane.title) || t('term.kind'),
@@ -660,6 +667,7 @@
   // a tab back from its own window: to its old place (beside the same neighbour, or its own tab at the old index)
   function returnTerm(s) {
     const fields = { termId: s.termId, env: s.env || null, argv: s.argv || [], cwd: s.cwd || null, title: s.title || '' };
+    for (const k of ['project', 'branch', 'started', 'chat']) if (s[k]) fields[k] = s[k];
     if (!NS.tabs || !NS.tabs.putBack || !s.place) return openTerm(fields);
     if (NS.shell && NS.shell.current && NS.shell.current.def.id !== 'tabs' && NS.shell.back) NS.shell.back();
     adopt = fields;
@@ -702,7 +710,10 @@
     await v.detach();
     // the place in the layout rides along in the tabSpec, so "Вернуть" puts the pane back where it stood (live run v4, 260)
     const place = NS.tabs && NS.tabs.placeOf ? NS.tabs.placeOf(pane.id) : null;
-    const tabSpec = { kind: 'term', termId: v.id(), env: pane.env || null, argv: pane.argv || [], cwd: pane.cwd || null, title: pane.title || '', place };
+    // project, branch, started and chat ride along too: back from the window the agent kept none of them (no project,
+    // no branch on the card, no token count) - QA 30.10.2026
+    const tabSpec = { kind: 'term', termId: v.id(), env: pane.env || null, argv: pane.argv || [], cwd: pane.cwd || null, title: pane.title || '', place,
+      project: pane.project || null, branch: pane.branch || null, started: pane.started || null, chat: pane.chat || null };
     try {
       await call('window_detach', { tabSpec });
       pane.moved = true;
@@ -731,7 +742,7 @@
       if (!w) throw new Error('no window api');
       await (WIN ? w.close() : w.hide());
     } catch (e) {
-      // shortcut: the capabilities give the window no close/hide; app must add `window_off` (or core:window:allow-hide/close)
+      // the capabilities allow hide (main) and close (w-*); this is for a missing window API (the mock, an old build)
       for (const v of live.values()) v.reattach();
       toast(t('term.need_app'), true);
     }

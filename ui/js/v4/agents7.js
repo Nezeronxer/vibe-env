@@ -42,7 +42,16 @@
     const cut = line.slice(0, max), sp = cut.lastIndexOf(' ');
     return (sp > max / 2 ? cut.slice(0, sp) : cut).replace(/[\s,.:;—-]+$/, '') + '…';
   }
-  root.NSAgents = { groupTabs, projectOfPath, fmtTok, useText, nextWaiting, diffLines, shortTitle, TEMPLATES };
+  // the person's quiet hours, as core's notifier::in_quiet reads them ("23:00" to "08:00" wraps midnight; equal = never)
+  function inQuiet(d, from, to) {
+    const min = (s) => { const m = /^(\d{1,2}):(\d{2})$/.exec(String(s || '')); return m ? +m[1] * 60 + +m[2] : null; };
+    const f = min(from), t2 = min(to), n = d.getHours() * 60 + d.getMinutes();
+    if (f == null || t2 == null || f === t2) return false;
+    return f < t2 ? f <= n && n < t2 : n >= f || n < t2;
+  }
+  // "ждёт тебя" makes a sound only when the agents' switch, the settings' sound and the quiet hours all allow it
+  const soundOn = (pref, notify, d) => !!pref && (notify || {}).sound !== 'none' && !inQuiet(d, (notify || {}).quiet_from, (notify || {}).quiet_to);
+  root.NSAgents = { groupTabs, projectOfPath, fmtTok, useText, nextWaiting, diffLines, shortTitle, TEMPLATES, inQuiet, soundOn };
   if (typeof document === 'undefined' || !root.NS || !root.NS.h) return;
 
   // ---------- the window ----------
@@ -122,9 +131,11 @@
     const pr = prefs(), env = view.env();
     const name = (env && env.name) || t('term.kind');
     const body = view.tail(1)[0] || t('agents.wait_d');
-    if (pr.sound) chime();
-    if (pr.notify && !document.hasFocus()) {
-      call('notify_agent', { title: t('agents.wait_t', { name }), body, pane: view.pane.id }).catch(() => {
+    const loud = soundOn(pr.sound, (S().settings || {}).notify, new Date()), away = pr.notify && !document.hasFocus();
+    // one sound: the notification's own when it goes out, else the chime in the window (before: both, and in quiet hours too)
+    if (loud && !away) chime();
+    if (away) {
+      call('notify_agent', { title: t('agents.wait_t', { name }), body, pane: view.pane.id, sound: loud }).catch(() => {
         try { if (root.Notification && root.Notification.permission === 'granted') new root.Notification(t('agents.wait_t', { name }), { body }); } catch (e) { /* none */ }
       });
     }
@@ -163,9 +174,12 @@
   // ---------- "Новый агент": env, model, where, the task ----------
   let pop = null;
   const LKEY = 'ns.launch7';
-  const closePop = () => { if (pop) { pop.remove(); pop = null; document.removeEventListener('mousedown', onDocPop, true); document.removeEventListener('keydown', onKeyPop, true); } };
+  const closePop = () => { if (pop) { pop.remove(); pop = null; document.removeEventListener('mousedown', onDocPop, true); document.removeEventListener('keydown', onKeyPop, true); document.removeEventListener('focusin', onFocusPop, true); } };
   const onDocPop = (e) => { if (pop && !pop.contains(e.target)) closePop(); };
   // Esc wherever the focus is: a click on an env redraws its button and the focus falls to the page (QA 30.10.2026)
+  // role=dialog: Tab that leaves the popover comes back to its first field (WebKit tabs only through fields, so a
+  // "last button" check never fired there); the popover stayed open while the focus walked the window behind
+  const onFocusPop = (e) => { if (pop && !pop.contains(e.target)) { const f = pop.querySelector('select:not([hidden]), textarea'); if (f) f.focus(); } };
   const onKeyPop = (e) => { if (pop && e.key === 'Escape' && !pop.contains(document.activeElement)) { e.preventDefault(); e.stopPropagation(); const a = popFrom; closePop(); if (a) a.focus(); } };
   let popFrom = null;
   async function launcher(anchor) {
@@ -262,6 +276,7 @@
     document.body.append(pop);
     setTimeout(() => document.addEventListener('mousedown', onDocPop, true), 0);
     document.addEventListener('keydown', onKeyPop, true);
+    document.addEventListener('focusin', onFocusPop, true);
     popFrom = anchor;
     task.focus();
   }

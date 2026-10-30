@@ -264,13 +264,17 @@
     if (e.defaultPrevented || (e.target && e.target.closest && e.target.closest('.keyfield'))) return;
     const mac = plat() === 'mac', mod = mac ? e.metaKey : e.ctrlKey;
     const code = e.code || '';
-    if (mod && !e.altKey && !e.shiftKey && (code === 'KeyK' || /^[kл]$/i.test(e.key))) { e.preventDefault(); NS.palette.open(); return; }
+    const inTerm = !!(e.target && e.target.classList && e.target.classList.contains('xterm-helper-textarea'));
+    // Linux/Windows inside a terminal: Ctrl+K is the shell's (kill line), the palette is Ctrl+Shift+K there
+    if (mod && !e.altKey && (e.shiftKey ? !mac && inTerm : true) && (code === 'KeyK' || /^[kл]$/i.test(e.key))) { e.preventDefault(); NS.palette.open(); return; }
     if (mod && !e.altKey && !e.shiftKey && (code === 'Comma' || e.key === ',' || e.key === 'б')) { e.preventDefault(); nav('settings', { env: s.lastEnv, section: 'basic' }); return; }
     if (e.key === 'Escape' && current && (current.def.layout || 'full') === 'full' && !document.querySelector('dialog[open]') && !(NS.palette && NS.palette.isOpen)
       && !(e.target && e.target.closest && e.target.closest('input, textarea, select, .pop, .menu'))) { e.preventDefault(); back(); return; }
     const pattern = window.NSLive.migrateSwitchEnv(((s.settings || {}).keys || {}).switch_env, plat());
     const accel = L.accelFromEvent(e, plat()), d = /^Digit([1-7])$/.exec(code);
     if (!accel || !d || accel !== pattern.replace('{n}', d[1])) return;
+    // AltGr arrives as Ctrl+Alt on Windows and Linux: a key that types a character ({ ² ³ on a German layout) is text, not a switch
+    if (plat() !== 'mac' && ((e.getModifierState && e.getModifierState('AltGraph')) || (e.key && e.key.length === 1 && !/^[0-9]$/.test(e.key)))) return;
     const env = railEnvs()[+d[1] - 1];
     if (env) { e.preventDefault(); pickEnv(env.id); }
   });

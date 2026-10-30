@@ -498,7 +498,7 @@ eq('budget in en reads "of", in ru "из" (bug 10)', [L.formatBudget(14.89, 40, 
 // v8: the agents column (envrail.js) and the window names without the model
 {
   const R = NSEnvRail;
-  eq('v8: short names under the marks: Codex is ChatGPT, "Claude Code" and "Gemini CLI" lose the tail', ['codex', 'claude', 'gemini', 'qwen'].map((id) => R.shortName({ id, name: { codex: 'Codex', claude: 'Claude Code', gemini: 'Gemini CLI', qwen: 'Qwen Code' }[id] })), ['ChatGPT', 'Claude', 'Gemini', 'Qwen']);
+  eq('v8: short names under the marks: Codex stays Codex, "Claude Code" and "Gemini CLI" lose the tail', ['codex', 'claude', 'gemini', 'qwen'].map((id) => R.shortName({ id, name: { codex: 'Codex', claude: 'Claude Code', gemini: 'Gemini CLI', qwen: 'Qwen Code' }[id] })), ['Codex', 'Claude', 'Gemini', 'Qwen']);
   const o = R.railOrder([{ id: 'a', state: 'ok' }, { id: 'b', state: 'missing' }, { id: 'c', state: 'login' }, { id: 'custom:x', state: 'missing', custom: true }]);
   eq('v8: installed (and custom) agents on top, the missing ones go under «Добавить»', [o.ok.map((e) => e.id), o.add.map((e) => e.id)], [['a', 'c', 'custom:x'], ['b']]);
   eq('v8: an install with argv runs it as is', R.installPlan({ install: { line: 'npm i -g x', argv: ['npm', 'i', '-g', 'x'], piped: false } }), { argv: ['npm', 'i', '-g', 'x'], typed: null, line: 'npm i -g x' });
@@ -884,6 +884,13 @@ eq('spread: the switch, the last-spread line and both buttons have ru and en wor
 // ================= v7: agents as terminals (agents7.js, term.js) =================
 if (typeof NSAgents !== 'undefined') {
   const A = NSAgents, TT = NSTerm;
+  const at = (h, m) => new Date(2026, 9, 30, h, m);
+  eq('ждёт тебя: quiet hours wrap midnight, a day range does not, equal ends mean never',
+    [A.inQuiet(at(23, 30), '23:00', '08:00'), A.inQuiet(at(7, 59), '23:00', '08:00'), A.inQuiet(at(8, 0), '23:00', '08:00'), A.inQuiet(at(13, 0), '12:00', '14:00'), A.inQuiet(at(13, 0), '09:00', '09:00'), A.inQuiet(at(13, 0), '', 'x')],
+    [true, true, false, true, false, false]);
+  eq('ждёт тебя: a sound only with the switch on, the settings sound not «none» and outside quiet hours',
+    [A.soundOn(true, { sound: 'bell', quiet_from: '23:00', quiet_to: '08:00' }, at(12, 0)), A.soundOn(false, { sound: 'bell' }, at(12, 0)), A.soundOn(true, { sound: 'none' }, at(12, 0)), A.soundOn(true, { sound: 'bell', quiet_from: '23:00', quiet_to: '08:00' }, at(1, 0)), A.soundOn(true, null, at(12, 0))],
+    [true, false, false, false, true]);
   const tb = (id, k) => ({ id, k });
   eq('v7 groups: by project in the order each first appears, tabs keep their order inside; the order is what ⌘1…9 follow',
     ((g) => [g.groups.map((x) => [x.key, x.tabs.map((y) => y.id)]), g.order])(A.groupTabs([tb('a', 'p1'), tb('b', 'p2'), tb('c', 'p1'), tb('d', '')], (x) => x.k)),
