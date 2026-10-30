@@ -15,6 +15,43 @@ Most tools in this space are a remote control for several agents running in para
 merge. Nightshift is the opposite: you describe the work, the agents do it in a separate git copy, check it
 with tests and an independent reviewer, merge it, and **call you only when something needs you**.
 
+## What it looks like
+
+Frames from a live run of the real app on a local project `bukva` (a small program that draws a letter), except "Swarm"
+and "From GitHub…", which use demo data.
+
+**An agent finished a task in its own copy of the project.** On the left the agent feed with previews and states, on the
+right its terminal: 37 tests pass, your folder untouched.
+
+![An agent finished a task in its own copy](docs/screenshots/01-agent-in-project.png)
+
+**A new agent in one click.** Environment, model, project and where to work - right in the folder or in its own copy on
+its own branch.
+
+![The "New agent" popover](docs/screenshots/02-new-agent.png)
+
+**Changes and merge.** Every changed file with its diff, undo any file with a button, "Merge into main" without
+rewriting history.
+
+![The Changes panel and the merge question](docs/screenshots/03-changes-merge.png)
+
+**GitHub panel.** The project's branches with three agent merges and open pull requests next to the chat.
+
+![Chat and the GitHub panel with branches](docs/screenshots/04-github-panel.png)
+
+**A project from GitHub.** Sign in once through GitHub CLI, pick one of your repositories or paste any public one - it
+becomes a project in `~/Projects`.
+
+![The "Project from GitHub" dialog](docs/screenshots/05-from-github.png)
+
+**Swarm.** Several agents on one task: a race of three variants, the reviewer picks the best, scores and tests shown.
+
+![Swarm: a race of three variants](docs/screenshots/06-swarm.png)
+
+**Catalog of skills, MCP servers and mods.** Description and license from the skill itself, installed into the agent you choose.
+
+![Catalog: the pdf skill card](docs/screenshots/07-catalog.png)
+
 ## Quick start
 
 1. Install at least one agent CLI (Claude Code, Codex, opencode, Qwen Code, Gemini…). The left column shows the
