@@ -308,6 +308,36 @@
     root.append(wsEl);
     const mounted = new Map();       // pane id -> {el, body, inst, sig, used, slots}
     let menu = null, dragId = null;
+    // v7: a card dragged: onto another card = a new order, onto the terminals = beside the one in focus (lower third -> down).
+    // Pointer events, not HTML5 drag: Tauri's file drop (images, folders) takes every native drag in the window, so
+    // dragstart ran in a browser and the drop never came in the app - on macOS too (live run 30.10.2026)
+    function cardDrag(e, tb, el) {
+      if (e.button !== 0 || e.target.closest('.tab-x')) return;
+      const x0 = e.clientX, y0 = e.clientY;
+      let over = null;
+      const mark = (c) => { if (over === c) return; if (over) over.classList.remove('over'); if (c) c.classList.add('over'); over = c; };
+      const at = (ev) => {
+        const n = document.elementFromPoint(ev.clientX, ev.clientY), c = n && n.closest('.tab[data-tab]');
+        return { card: c && c.dataset.tab !== tb.id ? c : null, panes: !!n && area.contains(n) && tb.id !== state.active };
+      };
+      const end = () => {
+        window.removeEventListener('pointermove', move, true); window.removeEventListener('pointerup', up, true); window.removeEventListener('pointercancel', end, true); window.removeEventListener('keydown', key, true);
+        dragId = null; el.classList.remove('drag'); area.classList.remove('drop7'); mark(null);
+      };
+      const move = (ev) => {
+        if (!dragId) { if (Math.hypot(ev.clientX - x0, ev.clientY - y0) < 6) return; dragId = tb.id; el.classList.add('drag'); }
+        const w = at(ev);
+        mark(w.card); area.classList.toggle('drop7', w.panes);
+      };
+      const up = (ev) => {
+        const w = dragId ? at(ev) : {}, r = area.getBoundingClientRect(), to = w.card && w.card.dataset.tab;
+        end();
+        if (to) setState(P.wsMove(state, tb.id, state.tabs.findIndex((x) => x.id === to)));
+        else if (w.panes) besidePane(tb.id, ev.clientY - r.top > r.height * 0.66 ? 'v' : 'h');
+      };
+      const key = (ev) => { if (ev.key === 'Escape' && dragId) { ev.preventDefault(); ev.stopPropagation(); end(); } };
+      window.addEventListener('pointermove', move, true); window.addEventListener('pointerup', up, true); window.addEventListener('pointercancel', end, true); window.addEventListener('keydown', key, true);
+    }
     const closeMenu = () => { if (menu) { menu.remove(); menu = null; document.removeEventListener('click', onDocMenu); } };
     const onDocMenu = (e) => { if (menu && !menu.contains(e.target)) closeMenu(); };
 
@@ -377,18 +407,13 @@
       const n = P.count(tb.root), kind = stateOf(p), title = paneTitle(p), env = p.env ? NS.store.env(p.env) : null;
       const word = { run: 'tabs.st_run', wait: 'tabs.st_wait', done: 'tabs.st_done', fail: 'tabs.st_fail', queue: 'tabs.st_queue', talk: 'tabs.st_talk' }[kind];
       // role=tab sits on the title: WebKit hands an AX press of an element to a control inside it, so a tab holding its × closed on VoiceOver "select"
-      const el = h('div', { class: 'tab' + (on ? ' on' : ''), draggable: 'true',
+      const el = h('div', { class: 'tab' + (on ? ' on' : '') + (dragId === tb.id ? ' drag' : ''), onpointerdown: (e) => cardDrag(e, tb, el),
         title: (env ? env.name + ' · ' : '') + title + ' · ' + t(word) + (i < 9 ? ' · ' + (platform() === 'mac' ? '⌘' : 'Ctrl+') + (i + 1) : ''), dataset: { tab: tb.id },
         onclick: () => { setState(P.wsActivate(state, tb.id)); focusActive(); },
         onauxclick: (e) => { if (e.button === 1) { e.preventDefault(); closeTab(tb.id); } },
         onmousedown: (e) => { if (e.button === 1) e.preventDefault(); },
         oncontextmenu: (e) => { e.preventDefault(); openMenu(tb, el); },
-        onkeydown: (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setState(P.wsActivate(state, tb.id)); } else if (e.key === 'Delete') { e.preventDefault(); closeTab(tb.id); } },
-        ondragstart: (e) => { dragId = tb.id; e.dataTransfer.effectAllowed = 'move'; try { e.dataTransfer.setData('text/plain', tb.id); } catch (er) { /* some engines refuse */ } el.classList.add('drag'); },
-        ondragend: () => { dragId = null; el.classList.remove('drag'); },
-        ondragover: (e) => { if (dragId && dragId !== tb.id) { e.preventDefault(); el.classList.add('over'); } },
-        ondragleave: () => el.classList.remove('over'),
-        ondrop: (e) => { e.preventDefault(); el.classList.remove('over'); if (dragId && dragId !== tb.id) setState(P.wsMove(state, dragId, state.tabs.findIndex((x) => x.id === tb.id))); } },
+        onkeydown: (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setState(P.wsActivate(state, tb.id)); } else if (e.key === 'Delete') { e.preventDefault(); closeTab(tb.id); } } },
       h('span', { class: 'tab-ic' + (p.kind === 'term' ? ' is-term' : '') }, p.kind === 'term' && !p.env ? h('span', { class: 't-glyph', 'aria-hidden': 'true', text: '>_' }) : p.env ? envIcon(env && env.custom ? 'custom' : p.env) : ic('i-dash')),
       h('span', { class: 'tab-t', role: 'tab', 'aria-selected': String(on), tabIndex: on ? 0 : -1 }, h('span', { class: 'tab-l', text: short(title) })),
       n > 1 ? h('small', { class: 'tab-n', text: String(n), title: n + ' · ' + t('tabs.label') }) : null,
@@ -575,10 +600,6 @@
     let swT = 0;
     const switched = () => { area.classList.remove('switch7'); void area.offsetWidth; area.classList.add('switch7'); clearTimeout(swT); swT = setTimeout(() => area.classList.remove('switch7'), 320); };
     ws = { draw, focus, openPlus, switched };
-    // v7: a card dropped on the terminals opens beside the one in focus (left half → left/right split, lower third → down)
-    area.addEventListener('dragover', (e) => { if (dragId && dragId !== state.active) { e.preventDefault(); area.classList.add('drop7'); } });
-    area.addEventListener('dragleave', (e) => { if (!area.contains(e.relatedTarget)) area.classList.remove('drop7'); });
-    area.addEventListener('drop', (e) => { area.classList.remove('drop7'); if (!dragId || dragId === state.active) return; e.preventDefault(); const r = area.getBoundingClientRect(); besidePane(dragId, e.clientY - r.top > r.height * 0.66 ? 'v' : 'h'); });
     const offExt = NS.registry.onExtend((point) => { if (point === 'tabsCorner') drawCorner(); if (point === 'paneHeader' || point === 'paneKind') { for (const id of [...mounted.keys()]) destroyPane(id); drawPanes(); } });
     drawCorner(); drawNav();
     ghEl.hidden = true;

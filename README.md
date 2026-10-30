@@ -230,7 +230,6 @@ Not finished:
 - Protection against sending the same chat message twice lives in memory: after a restart repeating it creates a second chat.
 - On macOS a blocked-notifications warning rarely arrives.
 - Codex, Gemini CLI and Cursor have never been run against this app (see the table above).
-- Windows: agent cards cannot be dragged (split and order) - Tauri gives drag-and-drop to images and folders there. Split with "Split right/down" and Ctrl+D.
 - The thinking level is set for Claude Code and Codex; opencode's depends on the model and cannot be set in its terminal.
 
 Out of scope on purpose: mobile and web clients; containers (the CLI sandbox, worktree and throw-away copies
