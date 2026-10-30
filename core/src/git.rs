@@ -100,37 +100,10 @@ fn git_cmd(dir: &Path) -> Result<Command, GitError> {
     Ok(c)
 }
 
-/// Keys of a repository's own config (local / worktree scope) that run nothing and may change freely; any other
-/// key (filters, drivers, hooks, gpg, remote upload/receive programs, includes, ...) is held to what was there when
-/// the app first looked at the repository.
-fn plain_key(key: &str) -> bool {
-    let k = key.to_ascii_lowercase();
-    let (head, tail) = (k.split('.').next().unwrap_or(""), k.rsplit('.').next().unwrap_or(""));
-    let two = k.matches('.').count() == 1;
-    match head {
-        "core" => two && matches!(tail, "repositoryformatversion" | "filemode" | "bare" | "logallrefupdates" | "ignorecase" | "precomposeunicode"
-            | "symlinks" | "autocrlf" | "safecrlf" | "eol" | "longpaths" | "checkstat" | "trustctime" | "untrackedcache" | "splitindex"
-            | "commitgraph" | "multipackindex" | "sparsecheckout" | "sparsecheckoutcone" | "quotepath" | "abbrev" | "compression"
-            | "bigfilethreshold" | "preloadindex" | "fscache" | "fsyncmethod"),
-        "remote" => matches!(tail, "url" | "pushurl" | "fetch" | "push" | "tagopt" | "prune" | "mirror" | "promisor" | "partialclonefilter" | "skipdefaultupdate"),
-        "branch" | "user" | "author" | "committer" | "extensions" | "gc" | "pack" | "index" | "color" | "advice" | "status" | "log" | "rerere"
-        | "maintenance" | "feature" | "lfs" | "http" | "init" | "column" | "versionsort" | "worktree" | "checkout" | "clean" | "rebase" => true,
-        "fetch" => two && matches!(tail, "prune" | "prunetags" | "writecommitgraph" | "recursesubmodules" | "parallel"),
-        "pull" => two && matches!(tail, "rebase" | "ff" | "twohead" | "octopus"),
-        "push" => two && matches!(tail, "default" | "autosetupremote" | "followtags" | "recursesubmodules"),
-        "merge" => two && matches!(tail, "conflictstyle" | "ff" | "renames" | "log" | "autostash"),
-        "diff" => two && matches!(tail, "renames" | "algorithm" | "colormoved" | "noprefix" | "mnemonicprefix" | "submodule" | "context" | "indentheuristic"),
-        "submodule" => matches!(tail, "url" | "active" | "branch" | "recurse" | "fetchjobs"),
-        _ => false,
-    }
-}
-
-/// What the app saw first, per repository (its common git dir): the entries of its own config outside `plain_key`,
-/// and per folder what its `.git` was. Kept in the app's data (`set_seen_file`) so a restart does not take what an
-/// agent planted meanwhile as the person's own.
+/// What the app saw first: per folder what its `.git` was. Kept in the app's data (`set_seen_file`) so a restart does
+/// not take a copy an agent replaced meanwhile as the original. (`runs` of 1.0.0 files is ignored.)
 #[derive(serde::Serialize, serde::Deserialize, Default)]
 struct Seen {
-    runs: std::collections::BTreeMap<String, Vec<String>>,
     dirs: std::collections::BTreeMap<String, (String, String)>,
 }
 static SEEN: std::sync::Mutex<Option<Seen>> = std::sync::Mutex::new(None);
@@ -210,35 +183,13 @@ fn common_dir(dir: &Path) -> Result<PathBuf, GitError> {
     Ok(k)
 }
 
-/// Refuses git in `dir` when its repository's own config got a key that is not plain (it may make git run a
-/// program: a filter, a driver, a config hook, a remote program, gpg...) since the app first looked at it, or when
-/// a copy's `.git` was replaced (see `common_dir`). What the person had set up (a merge driver of a tool, git-lfs) is
-/// seen first and goes on working; to accept a key added since, remove it from `<app data>/git-seen.json`.
+/// Refuses git in `dir` when a copy's `.git` was replaced (see `common_dir`). The repository's own config is not
+/// compared with an earlier look: the person's tools change it (graphify adds a merge driver after the first commit,
+/// `git lfs install --local`), and refusing that broke every task of such a project (1.0.0). An agent in Claude's
+/// sandbox cannot write it (`Edit` deny on the project's .git config and hooks); an agent without a sandbox runs as
+/// the person anyway.
 fn check_repo_config(dir: &Path) -> Result<(), GitError> {
-    let key = common_dir(dir)?;
-    let o = crate::proc::cmd("git").current_dir(dir).args(["config", "--list", "--show-scope"]).stdin(std::process::Stdio::null()).output();
-    let Ok(o) = o else { return Ok(()) }; // no git: the real call says so
-    let mut runs: Vec<String> = String::from_utf8_lossy(&o.stdout)
-        .lines()
-        .filter_map(|l| l.split_once('\t'))
-        .filter(|(scope, _)| matches!(*scope, "local" | "worktree"))
-        .map(|(_, kv)| kv.to_string())
-        .filter(|kv| !plain_key(kv.split('=').next().unwrap_or("")))
-        .collect();
-    runs.sort();
-    let key = key.to_string_lossy().to_string();
-    with_seen(|s| match s.runs.get(&key) {
-        None => {
-            s.runs.insert(key, runs);
-            (Ok(()), true)
-        }
-        // the same, or fewer (an entry removed runs nothing new)
-        Some(first) if runs.iter().all(|r| first.contains(r)) => (Ok(()), false),
-        Some(first) => {
-            let new: Vec<&str> = runs.iter().filter(|r| !first.contains(r)).map(|r| r.split('=').next().unwrap_or("")).collect();
-            (Err(GitError::Other(format!("unsafe_repo_config: the repository config got {} since the app first looked at it", new.join(", ")))), false)
-        }
-    })
+    common_dir(dir).map(|_| ())
 }
 
 struct Out {

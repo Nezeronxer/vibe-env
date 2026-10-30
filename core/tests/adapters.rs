@@ -1533,3 +1533,19 @@ fn claude_in_a_repository_with_its_own_mcp_servers_starts_none_of_them() {
     let r = Run::new(d.path().to_path_buf(), "do it".into(), String::new(), Role::Worker);
     assert!(args(&Claude::new(), &r).contains(&"--strict-mcp-config".to_string()));
 }
+
+#[test]
+fn claude_in_a_copy_cannot_write_the_config_or_hooks_of_the_projects_git() {
+    let d = tempfile::tempdir().unwrap();
+    let repo = d.path().join("repo");
+    std::fs::create_dir_all(&repo).unwrap();
+    assert!(nightshift_core::proc::shell("git init -q -b main && git -c user.name=t -c user.email=t@t commit -q --allow-empty -m init && git worktree add -q ../wt -b ns/x").current_dir(&repo).status().unwrap().success());
+    let r = Run::new(d.path().join("wt"), "do it".into(), String::new(), Role::Worker);
+    let v = args(&Claude::new(), &r);
+    let settings: serde_json::Value = serde_json::from_str(&arg_after(&v, "--settings")).unwrap();
+    let deny: Vec<String> = settings["permissions"]["deny"].as_array().unwrap().iter().map(|d| d.as_str().unwrap().to_string()).collect();
+    let g = nightshift_core::proc::canon(repo.join(".git")).unwrap().to_string_lossy().trim_start_matches('/').to_string();
+    for want in [format!("Edit(//{g}/config)"), format!("Edit(//{g}/hooks/**)"), format!("Edit(//{g}/worktrees/*/config.worktree)")] {
+        assert!(deny.contains(&want), "{want} missing in {deny:?}");
+    }
+}

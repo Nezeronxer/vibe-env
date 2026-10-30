@@ -35,8 +35,18 @@ impl Default for Claude {
 
 /// `--settings` JSON. The only `Read(...)` deny is `~/.ssh` (R17i.2): in the sandbox those become OS-level
 /// denials, and blocking `*.pem` would break TLS for every subprocess.
-fn settings_json(open_network: bool) -> String {
-    let mut permissions = json!({ "deny": ["Bash(git push:*)", "Bash(git remote:*)", "Bash(sudo:*)", "Read(~/.ssh/**)"] });
+fn settings_json(open_network: bool, git_common: Option<&std::path::Path>) -> String {
+    let mut deny = vec!["Bash(git push:*)".to_string(), "Bash(git remote:*)".into(), "Bash(sudo:*)".into(), "Read(~/.ssh/**)".into()];
+    // The sandbox lets the agent write the project's own .git (commits from its copy need it). Its config and hooks
+    // stay out of reach: a filter, a driver or a hook written there would run in the app's git, outside the sandbox
+    // (audit 29.10.2026; checked on Claude Code 2.1.312: `git config` and a hook file fail with "Operation not permitted")
+    if let Some(g) = git_common {
+        // `//` = an absolute path in a permission rule (a single `/` is relative to the settings file)
+        let g = g.to_string_lossy().replace('\\', "/");
+        let g = g.trim_start_matches('/');
+        deny.extend([format!("Edit(//{g}/config)"), format!("Edit(//{g}/hooks/**)"), format!("Edit(//{g}/worktrees/*/config.worktree)")]);
+    }
+    let mut permissions = json!({ "deny": deny });
     if open_network {
         // Why: sandboxed commands get no network unless the host is allowed, and `claude -p` cannot ask, so
         // npm/pip/cargo would fail. Risk: the agent can then send any file of the working copy (including
@@ -133,7 +143,9 @@ impl Adapter for Claude {
         // --include-partial-messages: the text comes word by word as `stream_event`s (seen live, 2.1.308)
         c.current_dir(&run.cwd).args(["-p", "--output-format", "stream-json", "--verbose", "--include-partial-messages"]);
         let mode = if run.is_read_only() { "plan" } else { "bypassPermissions" };
-        c.args(["--permission-mode", mode, "--settings", &settings_json(supports_wildcard_domain(&self.bin))]);
+        let git_common = crate::proc::cmd("git").current_dir(&run.cwd).args(["rev-parse", "--path-format=absolute", "--git-common-dir"]).output().ok()
+            .filter(|o| o.status.success()).map(|o| std::path::PathBuf::from(String::from_utf8_lossy(&o.stdout).trim()));
+        c.args(["--permission-mode", mode, "--settings", &settings_json(supports_wildcard_domain(&self.bin), git_common.as_deref())]);
         // MCP servers of the repository's .mcp.json would start without a question too (an override in --settings
         // does not stop them, checked on 2.1.312); shortcut: with one there the task runs with no MCP servers at all -
         // pass the user's own through --mcp-config when someone needs them in such projects

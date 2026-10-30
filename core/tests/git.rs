@@ -807,20 +807,6 @@ mod config_guard {
     }
 
     #[test]
-    fn a_filter_or_diff_driver_added_after_the_app_looked_is_refused_and_never_runs() {
-        let d = tempfile::tempdir().unwrap();
-        let (repo, wt) = setup(&d);
-        let pwn = d.path().join("pwn");
-        sh(&repo, &format!("git config filter.x.clean \"sh -c 'touch {}; cat'\"", pwn.display()));
-        std::fs::write(wt.join(".gitattributes"), "* filter=x\n").unwrap();
-        std::fs::write(wt.join("c.txt"), "c").unwrap();
-        let e = git::commit_all(&wt, "m", false).unwrap_err().to_string();
-        assert!(e.contains("unsafe_repo_config") && e.contains("filter.x.clean"), "{e}");
-        let _ = git::diff(&wt, "main", 100);
-        assert!(!pwn.exists());
-    }
-
-    #[test]
     fn a_dot_git_pointed_into_the_copy_itself_is_refused() {
         let d = tempfile::tempdir().unwrap();
         let (_repo, wt) = setup(&d);
@@ -832,39 +818,26 @@ mod config_guard {
         assert!(!pwn.exists());
     }
 
-    // bypasses of a first, deny-list version of the guard (re-check 30.10.2026): each made git run a program
+    // 1.0.0 refused every task of a project once graphify added its merge driver after the app's first look
     #[test]
-    fn config_hooks_remote_programs_ext_remotes_and_gpg_key_commands_added_later_are_refused() {
-        let plants: [(&str, &str); 4] = [
-            ("hook", "git config hook.x.command 'touch {M}' && git config hook.x.event pre-commit"),
-            ("gpg", "git config commit.gpgSign true && git config gpg.format ssh && git config gpg.ssh.defaultKeyCommand \"sh -c 'touch {M}'\""),
-            ("upload", "git remote add origin \"$PWD\" && git config remote.origin.uploadpack 'touch {M}; git-upload-pack'"),
-            ("ext", "git config protocol.ext.allow always && git remote add origin 'ext::sh -c touch% {M}'"),
-        ];
-        for (name, plant) in plants {
-            let d = tempfile::tempdir().unwrap();
-            let (repo, wt) = setup(&d);
-            let pwn = d.path().join("pwn");
-            sh(&repo, &plant.replace("{M}", &pwn.to_string_lossy()));
-            std::fs::write(wt.join("b.txt"), "b").unwrap();
-            let r1 = git::commit_all(&wt, "m", false).map(|_| ());
-            let r2 = git::fetch_ff(&repo, "main");
-            assert!(!pwn.exists(), "{name}: {r1:?} {r2:?}");
-            assert!(format!("{r1:?}{r2:?}").contains("unsafe_repo_config"), "{name}: {r1:?} {r2:?}");
-        }
+    fn a_merge_driver_a_tool_of_the_person_adds_later_does_not_stop_the_app() {
+        let d = tempfile::tempdir().unwrap();
+        let (repo, wt) = setup(&d);
+        sh(&repo, "git config merge.graphify.name 'graphify graph.json union merge' && git config merge.graphify.driver 'tool %O %A %B'");
+        std::fs::write(wt.join("b.txt"), "b").unwrap();
+        git::commit_all(&wt, "msg", false).unwrap();
+        let wt2 = git::create_worktree(&repo, &d.path().join("wts"), "t2", "ns/t2", "main").unwrap();
+        assert!(wt2.join(".git").is_file());
     }
 
     #[test]
-    fn what_an_agent_planted_is_still_refused_after_a_restart_of_the_app() {
-        git::set_seen_file(std::env::temp_dir().join(format!("ns-git-seen-{}.json", std::process::id())));
+    fn an_ext_remote_never_runs_its_command() {
         let d = tempfile::tempdir().unwrap();
-        let (repo, wt) = setup(&d);
+        let (repo, _wt) = setup(&d);
         let pwn = d.path().join("pwn");
-        sh(&repo, &format!("git config filter.x.clean \"sh -c 'touch {}; cat'\"", pwn.display()));
-        std::fs::write(wt.join(".gitattributes"), "* filter=x\n").unwrap();
-        git::reload_seen(); // memory gone, what was seen comes back from the file
-        let e = git::commit_all(&wt, "m", false);
-        assert!(!pwn.exists() && e.is_err(), "{e:?}");
+        sh(&repo, &format!("git config protocol.ext.allow always && git remote add origin 'ext::sh -c touch% {}'", pwn.display()));
+        assert!(git::fetch_ff(&repo, "main").is_err());
+        assert!(!pwn.exists());
     }
 
     #[test]
