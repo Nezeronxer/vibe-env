@@ -1,11 +1,11 @@
-# Maintainer: <MAINTAINER NAME> <MAINTAINER EMAIL>   (PLACEHOLDER)
+# Maintainer: Nezeronxer <73632219+Nezeronxer@users.noreply.github.com>
 # Builds Nightshift from a release source tarball. Not yet tested on Arch: no Arch machine was available.
 pkgname=nightshift
-pkgver=0.1.0
+pkgver=1.0.0
 pkgrel=1
 pkgdesc='Hand work to coding agents and stay away until they call you'
 arch=('x86_64')
-url='<REPO_URL>'                                  # PLACEHOLDER: https://github.com/<OWNER>/<REPO>
+url='https://github.com/Nezeronxer/vibe-env'
 license=('MIT')
 depends=('webkit2gtk-4.1' 'gtk3' 'libayatana-appindicator' 'git')
 makedepends=('cargo' 'cargo-tauri' 'nodejs')
@@ -14,18 +14,18 @@ source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz")
 sha256sums=('SKIP')
 
 prepare() {
-  cd "$srcdir/<REPO>-$pkgver/app"                 # PLACEHOLDER: directory name inside the tarball
+  cd "$srcdir/vibe-env-$pkgver/app"
   # dependencies exactly as pinned in Cargo.lock (workspace root)
   cargo fetch --locked --target "$(rustc -vV | sed -n 's/host: //p')"
 }
 
 build() {
-  cd "$srcdir/<REPO>-$pkgver/app"                 # tauri.conf.json lives in app/
+  cd "$srcdir/vibe-env-$pkgver/app"                 # tauri.conf.json lives in app/
   cargo tauri build --no-bundle -- --locked
 }
 
 package() {
-  cd "$srcdir/<REPO>-$pkgver"
+  cd "$srcdir/vibe-env-$pkgver"
   install -Dm755 target/release/nightshift-app "$pkgdir/usr/bin/nightshift"
   install -Dm644 app/icons/128x128.png "$pkgdir/usr/share/icons/hicolor/128x128/apps/nightshift.png"
   install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"

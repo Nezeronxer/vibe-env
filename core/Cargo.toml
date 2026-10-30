@@ -1,6 +1,6 @@
 [package]
 name = "nightshift-core"
-version = "0.1.0"
+version = "1.0.0"
 edition = "2021"
 
 [dependencies]
@@ -12,7 +12,8 @@ thiserror = "1"
 regex = "1"
 zip = { version = "9", default-features = false, features = ["deflate"] }
 sha2 = "0.11.1"
-keyring = { version = "3.6.3", features = ["apple-native", "sync-secret-service", "crypto-rust"] }
+keyring = { version = "3.6.3", features = ["apple-native", "windows-native", "sync-secret-service", "crypto-rust"] }
+dunce = "1"
 similar = "3.2.0"
 portable-pty = "0.9"
 

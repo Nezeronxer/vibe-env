@@ -531,13 +531,13 @@ impl Kits {
     }
 
     fn canon_home(&self) -> PathBuf {
-        self.home.canonicalize().unwrap_or_else(|_| self.home.clone())
+        crate::proc::canon(&self.home).unwrap_or_else(|_| self.home.clone())
     }
 
     fn tree<'a>(&self, l: &'a Layout, scope: &Scope) -> DiskTree<'a> {
         match scope {
             Scope::Global => DiskTree { layout: l, base: self.home.clone(), project: false, allowed: self.canon_home() },
-            Scope::Project(p) => DiskTree { layout: l, base: p.clone(), project: true, allowed: p.canonicalize().unwrap_or_else(|_| p.clone()) },
+            Scope::Project(p) => DiskTree { layout: l, base: p.clone(), project: true, allowed: crate::proc::canon(&p).unwrap_or_else(|_| p.clone()) },
         }
     }
 
@@ -724,7 +724,7 @@ impl Kits {
                 snap::write_atomic(&p.join("kit.json"), &kit_json, None)?;
                 if let ExportDest::Git(_) = dest {
                     crate::git::init_repo(p).map_err(|e| KitError::Io(e.to_string()))?;
-                    commit = std::process::Command::new("git")
+                    commit = crate::proc::cmd("git")
                         .current_dir(p)
                         .args(["rev-parse", "HEAD"])
                         .output()
@@ -808,7 +808,7 @@ impl Kits {
             rest.push(existing.file_name().map(|n| n.to_os_string()).unwrap_or_default());
             existing = existing.parent().ok_or_else(|| KitError::UnsafePath(rel.into()))?;
         }
-        let mut real = existing.canonicalize().map_err(|_| KitError::UnsafePath(rel.into()))?;
+        let mut real = crate::proc::canon(&existing).map_err(|_| KitError::UnsafePath(rel.into()))?;
         for r in rest.iter().rev() {
             real.push(r);
         }

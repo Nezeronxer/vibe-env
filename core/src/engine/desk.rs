@@ -67,12 +67,12 @@ impl Engine {
 
     /// The folder is the root of a copy this engine made for a terminal agent.
     fn is_own(&self, ctx: &Ctx) -> bool {
-        let Ok(wts) = self.worktrees_dir.canonicalize() else { return false };
+        let Ok(wts) = crate::proc::canon(&self.worktrees_dir) else { return false };
         ctx.root.starts_with(&wts) && ctx.root.join(".git").is_file() && ctx.branch().is_some_and(|b| b.starts_with(TERM_BRANCH))
     }
 
     fn project_at(&self, repo: &Path) -> Option<Project> {
-        lk(&self.store).projects().into_iter().find(|p| p.path.canonicalize().ok().as_deref() == Some(repo))
+        lk(&self.store).projects().into_iter().find(|p| crate::proc::canon(&p.path).ok().as_deref() == Some(repo))
     }
 
     /// The base branch of the project the folder belongs to, else what git itself calls the base.

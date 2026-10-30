@@ -76,7 +76,7 @@ impl Adapter for Kimi {
         cli_version(&self.bin)
     }
     fn command(&self, run: &Run) -> Command {
-        let mut c = Command::new(find_bin(&self.bin).unwrap_or_else(|| self.bin.clone().into()));
+        let mut c = crate::proc::cmd(find_bin(&self.bin).unwrap_or_else(|| self.bin.clone().into()));
         // no read-only flag in print mode (--plan is refused with --prompt): the engine runs readers in a throwaway copy
         c.current_dir(&run.cwd).args(["--output-format", "stream-json"]);
         if let Some(m) = cli_model(run) {
@@ -104,7 +104,7 @@ impl Adapter for Kimi {
         crate::agent::resume_words(&self.bin, &["--session"], session)
     }
     fn interactive_resume(&self, session: &str, cwd: &std::path::Path) -> Option<Command> {
-        let mut c = Command::new(find_bin(&self.bin).unwrap_or_else(|| self.bin.clone().into()));
+        let mut c = crate::proc::cmd(find_bin(&self.bin).unwrap_or_else(|| self.bin.clone().into()));
         c.current_dir(cwd).args(["--session", super::claude::valid_session(session)?]);
         Some(c)
     }

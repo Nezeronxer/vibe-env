@@ -58,7 +58,7 @@ pub fn start(app: &AppHandle, hub: Arc<Hub>, keys: Keys) {
 pub async fn config_open() -> Res<Value> {
     let c = config_file();
     let created = c.create_default().map_err(e2s)?;
-    let mut open = if cfg!(target_os = "macos") { std::process::Command::new("open") } else { std::process::Command::new("xdg-open") };
+    let mut open = if cfg!(target_os = "macos") { nightshift_core::proc::cmd("open") } else { nightshift_core::proc::cmd("xdg-open") };
     if cfg!(target_os = "macos") {
         open.arg("-t"); // a file without an extension has no app of its own
     }

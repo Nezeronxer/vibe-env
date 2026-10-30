@@ -15,6 +15,8 @@
     'not_a_task', 'submit_convoy', 'summary_since', 'diff_file', 'check_custom', 'install_env', 'login_env',
     // v8: the envs asked again after an install in a terminal tab (list_envs answers from its cache)
     'recheck_envs', 'gh_prs',
+    // v13: the GitHub account - login of gh, own repositories, clone one as a project
+    'gh_account', 'gh_repos', 'clone_project',
     'kits_inventory', 'kits_export', 'kits_preview', 'kits_install', 'kits_enable', 'kits_snapshots', 'kits_rollback', 'kits_check_update', 'set_secret',
     // skills and MCP of one CLI into every other installed one (Kits::spread)
     'kits_spread', 'kits_spread_last', 'kits_spread_undo',

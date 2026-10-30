@@ -6,7 +6,7 @@ use crate::model::*;
 use crate::preview::{self, Capture};
 use std::net::{TcpStream, ToSocketAddrs};
 use std::path::PathBuf;
-use std::process::{Child, Command, Stdio};
+use std::process::{Child, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -72,8 +72,8 @@ impl Engine {
         if answers(&host, port) {
             return Err(format!("port_busy: {port}"));
         }
-        let mut c = Command::new("sh");
-        c.arg("-c").arg(&run).current_dir(&wt).envs(Self::copy_env(t)).stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null());
+        let mut c = crate::proc::shell(&run);
+        c.current_dir(&wt).envs(Self::copy_env(t)).stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null());
         #[cfg(unix)]
         std::os::unix::process::CommandExt::process_group(&mut c, 0);
         self.log(&t.id, LogKind::Check, &format!("$ {run}"));

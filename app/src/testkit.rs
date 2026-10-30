@@ -14,7 +14,7 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 pub fn g(dir: &Path, args: &[&str]) -> String {
-    let o = Command::new("git").current_dir(dir).args(args).output().unwrap();
+    let o = nightshift_core::proc::cmd("git").current_dir(dir).args(args).output().unwrap();
     assert!(o.status.success(), "git {:?}: {}", args, String::from_utf8_lossy(&o.stderr));
     String::from_utf8_lossy(&o.stdout).trim().to_string()
 }
@@ -27,7 +27,7 @@ impl Scratch {
         let d = std::env::temp_dir().join(format!("ns-app-{name}-{}-{}", std::process::id(), N.fetch_add(1, Ordering::Relaxed)));
         let _ = std::fs::remove_dir_all(&d);
         std::fs::create_dir_all(&d).unwrap();
-        Scratch(d.canonicalize().unwrap())
+        Scratch(nightshift_core::proc::canon(&d).unwrap())
     }
 }
 impl Drop for Scratch {
@@ -141,7 +141,7 @@ impl Adapter for Resumable {
         self.0.finish(ok, all)
     }
     fn interactive_resume(&self, session: &str, cwd: &Path) -> Option<Command> {
-        let mut c = Command::new("/opt/bin/claude");
+        let mut c = nightshift_core::proc::cmd("/opt/bin/claude");
         c.current_dir(cwd).args(["--resume", session]);
         Some(c)
     }
@@ -164,8 +164,10 @@ pub fn fake_gh() -> PathBuf {
     let d = GH.get_or_init(|| {
         let d = Scratch::new("gh");
         let p = d.0.join("gh");
-        std::fs::write(&p, format!("#!/bin/sh\necho \"$@\" >> '{}'\necho https://github.com/o/r/pull/9\n", d.0.join("calls").display())).unwrap();
-        Command::new("chmod").arg("755").arg(&p).status().unwrap();
+        // `repo clone o/n DIR` makes DIR a repository with one commit, as a real clone would
+        let clone = "if [ \"$1 $2\" = 'repo clone' ]; then git init -q \"$4\" && git -C \"$4\" -c user.name=t -c user.email=t@t commit -q --allow-empty -m init; fi\n";
+        std::fs::write(&p, format!("#!/bin/sh\necho \"$@\" >> '{}'\n{clone}echo https://github.com/o/r/pull/9\n", d.0.join("calls").display())).unwrap();
+        nightshift_core::proc::cmd("chmod").arg("755").arg(&p).status().unwrap();
         std::env::set_var("NIGHTSHIFT_GH", &p);
         d
     });

@@ -259,7 +259,7 @@ mod tests {
         assert_eq!(qwen(&hub)["installed"], false);
         assert!(qwen(&hub)["error"].as_str().unwrap().starts_with("not installed"));
         std::fs::write(&bin, "#!/bin/sh\necho 'qwen 1.2.3'\n").unwrap();
-        std::process::Command::new("chmod").arg("755").arg(&bin).status().unwrap();
+        nightshift_core::proc::cmd("chmod").arg("755").arg(&bin).status().unwrap();
         assert_eq!(qwen(&hub)["installed"], false, "the list is the last check until the next one");
         assert_eq!(qwen(&hub)["version"], "");
         assert!(hub.recheck_envs(), "something changed");

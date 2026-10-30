@@ -47,7 +47,7 @@ impl Adapter for Aider {
         cli_version(&self.bin)
     }
     fn command(&self, run: &Run) -> Command {
-        let mut c = Command::new(find_bin(&self.bin).unwrap_or_else(|| self.bin.clone().into()));
+        let mut c = crate::proc::cmd(find_bin(&self.bin).unwrap_or_else(|| self.bin.clone().into()));
         c.current_dir(&run.cwd).args(["--yes-always", "--no-pretty", "--no-stream"]);
         if run.is_read_only() {
             c.arg("--dry-run");

@@ -82,7 +82,7 @@
         const e = st.err;
         kids.push(h('p', { class: 'mk-err', role: 'alert', text: t(e.key, { detail: e.detail }) }));
         if (e.paths.length) kids.push(h('ul', { class: 'pubpaths' }, e.paths.map((x) => h('li', {}, h('code', { text: x })))), h('p', { class: 'mute', text: t('pub.paths_d') }));
-        if (e.action === 'install') kids.push(h('p', { class: 'mute' }, h('code', { text: 'brew install gh' })));
+        if (e.action === 'install') kids.push(h('p', { class: 'mute' }, h('code', { text: root.NSGhClone ? root.NSGhClone.installCmd(navigator.userAgent) : 'brew install gh' })));
         acts.push(h('button', { type: 'button', class: 'btn', text: t('mk.close'), onclick: close }));
         if (e.action === 'login') acts.push(h('button', { type: 'button', class: 'btn primary', text: t('pub.login'), onclick: () => { close(); loginInTerminal(p); } }));
         if (e.action === 'rename' || e.paths.length) acts.push(h('button', { type: 'button', class: 'btn primary', text: e.paths.length ? t('pub.again') : t('pub.rename'), onclick: () => { st.stage = 'form'; draw(); } }));

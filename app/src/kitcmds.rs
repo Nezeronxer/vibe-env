@@ -65,9 +65,9 @@ impl Hub {
 
     /// Adds `files` to `copy_files` of the project in `dir`, without duplicates.
     fn add_copy_files(&self, dir: &std::path::Path, files: &[String]) -> Option<String> {
-        let real = std::fs::canonicalize(dir).unwrap_or_else(|_| dir.to_path_buf());
+        let real = nightshift_core::proc::canon(dir).unwrap_or_else(|_| dir.to_path_buf());
         let mut st = lk(self.engine.store());
-        let mut p = st.projects().into_iter().find(|p| std::fs::canonicalize(&p.path).unwrap_or_else(|_| p.path.clone()) == real)?;
+        let mut p = st.projects().into_iter().find(|p| nightshift_core::proc::canon(&p.path).unwrap_or_else(|_| p.path.clone()) == real)?;
         let before = p.copy_files.len();
         for f in files {
             if !p.copy_files.contains(f) {

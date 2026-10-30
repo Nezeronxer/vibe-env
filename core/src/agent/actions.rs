@@ -350,7 +350,7 @@ impl Paths {
     pub fn new(root: &std::path::Path) -> Paths {
         let slash = |p: &std::path::Path| format!("{}/", p.to_string_lossy().trim_end_matches('/'));
         let mut roots = vec![slash(root)];
-        if let Ok(c) = root.canonicalize() {
+        if let Ok(c) = crate::proc::canon(&root) {
             roots.push(slash(&c));
         }
         roots.dedup();

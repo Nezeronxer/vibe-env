@@ -5,7 +5,7 @@ use crate::agent::actions::{finish_action, unified_diff};
 use crate::agent::{ActionInput, Scrub, ToolAction};
 use std::collections::{BTreeSet, HashMap};
 use std::path::Path;
-use std::process::{Command, Stdio};
+use std::process::Stdio;
 
 /// More changed files than this in one run are not shown one by one.
 const MAX_FILES: usize = 200;
@@ -19,7 +19,7 @@ pub(super) struct Before {
 }
 
 fn git(dir: &Path, args: &[&str]) -> Option<Vec<u8>> {
-    let o = Command::new("git").current_dir(dir).args(args).stdin(Stdio::null()).stderr(Stdio::null()).output().ok()?;
+    let o = crate::proc::cmd("git").current_dir(dir).args(args).stdin(Stdio::null()).stderr(Stdio::null()).output().ok()?;
     o.status.success().then_some(o.stdout)
 }
 
@@ -59,13 +59,13 @@ pub(super) fn before(dir: &Path) -> Option<Before> {
 /// A path of an action relative to the copy (CLIs give absolute paths).
 pub(super) fn rel_path(dir: &Path, p: &str) -> String {
     let path = Path::new(p);
-    for base in [dir.to_path_buf(), dir.canonicalize().unwrap_or_else(|_| dir.to_path_buf())] {
+    for base in [dir.to_path_buf(), crate::proc::canon(&dir).unwrap_or_else(|_| dir.to_path_buf())] {
         if let Ok(r) = path.strip_prefix(&base) {
             return r.to_string_lossy().into_owned();
         }
     }
-    if let Ok(c) = path.canonicalize() {
-        if let Ok(r) = c.strip_prefix(dir.canonicalize().unwrap_or_else(|_| dir.to_path_buf())) {
+    if let Ok(c) = crate::proc::canon(&path) {
+        if let Ok(r) = c.strip_prefix(crate::proc::canon(&dir).unwrap_or_else(|_| dir.to_path_buf())) {
             return r.to_string_lossy().into_owned();
         }
     }

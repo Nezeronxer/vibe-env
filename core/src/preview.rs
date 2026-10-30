@@ -115,11 +115,11 @@ const [mode, url, out] = process.argv.slice(1);
 
 impl NodeCapture {
     fn run(&self, cwd: &Path, args: &[&str]) -> Result<(), String> {
-        let mut c = std::process::Command::new(&self.node);
+        let mut c = crate::proc::cmd(&self.node);
         c.arg("-e").arg(SCRIPT).args(args).current_dir(cwd).stdin(std::process::Stdio::null());
         // a global `npm i -g playwright` is not on node's own search path
         if std::env::var_os("NODE_PATH").is_none() {
-            if let Some(root) = std::process::Command::new("npm").args(["root", "-g"]).output().ok().filter(|o| o.status.success()) {
+            if let Some(root) = crate::proc::cmd("npm").args(["root", "-g"]).output().ok().filter(|o| o.status.success()) {
                 c.env("NODE_PATH", String::from_utf8_lossy(&root.stdout).trim());
             }
         }

@@ -271,12 +271,15 @@ fn tail(s: &str) -> String {
 
 /// A native install that switched its link to a new file (Claude: `versions/<v>`): point the link back.
 fn relink(link: &Path, old_real: &Path) -> bool {
-    if !link.is_symlink() || !old_real.is_file() || std::fs::canonicalize(link).ok().as_deref() == Some(old_real) {
+    if !link.is_symlink() || !old_real.is_file() || crate::proc::canon(link).ok().as_deref() == Some(old_real) {
         return false;
     }
     let tmp = link.with_file_name(format!(".{}.nightshift-rollback", link.file_name().unwrap_or_default().to_string_lossy()));
     let _ = std::fs::remove_file(&tmp);
-    std::os::unix::fs::symlink(old_real, &tmp).and_then(|_| std::fs::rename(&tmp, link)).is_ok()
+    #[cfg(unix)]
+    return std::os::unix::fs::symlink(old_real, &tmp).and_then(|_| std::fs::rename(&tmp, link)).is_ok();
+    #[cfg(not(unix))] // Windows installs are not links: nothing to point back
+    false
 }
 
 impl Updates {
@@ -325,7 +328,7 @@ impl Updates {
 
     pub fn check(&self, env: &str) -> Result<CliStatus> {
         let cli = self.adapter(env)?.cli_path().ok_or_else(|| UpdateError::NotInstalled(env.into()))?;
-        let real = std::fs::canonicalize(&cli).unwrap_or_else(|_| cli.clone());
+        let real = crate::proc::canon(&cli).unwrap_or_else(|_| cli.clone());
         let method = install_method(env, &real);
         let installed = version_of(&cli);
         if let Some(v) = &installed {
@@ -355,7 +358,7 @@ impl Updates {
             std::thread::sleep(Duration::from_millis(200));
         }
         let cli = PathBuf::from(&st.path);
-        let real_before = std::fs::canonicalize(&cli).unwrap_or_else(|_| cli.clone());
+        let real_before = crate::proc::canon(&cli).unwrap_or_else(|_| cli.clone());
         // an update cut by the app's exit: the version from before it is the one to go back to
         let from = lk(&self.state).pending.get(env).cloned().unwrap_or(st.installed.clone());
         lk(&self.updating).insert(env.into());

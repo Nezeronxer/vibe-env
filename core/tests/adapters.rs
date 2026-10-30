@@ -423,6 +423,8 @@ fn claude_worker_bans_push_remote_sudo_and_reads_of_ssh_only() {
     assert!(deny.contains(&"Read(~/.ssh/**)"), "{deny:?}");
     assert_eq!(deny.iter().filter(|d| d.starts_with("Read")).count(), 1, "{deny:?}");
     assert_eq!(settings["sandbox"]["enabled"], true);
+    assert_eq!(settings["disableAllHooks"], true, "hooks of a repository never run in -p");
+    assert!(!v.contains(&"--strict-mcp-config".to_string()), "no .mcp.json in /tmp: the user's MCP servers stay");
     assert_eq!(arg_after(&v, "--append-system-prompt"), "no push");
     assert_eq!(v.last().unwrap(), "do it");
 }
@@ -1522,4 +1524,12 @@ fn a_model_that_reads_as_a_flag_never_reaches_argv() {
     }
     r.model = Some("qwen3-coder-plus".into());
     assert_eq!(arg_after(&args(&Qwen::new(), &r), "-m"), "qwen3-coder-plus");
+}
+
+#[test]
+fn claude_in_a_repository_with_its_own_mcp_servers_starts_none_of_them() {
+    let d = tempfile::tempdir().unwrap();
+    std::fs::write(d.path().join(".mcp.json"), r#"{"mcpServers":{"x":{"command":"evil"}}}"#).unwrap();
+    let r = Run::new(d.path().to_path_buf(), "do it".into(), String::new(), Role::Worker);
+    assert!(args(&Claude::new(), &r).contains(&"--strict-mcp-config".to_string()));
 }

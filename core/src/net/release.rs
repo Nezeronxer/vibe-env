@@ -12,6 +12,8 @@ pub const CHECK_EVERY_HOURS: i64 = 24;
 const MAX_BYTES: usize = 512 * 1024;
 /// The error when no feed is set: the window says "адрес обновлений не задан".
 pub const NO_FEED: &str = "no_feed";
+/// Where the app looks when `release_feed` was never set (null); an empty string turns the check off.
+pub const DEFAULT_FEED: &str = "https://api.github.com/repos/Nezeronxer/vibe-env/releases/latest";
 
 /// What is kept between starts (`<data>/updates/app_release.json`).
 #[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq)]

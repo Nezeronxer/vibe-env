@@ -43,7 +43,7 @@ pub fn key_for(path: &Path) -> String {
     let mut rest = PathBuf::new();
     let mut base = path.to_path_buf();
     let real = loop {
-        if let Ok(r) = base.canonicalize() {
+        if let Ok(r) = crate::proc::canon(&base) {
             break if rest.as_os_str().is_empty() { r } else { r.join(&rest) };
         }
         let (Some(name), Some(parent)) = (base.file_name().map(PathBuf::from), base.parent().map(Path::to_path_buf)) else { break path.to_path_buf() };

@@ -155,7 +155,7 @@ mod tests {
     }
 
     fn on_origin(bare: &Path, branch: &str) -> bool {
-        std::process::Command::new("git").current_dir(bare).args(["rev-parse", "--verify", "-q", &format!("refs/heads/{branch}")]).status().unwrap().success()
+        nightshift_core::proc::cmd("git").current_dir(bare).args(["rev-parse", "--verify", "-q", &format!("refs/heads/{branch}")]).status().unwrap().success()
     }
 
     fn asking(s: &mut nightshift_core::model::Settings) {

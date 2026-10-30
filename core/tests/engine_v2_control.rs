@@ -638,6 +638,7 @@ fn a_freeze_between_two_conflicting_commits_holds_the_next_integrator_and_unfree
     // the rebase of the second task stops at its first commit, then at its second: two Integrator rounds.
     // The commit made by `rebase --continue` after the first round waits in a hook until the test lets it go.
     let (started, go) = (env.d.path().join("started"), env.d.path().join("go"));
+    std::env::set_var("NIGHTSHIFT_GIT_HOOKS", "1"); // the app's git runs no hook unless asked
     let hook = env.repo.join(".git/hooks/prepare-commit-msg");
     fs::write(
         &hook,

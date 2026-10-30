@@ -429,6 +429,7 @@ fn a_question_of_a_member_of_the_council_names_the_member_and_the_answer_goes_ba
 fn watch_refs(env: &Env) -> std::path::PathBuf {
     use std::os::unix::fs::PermissionsExt;
     let log = env.d.path().join("ref-transactions");
+    std::env::set_var("NIGHTSHIFT_GIT_HOOKS", "1"); // the app's git runs no hook unless asked
     let hook = env.repo.join(".git").join("hooks").join("reference-transaction");
     std::fs::create_dir_all(hook.parent().unwrap()).unwrap();
     std::fs::write(

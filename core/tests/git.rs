@@ -736,6 +736,29 @@ fn old_git_revert_of_a_submodule_changed_twice_is_a_conflict_not_an_empty_blob()
 }
 
 #[test]
+fn a_github_repository_is_named_owner_slash_name_from_a_name_or_a_link_and_flags_never_pass() {
+    use nightshift_core::git::gh_full_name as f;
+    assert_eq!(f("Nezeronxer/vibe-env").as_deref(), Some("Nezeronxer/vibe-env"));
+    assert_eq!(f(" https://github.com/tauri-apps/tauri.git ").as_deref(), Some("tauri-apps/tauri"));
+    assert_eq!(f("https://github.com/a/b/tree/main/src").as_deref(), Some("a/b"));
+    assert_eq!(f("git@github.com:a/b_c.d.git").as_deref(), Some("a/b_c.d"));
+    for bad in ["", "a", "a/b/c", "-o/x", "a/--upload-pack=x", "a/.git", "../a", "a b/c", "https://gitlab.com/a/b", "a/b;rm"] {
+        assert_eq!(f(bad), None, "{bad}");
+    }
+}
+
+#[test]
+fn cloning_refuses_a_bad_name_and_an_existing_folder_before_gh_runs() {
+    let d = std::env::temp_dir().join(format!("ns-ghclone-{}", std::process::id()));
+    std::fs::create_dir_all(&d).unwrap();
+    let e = nightshift_core::git::gh_clone("-x/y", &d.join("y")).unwrap_err().to_string();
+    assert!(e.contains("bad_repo_name"), "{e}");
+    let e = nightshift_core::git::gh_clone("a/b", &d).unwrap_err().to_string();
+    assert!(e.contains("folder_exists"), "{e}");
+    let _ = std::fs::remove_dir(&d);
+}
+
+#[test]
 fn the_base_does_not_move_under_a_rebase_the_person_has_going() {
     let (_d, repo) = new_repo();
     // a global git template may install hooks that write files into every repo (graphify): they block the checkouts here
@@ -753,4 +776,121 @@ fn the_base_does_not_move_under_a_rebase_the_person_has_going() {
     assert!(revert(&repo, "main", &sha).is_err());
     assert_eq!(g(&repo, &["rev-parse", "refs/heads/main"]), before, "main stays where the rebase expects it");
     let _ = Command::new("git").current_dir(&repo).args(["rebase", "--abort"]).output();
+}
+
+// --- an agent cannot make the app's git run a program (audit 29.10.2026) ---
+mod config_guard {
+    use nightshift_core::git;
+    use std::path::{Path, PathBuf};
+    fn sh(dir: &Path, s: &str) {
+        assert!(nightshift_core::proc::shell(s).current_dir(dir).status().unwrap().success(), "{s}");
+    }
+    fn setup(d: &tempfile::TempDir) -> (PathBuf, PathBuf) {
+        let repo = d.path().join("repo");
+        std::fs::create_dir_all(&repo).unwrap();
+        sh(&repo, "git init -q -b main && echo a > a.txt && git add . && git -c user.name=x -c user.email=x@x commit -qm init");
+        let wt = git::create_worktree(&repo, &d.path().join("wts"), "t1", "ns/t1", "main").unwrap();
+        let _ = git::diff(&wt, "main", 100); // the app looks at the copy before the agent works in it
+        (repo, wt)
+    }
+
+    #[test]
+    fn a_hook_an_agent_wrote_into_the_main_git_does_not_run_on_the_apps_commit() {
+        let d = tempfile::tempdir().unwrap();
+        let (repo, wt) = setup(&d);
+        let pwn = d.path().join("pwn");
+        std::fs::write(repo.join(".git/hooks/pre-commit"), format!("#!/bin/sh\ntouch '{}'\n", pwn.display())).unwrap();
+        sh(&repo, "chmod +x .git/hooks/pre-commit");
+        std::fs::write(wt.join("b.txt"), "b").unwrap();
+        git::commit_all(&wt, "msg", false).unwrap();
+        assert!(!pwn.exists());
+    }
+
+    #[test]
+    fn a_filter_or_diff_driver_added_after_the_app_looked_is_refused_and_never_runs() {
+        let d = tempfile::tempdir().unwrap();
+        let (repo, wt) = setup(&d);
+        let pwn = d.path().join("pwn");
+        sh(&repo, &format!("git config filter.x.clean \"sh -c 'touch {}; cat'\"", pwn.display()));
+        std::fs::write(wt.join(".gitattributes"), "* filter=x\n").unwrap();
+        std::fs::write(wt.join("c.txt"), "c").unwrap();
+        let e = git::commit_all(&wt, "m", false).unwrap_err().to_string();
+        assert!(e.contains("unsafe_repo_config") && e.contains("filter.x.clean"), "{e}");
+        let _ = git::diff(&wt, "main", 100);
+        assert!(!pwn.exists());
+    }
+
+    #[test]
+    fn a_dot_git_pointed_into_the_copy_itself_is_refused() {
+        let d = tempfile::tempdir().unwrap();
+        let (_repo, wt) = setup(&d);
+        let pwn = d.path().join("pwn");
+        sh(&wt, &format!("git clone -q --bare ../../repo notes && rm .git && printf 'gitdir: notes\\n' > .git && git --git-dir=notes config core.bare false && git --git-dir=notes config core.worktree .. && git --git-dir=notes config filter.x.clean \"sh -c 'touch {}; cat'\" && echo '* filter=x' > .gitattributes", pwn.display()));
+        std::fs::write(wt.join("d.txt"), "d").unwrap();
+        let e = git::commit_all(&wt, "m", false).unwrap_err().to_string();
+        assert!(e.contains("unsafe_repo_config"), "{e}");
+        assert!(!pwn.exists());
+    }
+
+    // bypasses of a first, deny-list version of the guard (re-check 30.10.2026): each made git run a program
+    #[test]
+    fn config_hooks_remote_programs_ext_remotes_and_gpg_key_commands_added_later_are_refused() {
+        let plants: [(&str, &str); 4] = [
+            ("hook", "git config hook.x.command 'touch {M}' && git config hook.x.event pre-commit"),
+            ("gpg", "git config commit.gpgSign true && git config gpg.format ssh && git config gpg.ssh.defaultKeyCommand \"sh -c 'touch {M}'\""),
+            ("upload", "git remote add origin \"$PWD\" && git config remote.origin.uploadpack 'touch {M}; git-upload-pack'"),
+            ("ext", "git config protocol.ext.allow always && git remote add origin 'ext::sh -c touch% {M}'"),
+        ];
+        for (name, plant) in plants {
+            let d = tempfile::tempdir().unwrap();
+            let (repo, wt) = setup(&d);
+            let pwn = d.path().join("pwn");
+            sh(&repo, &plant.replace("{M}", &pwn.to_string_lossy()));
+            std::fs::write(wt.join("b.txt"), "b").unwrap();
+            let r1 = git::commit_all(&wt, "m", false).map(|_| ());
+            let r2 = git::fetch_ff(&repo, "main");
+            assert!(!pwn.exists(), "{name}: {r1:?} {r2:?}");
+            assert!(format!("{r1:?}{r2:?}").contains("unsafe_repo_config"), "{name}: {r1:?} {r2:?}");
+        }
+    }
+
+    #[test]
+    fn what_an_agent_planted_is_still_refused_after_a_restart_of_the_app() {
+        git::set_seen_file(std::env::temp_dir().join(format!("ns-git-seen-{}.json", std::process::id())));
+        let d = tempfile::tempdir().unwrap();
+        let (repo, wt) = setup(&d);
+        let pwn = d.path().join("pwn");
+        sh(&repo, &format!("git config filter.x.clean \"sh -c 'touch {}; cat'\"", pwn.display()));
+        std::fs::write(wt.join(".gitattributes"), "* filter=x\n").unwrap();
+        git::reload_seen(); // memory gone, what was seen comes back from the file
+        let e = git::commit_all(&wt, "m", false);
+        assert!(!pwn.exists() && e.is_err(), "{e:?}");
+    }
+
+    #[test]
+    fn a_merge_driver_the_person_had_before_keeps_working() {
+        let d = tempfile::tempdir().unwrap();
+        let repo = d.path().join("repo");
+        std::fs::create_dir_all(&repo).unwrap();
+        sh(&repo, "git init -q -b main && git config merge.tool1.driver 'tool1 %O %A %B' && echo a > a.txt && git add . && git -c user.name=x -c user.email=x@x commit -qm init");
+        let wt = git::create_worktree(&repo, &d.path().join("wts"), "t1", "ns/t1", "main").unwrap();
+        std::fs::write(wt.join("b.txt"), "b").unwrap();
+        git::commit_all(&wt, "msg", false).unwrap();
+    }
+}
+
+#[test]
+fn a_copy_turned_into_a_repository_of_its_own_with_a_diff_driver_is_refused() {
+    let d = tempfile::tempdir().unwrap();
+    let repo = d.path().join("repo");
+    std::fs::create_dir_all(&repo).unwrap();
+    let sh = |dir: &std::path::Path, s: &str| assert!(nightshift_core::proc::shell(s).current_dir(dir).status().unwrap().success(), "{s}");
+    sh(&repo, "git init -q -b main && echo a > a.txt && git add . && git -c user.name=x -c user.email=x@x commit -qm init");
+    let wt = nightshift_core::git::create_worktree(&repo, &d.path().join("wts"), "t1", "ns/t1", "main").unwrap();
+    let _ = nightshift_core::git::diff(&wt, "main", 100);
+    let pwn = d.path().join("pwn");
+    sh(&wt, &format!("rm .git && git init -q -b main . && git config diff.external \"sh -c 'touch {}'\" && git add -A && git -c user.name=x -c user.email=x@x commit -qm x && echo z >> a.txt", pwn.display()));
+    let _ = nightshift_core::git::diff(&wt, "main", 100);
+    assert!(nightshift_core::git::commit_all(&wt, "m", false).unwrap_err().to_string().contains("unsafe_repo_config"));
+    assert!(!pwn.exists());
 }

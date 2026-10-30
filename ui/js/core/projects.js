@@ -125,7 +125,8 @@
       }
       const foot = h('div', { class: 'mm-foot', role: 'group' },
         row({ title: t('pj.open'), run: async () => { close(); const p = await addByDialog(); if (p) pick(p); } }),
-        row({ title: t('pj.create'), run: async () => { close(); const p = await createDialog(); if (p) pick(p); } }));
+        row({ title: t('pj.create'), run: async () => { close(); const p = await createDialog(); if (p) pick(p); } }),
+        row({ title: t('pj.github'), run: async () => { close(); const p = await NS.projects.githubDialog(); if (p) pick(p); } }));
       clear(pop).append(list, foot);
     }
     function open() { draw(); pop.hidden = false; btn.setAttribute('aria-expanded', 'true'); (rows().find((r) => r.classList.contains('on')) || rows()[0]).focus(); }

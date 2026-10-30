@@ -1,5 +1,6 @@
 //! Window, tray, keys, notifications and the OS around the core: the commands are thin wrappers over `Hub`
 //! (see `hub.rs` and its neighbours, where the logic and its tests live).
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")] // no console window next to the app on Windows
 mod agentcmds;
 mod auto;
 mod claudetrust;
@@ -105,7 +106,7 @@ fn is_ru(s: &Settings) -> bool {
         "auto" => {
             let env = std::env::var("LC_ALL").or_else(|_| std::env::var("LANG")).unwrap_or_default();
             let mac = if cfg!(target_os = "macos") {
-                std::process::Command::new("defaults").args(["read", "-g", "AppleLanguages"]).output().map(|o| String::from_utf8_lossy(&o.stdout).to_string()).unwrap_or_default()
+                nightshift_core::proc::cmd("defaults").args(["read", "-g", "AppleLanguages"]).output().map(|o| String::from_utf8_lossy(&o.stdout).to_string()).unwrap_or_default()
             } else {
                 String::new()
             };
@@ -703,7 +704,7 @@ async fn list_envs(s: State<'_, App>) -> Res<Vec<Value>> {
 
 /// `git --version` answers (the macOS /usr/bin/git stub without the developer tools fails it).
 fn git_works() -> bool {
-    std::process::Command::new("git").arg("--version").stdin(std::process::Stdio::null()).output().map(|o| o.status.success()).unwrap_or(false)
+    nightshift_core::proc::cmd("git").arg("--version").stdin(std::process::Stdio::null()).output().map(|o| o.status.success()).unwrap_or(false)
 }
 
 /// The envs asked again (a CLI was just installed in the window's terminal): `list_envs` alone answers from its cache.
@@ -994,6 +995,7 @@ async fn set_secret(s: State<'_, App>, env: String, name: String, value: String)
 fn build_app(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     let h = app.handle().clone();
     let dir = h.path().app_data_dir()?;
+    nightshift_core::git::set_seen_file(dir.join("git-seen.json"));
     let home = h.path().home_dir()?;
     let startup_list: Startup = Arc::new(Mutex::new(vec![]));
     let (store, replaced, unreadable) = match startup::open_store(&dir)? {
@@ -1266,6 +1268,13 @@ fn app_menu(app: &AppHandle, ru: bool) -> tauri::Result<Menu<Wry>> {
 }
 
 fn main() {
+    // Windows has USERPROFILE, not HOME; the core and git read HOME for ~/.claude, ~/.config and the like
+    #[cfg(windows)]
+    if std::env::var_os("HOME").is_none() {
+        if let Some(p) = std::env::var_os("USERPROFILE") {
+            std::env::set_var("HOME", p);
+        }
+    }
     pathfix::fix_path();
     let app = tauri::Builder::default()
         // a second start: show the window; with `--new-chat` also put the cursor into a new chat (R10.1)
@@ -1381,7 +1390,7 @@ fn main() {
             market::market_search, market::market_item, market::market_plan, market::market_apply, market::market_installed,
             market::market_remove, market::market_sources, market::market_set_sources,
             updates::cli_status, updates::cli_update, updates::updates_history, updates::cli_update_mode,
-            gitcmds::gh_publish, gitcmds::gh_prs, gitcmds::git_log_page, gitcmds::git_revert_commit, gitcmds::startup_tax, gitcmds::compact, gitcmds::commit_stat, gitcmds::commit_file_diff,
+            gitcmds::gh_publish, gitcmds::gh_prs, gitcmds::gh_account, gitcmds::gh_repos, gitcmds::clone_project, gitcmds::git_log_page, gitcmds::git_revert_commit, gitcmds::startup_tax, gitcmds::compact, gitcmds::commit_stat, gitcmds::commit_file_diff,
             config::config_open, config::config_errors,
             auto::auto_get, auto::auto_schedule_save, auto::auto_schedule_remove, auto::auto_schedule_toggle, auto::auto_suggest_scan,
             auto::auto_issue_answer, sessions::sessions_list, sessions::session_continue, auto::auto_suggest_do, auto::auto_suggest_dismiss, auto::auto_suggest_nightly, auto::auto_ci_set, auto::auto_ci_poll,

@@ -22,7 +22,8 @@ fn current() -> &'static str {
 }
 
 fn feed(hub: &Hub) -> Option<String> {
-    hub.settings().release_feed.filter(|f| !f.trim().is_empty())
+    let f = hub.settings().release_feed.unwrap_or_else(|| nightshift_core::net::release::DEFAULT_FEED.into());
+    (!f.trim().is_empty()).then_some(f)
 }
 
 /// The daily check of the release; the bar is told only about a version it should show. A failure is quiet: it

@@ -64,7 +64,7 @@ impl Adapter for Custom {
             (Some(_), Some(r)) => r,
             _ => &self.0.run,
         };
-        let mut c = Command::new("sh");
+        let mut c = crate::proc::cmd("sh");
         c.current_dir(&run.cwd)
             .arg("-c")
             .arg(script(template))

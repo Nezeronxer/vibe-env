@@ -168,6 +168,23 @@
         { number: 39, title: 'Расписание без cron', headRefName: 'fix/schedule', baseRefName: 'main', isDraft: true, url: 'https://github.com/dev/nightshift/pull/39', author: { login: 'bot' }, updatedAt: at(30), reviewDecision: '', statusCheckRollup: [{ conclusion: 'FAILURE' }] },
       ];
     },
+    // v13 "С GitHub…": ?ghacc=nologin|nogh shows the sign-in / install states
+    gh_account: async () => {
+      await sleep(150);
+      if (q.get('ghacc') === 'nogh') throw 'gh: gh_not_installed: install GitHub CLI (https://cli.github.com)';
+      if (q.get('ghacc') === 'nologin') throw 'gh: gh_not_logged_in: run `gh auth login`';
+      return 'dev';
+    },
+    gh_repos: async () => {
+      await sleep(250);
+      const at = (h) => new Date(Date.now() - h * 3600000).toISOString();
+      return [
+        { nameWithOwner: 'dev/nightshift', description: 'Коди агентами, пока спишь', isPrivate: false, isFork: false, updatedAt: at(2), url: 'https://github.com/dev/nightshift', primaryLanguage: { name: 'Rust' } },
+        { nameWithOwner: 'dev/billing-api', description: 'Счета и оплаты', isPrivate: true, isFork: false, updatedAt: at(30), url: 'https://github.com/dev/billing-api', primaryLanguage: { name: 'TypeScript' } },
+        { nameWithOwner: 'dev/dotfiles', description: '', isPrivate: false, isFork: false, updatedAt: at(200), url: 'https://github.com/dev/dotfiles', primaryLanguage: null },
+        { nameWithOwner: 'dev/tauri', description: 'Build smaller, faster, and more secure desktop applications', isPrivate: false, isFork: true, updatedAt: at(900), url: 'https://github.com/dev/tauri', primaryLanguage: { name: 'Rust' } },
+      ];
+    },
     git_revert_commit: ({ sha }) => ({ sha: 'c0ffee' + sha.slice(6, 12), pushed: sha.charCodeAt(0) % 2 === 0 }),
     commit_stat: () => FILES.map(([path, insertions, deletions]) => ({ path, insertions, deletions })),
     commit_file_diff: () => ({ lines: DIFF_LINES, binary: false }),

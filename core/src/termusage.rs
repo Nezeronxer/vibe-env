@@ -102,14 +102,14 @@ struct SameDir<'a> {
 
 impl<'a> SameDir<'a> {
     fn new(cwd: &'a Path) -> Self {
-        SameDir { cwd, real: cwd.canonicalize().ok(), seen: HashMap::new() }
+        SameDir { cwd, real: crate::proc::canon(&cwd).ok(), seen: HashMap::new() }
     }
     fn is(&mut self, dir: &str) -> bool {
         if let Some(r) = self.seen.get(dir) {
             return *r;
         }
         let p = Path::new(dir);
-        let same = p == self.cwd || self.real.as_deref() == Some(p) || (self.real.is_some() && p.canonicalize().ok() == self.real);
+        let same = p == self.cwd || self.real.as_deref() == Some(p) || (self.real.is_some() && crate::proc::canon(&p).ok() == self.real);
         self.seen.insert(dir.to_string(), same);
         same
     }

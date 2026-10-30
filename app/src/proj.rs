@@ -37,7 +37,7 @@ fn safe_rel(p: &str) -> bool {
 impl Hub {
     /// "Добавить проект": a folder that is a git repository, once (the same folder through a link or `..` is the same project).
     pub fn add_project(&self, path: &str) -> Res<Project> {
-        let p = std::fs::canonicalize(path).map_err(|e| format!("{path}: {e}"))?;
+        let p = nightshift_core::proc::canon(path).map_err(|e| format!("{path}: {e}"))?;
         let info = git::repo_info(&p);
         if !info.is_repo {
             return Err("not a git repo".into());
@@ -48,7 +48,7 @@ impl Hub {
         proj.check_cmd = check;
         proj.setup_cmd = setup;
         let mut st = lk(self.engine.store());
-        if st.projects().iter().any(|x| std::fs::canonicalize(&x.path).unwrap_or_else(|_| x.path.clone()) == p) {
+        if st.projects().iter().any(|x| nightshift_core::proc::canon(&x.path).unwrap_or_else(|_| x.path.clone()) == p) {
             return Err("already added".to_string());
         }
         st.upsert_project(proj.clone()).map_err(e2s)?;
@@ -79,6 +79,19 @@ impl Hub {
     }
 
     /// "Убрать проект": refused while the project has tasks that are not finished.
+    /// v13 "С GitHub…": `owner/name` cloned by gh into `<parent>/<name>` (never over an existing folder), then added.
+    pub fn clone_project(&self, parent: &str, full: &str) -> Res<Project> {
+        let full = git::gh_full_name(full).ok_or("bad_repo_name")?;
+        let name = full.split('/').nth(1).unwrap_or_default();
+        let home = std::env::var_os("HOME").map(std::path::PathBuf::from);
+        let dir = parent_folder(parent, home.as_deref())?.join(name);
+        if dir.symlink_metadata().is_ok() {
+            return Err(format!("folder_exists: {}", dir.display()));
+        }
+        git::gh_clone(&full, &dir).map_err(e2s)?;
+        self.add_project(&dir.to_string_lossy())
+    }
+
     pub fn remove_project(&self, id: &str) -> Res<()> {
         let mut st = lk(self.engine.store());
         let open = |t: &Task| !matches!(t.status, Status::Done | Status::DoneNotPushed | Status::Failed | Status::Cancelled | Status::Reverted);
@@ -104,7 +117,7 @@ impl Hub {
     pub fn update_project(&self, mut project: Project) -> Res<()> {
         let old = self.project(&project.id)?;
         if project.path != old.path {
-            let new = std::fs::canonicalize(&project.path).map_err(|_| format!("path_missing: {}", project.path.display()))?;
+            let new = nightshift_core::proc::canon(&project.path).map_err(|_| format!("path_missing: {}", project.path.display()))?;
             if !git::repo_info(&new).is_repo {
                 return Err("not a git repo".into());
             }
@@ -183,19 +196,19 @@ fn parent_folder(parent: &str, home: Option<&Path>) -> Res<std::path::PathBuf> {
         _ => return Err(missing()),
     };
     if under_home && !wanted.exists() {
-        let h = home.and_then(|h| std::fs::canonicalize(h).ok()).ok_or_else(missing)?;
+        let h = home.and_then(|h| nightshift_core::proc::canon(h).ok()).ok_or_else(missing)?;
         if wanted.components().any(|c| c == std::path::Component::ParentDir) {
             return Err(missing());
         }
         // the deepest folder that already exists must resolve inside the home: a link there out of it makes nothing
-        let base = wanted.ancestors().find(|a| a.exists()).and_then(|a| std::fs::canonicalize(a).ok()).ok_or_else(missing)?;
+        let base = wanted.ancestors().find(|a| a.exists()).and_then(|a| nightshift_core::proc::canon(a).ok()).ok_or_else(missing)?;
         if !base.starts_with(&h) {
             return Err(missing());
         }
         std::fs::create_dir_all(&wanted).map_err(|e| format!("{}: {e}", wanted.display()))?;
     }
-    let real = std::fs::canonicalize(&wanted).map_err(|_| missing())?;
-    if under_home && !home.and_then(|h| std::fs::canonicalize(h).ok()).is_some_and(|h| real.starts_with(h)) {
+    let real = nightshift_core::proc::canon(&wanted).map_err(|_| missing())?;
+    if under_home && !home.and_then(|h| nightshift_core::proc::canon(h).ok()).is_some_and(|h| real.starts_with(h)) {
         return Err(missing());
     }
     Ok(real)
@@ -254,7 +267,7 @@ mod tests {
         // the same repository at its new place
         p.path = moved.clone();
         r.hub.update_project(p).unwrap();
-        assert_eq!(r.hub.project(&r.project.id).unwrap().path, moved.canonicalize().unwrap());
+        assert_eq!(r.hub.project(&r.project.id).unwrap().path, nightshift_core::proc::canon(&moved).unwrap());
         assert_eq!(r.hub.repo_info(&r.project.id).unwrap()["is_repo"], true);
         r.hub.submit_task(&r.project.id, "x", None).unwrap();
     }
@@ -277,6 +290,20 @@ mod tests {
     }
 
     #[test]
+    fn a_github_repository_is_cloned_by_gh_into_the_parent_and_becomes_a_project_once() {
+        let calls = fake_gh();
+        let r = Rig::new(FakeAdapter::new(vec![]));
+        let parent = r.s.0.to_string_lossy().to_string();
+        let p = r.hub.clone_project(&parent, "https://github.com/o/demo.git").unwrap();
+        assert_eq!(p.name, "demo");
+        assert!(p.path.join(".git").is_dir() && r.hub.project(&p.id).is_ok());
+        assert!(std::fs::read_to_string(&calls).unwrap().contains("repo clone o/demo"));
+        assert!(r.hub.clone_project(&parent, "o/demo").unwrap_err().starts_with("folder_exists"));
+        assert_eq!(r.hub.clone_project(&parent, "o/--upload-pack=x").unwrap_err(), "bad_repo_name");
+        assert!(r.hub.clone_project(&format!("{parent}/nope"), "o/x").unwrap_err().starts_with("path_missing"));
+    }
+
+    #[test]
     fn a_new_project_is_a_folder_with_git_and_one_commit_and_bad_names_and_existing_folders_are_refused() {
         let r = Rig::new(FakeAdapter::new(vec![]));
         let parent = r.s.0.to_string_lossy().to_string();
@@ -284,7 +311,7 @@ mod tests {
         assert_eq!(p.name, "fresh");
         assert!(p.path.join(".git").is_dir());
         assert_eq!(git::repo_info(&p.path).base_branch.as_deref(), Some("main"));
-        let log = std::process::Command::new("git").args(["log", "--oneline"]).current_dir(&p.path).output().unwrap();
+        let log = nightshift_core::proc::cmd("git").args(["log", "--oneline"]).current_dir(&p.path).output().unwrap();
         assert_eq!(String::from_utf8_lossy(&log.stdout).lines().count(), 1);
         assert!(r.hub.project(&p.id).is_ok());
         for bad in ["", "  ", "..", ".", "a/b", "../x", "a\\b"] {
@@ -298,7 +325,7 @@ mod tests {
         std::fs::create_dir_all(&home).unwrap();
         let made = parent_folder("~/Projects/deep", Some(&home)).unwrap();
         assert!(made.ends_with("Projects/deep") && made.is_dir());
-        assert_eq!(parent_folder("~", Some(&home)).unwrap(), home.canonicalize().unwrap());
+        assert_eq!(parent_folder("~", Some(&home)).unwrap(), nightshift_core::proc::canon(&home).unwrap());
         for bad in ["~user/x", "rel/x", "~/../outside", "~/nope/../../x"] {
             assert!(parent_folder(bad, Some(&home)).unwrap_err().starts_with("path_missing"), "{bad}");
         }

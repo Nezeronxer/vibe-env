@@ -83,11 +83,13 @@ pub fn final_argv(l: &Launch) -> Vec<String> {
     }
 }
 
+#[cfg_attr(windows, allow(dead_code))]
 pub fn sh_quote(s: &str) -> String {
     format!("'{}'", s.replace('\'', r"'\''"))
 }
 
 /// The script macOS Terminal opens: `cd` and `exec`, every word quoted.
+#[cfg_attr(windows, allow(dead_code))]
 pub fn mac_script(cwd: Option<&Path>, argv: &[String]) -> String {
     let mut s = String::from("#!/bin/sh\n");
     if let Some(c) = cwd {
@@ -107,7 +109,8 @@ pub const LINUX_TERMINALS: [&str; 9] = ["x-terminal-emulator", "kitty", "gnome-t
 /// Is there a terminal `open` can start? macOS always; Linux: `$TERMINAL` or one of `LINUX_TERMINALS` on the PATH. Asked
 /// before anything of a hand-off is changed: a task given to the person with no terminal to continue it in is lost work.
 pub fn available() -> Res<()> {
-    available_in(std::env::var("TERMINAL").ok().as_deref(), &std::env::var("PATH").unwrap_or_default(), cfg!(target_os = "macos"))
+    // Windows always has cmd
+    available_in(std::env::var("TERMINAL").ok().as_deref(), &std::env::var("PATH").unwrap_or_default(), cfg!(any(target_os = "macos", windows)))
 }
 
 fn available_in(terminal_env: Option<&str>, path: &str, mac: bool) -> Res<()> {
@@ -125,6 +128,7 @@ fn available_in(terminal_env: Option<&str>, path: &str, mac: bool) -> Res<()> {
 
 /// The program and arguments that open `term` on Linux with `argv` (the working folder of kitty, gnome-terminal and
 /// konsole is a flag; the others take it from the process).
+#[cfg_attr(windows, allow(dead_code))]
 pub fn linux_invocation(term: &str, cwd: Option<&Path>, argv: &[String]) -> (String, Vec<String>) {
     let dir = cwd.map(|c| c.to_string_lossy().into_owned());
     let mut a: Vec<String> = vec![];
@@ -171,6 +175,7 @@ pub fn linux_invocation(term: &str, cwd: Option<&Path>, argv: &[String]) -> (Str
 
 /// Opens the terminal. `scratch` is a private folder of the app for the macOS script.
 pub fn open(l: &Launch, scratch: &Path) -> Res<()> {
+    let _ = scratch; // only the macOS script uses it
     let argv = final_argv(l);
     if argv.iter().any(|w| w.contains('\0')) {
         return Err("bad_argument".into());
@@ -178,9 +183,10 @@ pub fn open(l: &Launch, scratch: &Path) -> Res<()> {
     // just a terminal in a folder: macOS opens one natively, no script needed
     if cfg!(target_os = "macos") && argv.is_empty() {
         if let Some(dir) = &l.cwd {
-            return crate::open::spawn_reaped(Command::new("open").arg("-a").arg("Terminal").arg(dir)).map(|_| ()).map_err(|e| format!("open: {e}"));
+            return crate::open::spawn_reaped(nightshift_core::proc::cmd("open").arg("-a").arg("Terminal").arg(dir)).map(|_| ()).map_err(|e| format!("open: {e}"));
         }
     }
+    #[cfg(unix)]
     if cfg!(target_os = "macos") {
         use std::os::unix::fs::PermissionsExt;
         std::fs::create_dir_all(scratch).map_err(|e| e.to_string())?;
@@ -195,23 +201,46 @@ pub fn open(l: &Launch, scratch: &Path) -> Res<()> {
         let file = scratch.join(format!("terminal-{}-{}.command", std::process::id(), now_nanos()));
         std::fs::write(&file, mac_script(l.cwd.as_deref(), &argv)).map_err(|e| e.to_string())?;
         std::fs::set_permissions(&file, std::fs::Permissions::from_mode(0o700)).map_err(|e| e.to_string())?;
-        return crate::open::spawn_reaped(Command::new("open").arg("-a").arg("Terminal").arg(&file)).map(|_| ()).map_err(|e| format!("open: {e}"));
+        return crate::open::spawn_reaped(nightshift_core::proc::cmd("open").arg("-a").arg("Terminal").arg(&file)).map(|_| ()).map_err(|e| format!("open: {e}"));
     }
-    let env_term = std::env::var("TERMINAL").ok().filter(|t| !t.is_empty());
-    for t in env_term.iter().map(String::as_str).chain(LINUX_TERMINALS) {
-        let (prog, args) = linux_invocation(t, l.cwd.as_deref(), &argv);
-        let mut c = Command::new(prog);
-        c.args(args);
-        if let Some(d) = &l.cwd {
-            c.current_dir(d);
+    #[cfg(windows)]
+    return win_console(l);
+    #[cfg(not(windows))]
+    {
+        let env_term = std::env::var("TERMINAL").ok().filter(|t| !t.is_empty());
+        for t in env_term.iter().map(String::as_str).chain(LINUX_TERMINALS) {
+            let (prog, args) = linux_invocation(t, l.cwd.as_deref(), &argv);
+            let mut c = nightshift_core::proc::cmd(prog);
+            c.args(args);
+            if let Some(d) = &l.cwd {
+                c.current_dir(d);
+            }
+            if crate::open::spawn_reaped(&mut c).is_ok() {
+                return Ok(());
+            }
         }
-        if crate::open::spawn_reaped(&mut c).is_ok() {
-            return Ok(());
-        }
+        Err("no_terminal: set $TERMINAL".into())
     }
-    Err("no_terminal: set $TERMINAL".into())
 }
 
+/// Windows: a new console window with cmd in the folder, the words after `/k`.
+/// shortcut: the banner is not shown on Windows; add it when hand-offs need it there.
+#[cfg(windows)]
+fn win_console(l: &Launch) -> Res<()> {
+    use std::os::windows::process::CommandExt;
+    const CREATE_NEW_CONSOLE: u32 = 0x10;
+    let mut c = std::process::Command::new("cmd.exe");
+    c.creation_flags(CREATE_NEW_CONSOLE).envs(l.env.iter().filter(|(k, v)| carried(k, v)).map(|(k, v)| (k, v)));
+    if !l.argv.is_empty() {
+        c.arg("/k").args(&l.argv);
+    }
+    if let Some(d) = &l.cwd {
+        c.current_dir(d);
+    }
+    crate::open::spawn_reaped(&mut c).map(|_| ()).map_err(|e| format!("cmd: {e}"))
+}
+
+#[cfg_attr(windows, allow(dead_code))]
 fn now_nanos() -> u128 {
     std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_nanos()).unwrap_or(0)
 }
@@ -301,7 +330,7 @@ mod tests {
         );
         // a home folder must be an absolute path (kits::env_value_ok), so it cannot smuggle a flag or a list
         assert!(carried("GROK_HOME", "/h/.grok") && !carried("GROK_HOME", "relative") && !carried("KIMI_CODE_HOME", "/a:/b"));
-        let mut c = Command::new("/opt/bin/codex");
+        let mut c = nightshift_core::proc::cmd("/opt/bin/codex");
         c.current_dir("/tmp").arg("resume").env("CODEX_HOME", "/h o m e").env_remove("GONE").env("ANTHROPIC_API_KEY", "sk-secret-123").env("FAKE_TOKEN", "tok-456");
         let l = from_command(&c);
         assert_eq!(l.env, vec![("CODEX_HOME".to_string(), "/h o m e".to_string())], "a removed variable is not carried");
@@ -314,12 +343,12 @@ mod tests {
         for text in [words.join(" "), script, linux_invocation("xterm", None, &words).1.join(" ")] {
             assert!(!text.contains("secret-123") && !text.contains("tok-456"), "{text}");
         }
-        assert_eq!(final_argv(&from_command(&Command::new("x"))), ["x"].map(String::from).to_vec(), "none: the command as it is");
+        assert_eq!(final_argv(&from_command(&nightshift_core::proc::cmd("x"))), ["x"].map(String::from).to_vec(), "none: the command as it is");
     }
 
     #[test]
     fn a_carried_variable_whose_value_is_out_of_its_shape_stays_out_of_the_terminal() {
-        let mut c = Command::new("/opt/bin/claude");
+        let mut c = nightshift_core::proc::cmd("/opt/bin/claude");
         c.env("HOME", "rel/home").env("PATH", "/usr/bin:.").env("LANG", "C;x").env("TMPDIR", "/t\nEVIL=1").env("CODEX_HOME", "/ok");
         let l = from_command(&c);
         assert_eq!(l.env, vec![("CODEX_HOME".to_string(), "/ok".to_string())]);

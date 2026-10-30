@@ -13,19 +13,31 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Windows: the app builds (the core tests drive sh-script stand-ins of the CLIs, so they run on macOS and Linux)
+  windows-build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      - name: App builds on Windows
+        run: cargo build -p nightshift-app
+
   test:
     strategy:
       fail-fast: false
       matrix:
         os: [macos-latest, ubuntu-22.04]
     runs-on: ${{ matrix.os }}
-    env:
-      # the core tests commit in throwaway repositories
-      GIT_AUTHOR_NAME: ci
-      GIT_AUTHOR_EMAIL: ci@example.invalid
-      GIT_COMMITTER_NAME: ci
-      GIT_COMMITTER_EMAIL: ci@example.invalid
     steps:
+      # the core tests commit in throwaway repositories; a global identity, not GIT_AUTHOR_* (that would beat the
+      # identity a test sets in its own repository)
+      - name: git identity
+        run: |
+          git config --global user.name ci
+          git config --global user.email ci@example.invalid
+
       # actions are pinned to commit SHAs (the comment is the tag)
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

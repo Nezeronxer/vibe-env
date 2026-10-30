@@ -12,7 +12,8 @@ fn answer(tag: &str) -> String {
 
 #[test]
 fn without_a_feed_the_check_is_off_fetches_nothing_and_says_why() {
-    assert_eq!(Settings::default().release_feed, None, "no address until the repository is published");
+    assert_eq!(Settings::default().release_feed, None, "null = the published repository (DEFAULT_FEED), read in the app");
+    assert!(nightshift_core::net::release::DEFAULT_FEED.starts_with("https://api.github.com/repos/") && nightshift_core::net::release::DEFAULT_FEED.ends_with("/releases/latest"));
     let d = tempfile::tempdir().unwrap();
     let r = Releases::new(d.path());
     let f = FakeFetch::new();

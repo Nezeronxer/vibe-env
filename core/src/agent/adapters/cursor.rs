@@ -45,7 +45,7 @@ impl Adapter for Cursor {
         cli_version(&self.bin)
     }
     fn command(&self, run: &Run) -> Command {
-        let mut c = Command::new(find_bin(&self.bin).unwrap_or_else(|| self.bin.clone().into()));
+        let mut c = crate::proc::cmd(find_bin(&self.bin).unwrap_or_else(|| self.bin.clone().into()));
         c.current_dir(&run.cwd).args(["-p", "--output-format", "stream-json"]);
         if run.is_read_only() {
             c.args(["--mode", "ask"]); // unverified: parameters page lists `--mode ask` (no edits)
@@ -133,7 +133,7 @@ impl Adapter for Cursor {
     }
     /// `agent --resume <id>` (binary name as configured, see `bin`).
     fn interactive_resume(&self, session: &str, cwd: &std::path::Path) -> Option<Command> {
-        let mut c = Command::new(find_bin(&self.bin).unwrap_or_else(|| self.bin.clone().into()));
+        let mut c = crate::proc::cmd(find_bin(&self.bin).unwrap_or_else(|| self.bin.clone().into()));
         c.current_dir(cwd).args(["--resume", super::claude::valid_session(session)?]);
         Some(c)
     }

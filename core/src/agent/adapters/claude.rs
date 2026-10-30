@@ -45,6 +45,9 @@ fn settings_json(open_network: bool) -> String {
     }
     json!({
         "permissions": permissions,
+        // `-p` asks no "trust this folder?": hooks of the repository's .claude/settings.json would run outside the
+        // sandbox before the first word (audit 29.10.2026). The project's CLAUDE.md is still read.
+        "disableAllHooks": true,
         // writes only to the worktree (+ its main .git, handled by Claude Code); no sandbox on the host -> run anyway
         "sandbox": { "enabled": true, "autoAllowBashIfSandboxed": true, "failIfUnavailable": false, "allowUnsandboxedCommands": false }
     })
@@ -69,7 +72,7 @@ fn version_at(bin: &str, now: Instant) -> Option<Version> {
         }
     }
     let path = find_bin(bin).unwrap_or_else(|| bin.into());
-    let v = Command::new(path).arg("--version").stdin(Stdio::null()).output().ok().and_then(|o| {
+    let v = crate::proc::cmd(path).arg("--version").stdin(Stdio::null()).output().ok().and_then(|o| {
         let s = String::from_utf8_lossy(&o.stdout).into_owned();
         let c = Regex::new(r"(\d+)\.(\d+)\.(\d+)").ok()?.captures(&s)?;
         Some((c[1].parse().ok()?, c[2].parse().ok()?, c[3].parse().ok()?))
@@ -126,11 +129,17 @@ impl Adapter for Claude {
         crate::agent::spinner_hints(&files)
     }
     fn command(&self, run: &Run) -> Command {
-        let mut c = Command::new(find_bin(&self.bin).unwrap_or_else(|| self.bin.clone().into()));
+        let mut c = crate::proc::cmd(find_bin(&self.bin).unwrap_or_else(|| self.bin.clone().into()));
         // --include-partial-messages: the text comes word by word as `stream_event`s (seen live, 2.1.308)
         c.current_dir(&run.cwd).args(["-p", "--output-format", "stream-json", "--verbose", "--include-partial-messages"]);
         let mode = if run.is_read_only() { "plan" } else { "bypassPermissions" };
         c.args(["--permission-mode", mode, "--settings", &settings_json(supports_wildcard_domain(&self.bin))]);
+        // MCP servers of the repository's .mcp.json would start without a question too (an override in --settings
+        // does not stop them, checked on 2.1.312); shortcut: with one there the task runs with no MCP servers at all -
+        // pass the user's own through --mcp-config when someone needs them in such projects
+        if run.cwd.join(".mcp.json").exists() {
+            c.arg("--strict-mcp-config");
+        }
         if let Some(m) = cli_model(run) {
             c.args(["--model", m]);
         }
@@ -206,7 +215,7 @@ impl Adapter for Claude {
         SandboxInfo { sandboxed: true, push_blocked: self.guarded(), network_open: note.is_none(), writes_outside_copy: false, note }
     }
     fn interactive_resume(&self, session: &str, cwd: &std::path::Path) -> Option<Command> {
-        let mut c = Command::new(find_bin(&self.bin).unwrap_or_else(|| self.bin.clone().into()));
+        let mut c = crate::proc::cmd(find_bin(&self.bin).unwrap_or_else(|| self.bin.clone().into()));
         c.current_dir(cwd).args(["--resume", valid_session(session)?]);
         Some(c)
     }

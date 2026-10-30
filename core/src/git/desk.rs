@@ -49,10 +49,10 @@ pub struct Ctx {
 impl Ctx {
     /// None = not a folder or not inside a work tree.
     pub fn open(cwd: &Path) -> Option<Ctx> {
-        let cwd = cwd.canonicalize().ok().filter(|c| c.is_dir())?;
+        let cwd = crate::proc::canon(&cwd).ok().filter(|c| c.is_dir())?;
         let o = run(&cwd, &["rev-parse", "--show-toplevel", "--show-prefix"]).ok().filter(|o| o.ok)?;
         let mut l = o.stdout.lines();
-        let root = PathBuf::from(l.next()?).canonicalize().ok()?;
+        let root = crate::proc::canon(l.next()?).ok()?;
         let since = if has_commit(&root) { "HEAD" } else { EMPTY_TREE }.to_string();
         Some(Ctx { cwd, root, prefix: l.next().unwrap_or("").to_string(), since })
     }
@@ -72,7 +72,7 @@ impl Ctx {
     /// The folder of the repository the work tree belongs to (the main copy for a linked work tree).
     pub fn repo_dir(&self) -> Option<PathBuf> {
         let common = try_out(&self.root, &["rev-parse", "--path-format=absolute", "--git-common-dir"])?;
-        let common = PathBuf::from(common).canonicalize().ok()?;
+        let common = crate::proc::canon(common).ok()?;
         (common.file_name()? == ".git").then(|| common.parent().map(Path::to_path_buf))?
     }
 

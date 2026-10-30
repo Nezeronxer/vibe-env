@@ -55,7 +55,7 @@ fn identity_args(dir: &Path) -> Vec<String> {
     if SIGNED.lock().unwrap().iter().any(|d| d == dir) {
         return vec![];
     }
-    let out = Command::new("git")
+    let out = crate::proc::cmd("git")
         .current_dir(dir)
         .args(["config", "--get-regexp", r"^user\.(name|email)$"])
         .output()
@@ -77,16 +77,168 @@ fn identity_args(dir: &Path) -> Vec<String> {
     args
 }
 
-fn git_cmd(dir: &Path) -> Command {
-    let mut c = Command::new("git");
+/// A folder no hook can be found in (`core.hooksPath`): the app's own commits, merges and rebases run no hook.
+const NO_HOOKS: &str = if cfg!(windows) { "NUL" } else { "/dev/null" };
+
+fn git_cmd(dir: &Path) -> Result<Command, GitError> {
+    check_repo_config(dir)?;
+    let mut c = crate::proc::cmd("git");
     c.current_dir(dir)
         .env("GIT_TERMINAL_PROMPT", "0")
         .env("GIT_EDITOR", "true")
         .env("LC_ALL", "C")
+        // `ext::` runs a command as a "remote"
+        .env("GIT_ALLOW_PROTOCOL", "file:git:http:https:ssh")
         // a repository's own config must not run a program on a read (fsmonitor of an unpacked or agent-written .git)
-        .args(["-c", "core.fsmonitor=false"])
+        .args(["-c", "core.fsmonitor=false", "-c", "protocol.ext.allow=never"])
         .args(identity_args(dir));
-    c
+    // and hooks an agent wrote into .git/hooks do not run on the app's commit. NIGHTSHIFT_GIT_HOOKS=1: tests that
+    // watch git through a hook (set by the app's starter, never by an agent)
+    if std::env::var_os("NIGHTSHIFT_GIT_HOOKS").is_none() {
+        c.args(["-c", &format!("core.hooksPath={NO_HOOKS}")]);
+    }
+    Ok(c)
+}
+
+/// Keys of a repository's own config (local / worktree scope) that run nothing and may change freely; any other
+/// key (filters, drivers, hooks, gpg, remote upload/receive programs, includes, ...) is held to what was there when
+/// the app first looked at the repository.
+fn plain_key(key: &str) -> bool {
+    let k = key.to_ascii_lowercase();
+    let (head, tail) = (k.split('.').next().unwrap_or(""), k.rsplit('.').next().unwrap_or(""));
+    let two = k.matches('.').count() == 1;
+    match head {
+        "core" => two && matches!(tail, "repositoryformatversion" | "filemode" | "bare" | "logallrefupdates" | "ignorecase" | "precomposeunicode"
+            | "symlinks" | "autocrlf" | "safecrlf" | "eol" | "longpaths" | "checkstat" | "trustctime" | "untrackedcache" | "splitindex"
+            | "commitgraph" | "multipackindex" | "sparsecheckout" | "sparsecheckoutcone" | "quotepath" | "abbrev" | "compression"
+            | "bigfilethreshold" | "preloadindex" | "fscache" | "fsyncmethod"),
+        "remote" => matches!(tail, "url" | "pushurl" | "fetch" | "push" | "tagopt" | "prune" | "mirror" | "promisor" | "partialclonefilter" | "skipdefaultupdate"),
+        "branch" | "user" | "author" | "committer" | "extensions" | "gc" | "pack" | "index" | "color" | "advice" | "status" | "log" | "rerere"
+        | "maintenance" | "feature" | "lfs" | "http" | "init" | "column" | "versionsort" | "worktree" | "checkout" | "clean" | "rebase" => true,
+        "fetch" => two && matches!(tail, "prune" | "prunetags" | "writecommitgraph" | "recursesubmodules" | "parallel"),
+        "pull" => two && matches!(tail, "rebase" | "ff" | "twohead" | "octopus"),
+        "push" => two && matches!(tail, "default" | "autosetupremote" | "followtags" | "recursesubmodules"),
+        "merge" => two && matches!(tail, "conflictstyle" | "ff" | "renames" | "log" | "autostash"),
+        "diff" => two && matches!(tail, "renames" | "algorithm" | "colormoved" | "noprefix" | "mnemonicprefix" | "submodule" | "context" | "indentheuristic"),
+        "submodule" => matches!(tail, "url" | "active" | "branch" | "recurse" | "fetchjobs"),
+        _ => false,
+    }
+}
+
+/// What the app saw first, per repository (its common git dir): the entries of its own config outside `plain_key`,
+/// and per folder what its `.git` was. Kept in the app's data (`set_seen_file`) so a restart does not take what an
+/// agent planted meanwhile as the person's own.
+#[derive(serde::Serialize, serde::Deserialize, Default)]
+struct Seen {
+    runs: std::collections::BTreeMap<String, Vec<String>>,
+    dirs: std::collections::BTreeMap<String, (String, String)>,
+}
+static SEEN: std::sync::Mutex<Option<Seen>> = std::sync::Mutex::new(None);
+static SEEN_FILE: std::sync::OnceLock<PathBuf> = std::sync::OnceLock::new();
+
+/// Where the first look is kept (`<app data>/git-seen.json`); without it, only for this run.
+pub fn set_seen_file(p: PathBuf) {
+    let _ = SEEN_FILE.set(p);
+}
+
+/// Forgets what is in memory, as a restart of the app does (the file stays). For tests.
+#[doc(hidden)]
+pub fn reload_seen() {
+    *SEEN.lock().unwrap() = None;
+}
+
+fn with_seen<T>(f: impl FnOnce(&mut Seen) -> (T, bool)) -> T {
+    let mut g = SEEN.lock().unwrap();
+    let seen = g.get_or_insert_with(|| SEEN_FILE.get().and_then(|p| std::fs::read(p).ok()).and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default());
+    let (out, changed) = f(seen);
+    if changed {
+        if let (Some(p), Ok(b)) = (SEEN_FILE.get(), serde_json::to_vec(seen)) {
+            let tmp = p.with_extension("tmp");
+            let _ = std::fs::write(&tmp, b).and_then(|_| std::fs::rename(&tmp, p));
+        }
+    }
+    out
+}
+
+/// What `<dir>/.git` is: the text of a worktree's pointer file, "dir" for a repository, "" when there is none.
+fn dotgit_kind(dir: &Path) -> String {
+    let g = dir.join(".git");
+    match std::fs::symlink_metadata(&g) {
+        Ok(m) if m.is_file() => std::fs::read_to_string(&g).unwrap_or_default(),
+        Ok(m) if m.is_dir() => "dir".into(),
+        Ok(_) => "link".into(),
+        Err(_) => String::new(),
+    }
+}
+
+/// `dir` -> its repository's common git dir (canonical). A copy (its `.git` a pointer file) may be made again by the
+/// app in the same folder; it may not become a repository of its own or point into itself or at another repository.
+fn common_dir(dir: &Path) -> Result<PathBuf, GitError> {
+    let kind = dotgit_kind(dir);
+    let name = dir.to_string_lossy().to_string();
+    let before = with_seen(|s| (s.dirs.get(&name).cloned(), false));
+    if let Some((was, k)) = &before {
+        if *was == kind {
+            return Ok(PathBuf::from(k));
+        }
+    }
+    let replaced = || Err(GitError::Other(format!("unsafe_repo_config: {} was replaced", dir.join(".git").display())));
+    if kind == "link" {
+        return replaced();
+    }
+    if !kind.is_empty() && kind != "dir" {
+        if let Some(gd) = kind.trim().strip_prefix("gitdir:").map(|g| dir.join(g.trim())) {
+            let (gd, root) = (crate::proc::canon(&gd).unwrap_or(gd), crate::proc::canon(dir).unwrap_or_else(|_| dir.to_path_buf()));
+            if gd.starts_with(&root) {
+                return Err(GitError::Other(format!("unsafe_repo_config: {} points inside the folder", dir.join(".git").display())));
+            }
+        }
+    }
+    let o = crate::proc::cmd("git").current_dir(dir).args(["rev-parse", "--path-format=absolute", "--git-common-dir"]).output().ok();
+    let k = o.filter(|o| o.status.success()).map(|o| PathBuf::from(String::from_utf8_lossy(&o.stdout).trim())).filter(|p| !p.as_os_str().is_empty());
+    let k = k.map(|k| crate::proc::canon(&k).unwrap_or(k)).unwrap_or_else(|| dir.to_path_buf());
+    if let Some((was, old)) = &before {
+        if !was.is_empty() && was != "dir" && !kind.is_empty() && (kind == "dir" || k.to_string_lossy() != *old) {
+            return replaced();
+        }
+    }
+    let ks = k.to_string_lossy().to_string();
+    with_seen(|s| {
+        s.dirs.insert(name, (kind, ks));
+        ((), true)
+    });
+    Ok(k)
+}
+
+/// Refuses git in `dir` when its repository's own config got a key that is not plain (it may make git run a
+/// program: a filter, a driver, a config hook, a remote program, gpg...) since the app first looked at it, or when
+/// a copy's `.git` was replaced (see `common_dir`). What the person had set up (a merge driver of a tool, git-lfs) is
+/// seen first and goes on working; to accept a key added since, remove it from `<app data>/git-seen.json`.
+fn check_repo_config(dir: &Path) -> Result<(), GitError> {
+    let key = common_dir(dir)?;
+    let o = crate::proc::cmd("git").current_dir(dir).args(["config", "--list", "--show-scope"]).stdin(std::process::Stdio::null()).output();
+    let Ok(o) = o else { return Ok(()) }; // no git: the real call says so
+    let mut runs: Vec<String> = String::from_utf8_lossy(&o.stdout)
+        .lines()
+        .filter_map(|l| l.split_once('\t'))
+        .filter(|(scope, _)| matches!(*scope, "local" | "worktree"))
+        .map(|(_, kv)| kv.to_string())
+        .filter(|kv| !plain_key(kv.split('=').next().unwrap_or("")))
+        .collect();
+    runs.sort();
+    let key = key.to_string_lossy().to_string();
+    with_seen(|s| match s.runs.get(&key) {
+        None => {
+            s.runs.insert(key, runs);
+            (Ok(()), true)
+        }
+        // the same, or fewer (an entry removed runs nothing new)
+        Some(first) if runs.iter().all(|r| first.contains(r)) => (Ok(()), false),
+        Some(first) => {
+            let new: Vec<&str> = runs.iter().filter(|r| !first.contains(r)).map(|r| r.split('=').next().unwrap_or("")).collect();
+            (Err(GitError::Other(format!("unsafe_repo_config: the repository config got {} since the app first looked at it", new.join(", ")))), false)
+        }
+    })
 }
 
 struct Out {
@@ -97,7 +249,7 @@ struct Out {
 }
 
 fn run(dir: &Path, args: &[&str]) -> Result<Out, GitError> {
-    let o: Output = git_cmd(dir)
+    let o: Output = git_cmd(dir)?
         .args(args)
         .output()
         .map_err(|e| GitError::Other(format!("git {}: {e}", args.join(" "))))?;
@@ -228,7 +380,7 @@ pub fn remove_worktree(repo: &Path, wt: &Path, delete_branch: bool) -> Result<()
 pub fn remove_worktree_careful(repo: &Path, wt: &Path, delete_branch: bool) -> Result<(), GitError> {
     if wt.exists() {
         if let Some(list) = hidden_list(wt) {
-            let root = wt.canonicalize().map_err(|e| GitError::Other(format!("{}: {e}", wt.display())))?;
+            let root = crate::proc::canon(wt).map_err(|e| GitError::Other(format!("{}: {e}", wt.display())))?;
             for p in std::fs::read_to_string(&list).unwrap_or_default().lines().filter(|l| !l.is_empty()) {
                 // only an untracked copy the app made, inside the copy
                 let full = wt.join(p);
@@ -609,7 +761,7 @@ pub fn revert_tree_compat(repo: &Path, base: &str, ours: &str, theirs: &str) -> 
         }
         let mut files = vec![];
         for (i, (_, oid)) in [b, o, t].iter().enumerate() {
-            let out = git_cmd(repo).args(["cat-file", "blob", oid]).output().map_err(|e| GitError::Other(format!("git cat-file: {e}")))?;
+            let out = git_cmd(repo)?.args(["cat-file", "blob", oid]).output().map_err(|e| GitError::Other(format!("git cat-file: {e}")))?;
             if !out.status.success() {
                 return Err(GitError::Other(format!("git cat-file blob {oid}: {}", String::from_utf8_lossy(&out.stderr).trim())));
             }
@@ -617,7 +769,7 @@ pub fn revert_tree_compat(repo: &Path, base: &str, ours: &str, theirs: &str) -> 
             std::fs::write(&f, &out.stdout).map_err(|e| GitError::Other(format!("revert scratch: {e}")))?;
             files.push(f);
         }
-        let m = git_cmd(repo).arg("merge-file").arg("-p").arg(&files[1]).arg(&files[0]).arg(&files[2]).output()
+        let m = git_cmd(repo)?.arg("merge-file").arg("-p").arg(&files[1]).arg(&files[0]).arg(&files[2]).output()
             .map_err(|e| GitError::Other(format!("git merge-file: {e}")))?;
         if !m.status.success() {
             return Err(GitError::Conflict(format!("CONFLICT (content): {path}")));
@@ -669,7 +821,7 @@ fn gh_bin() -> String {
 }
 
 fn gh(repo: &Path, args: &[&str]) -> Result<String, GitError> {
-    let o = Command::new(gh_bin())
+    let o = crate::proc::cmd(gh_bin())
         .current_dir(repo)
         .args(args)
         .env("GH_PROMPT_DISABLED", "1")
@@ -710,6 +862,44 @@ pub fn pr_list(repo: &Path) -> Result<serde_json::Value, GitError> {
     let fields = "number,title,headRefName,baseRefName,isDraft,url,author,updatedAt,reviewDecision,statusCheckRollup";
     let out = gh(repo, &["pr", "list", "--state", "open", "--limit", "30", "--json", fields])?;
     serde_json::from_str(&out).map_err(|e| GitError::Gh(format!("bad gh output: {e}")))
+}
+
+/// v13: the person's own repositories for "С GitHub…" (`gh repo list`, newest first). Read-only; `dir` is any existing folder.
+pub fn gh_repos(dir: &Path) -> Result<serde_json::Value, GitError> {
+    let fields = "nameWithOwner,description,isPrivate,isFork,updatedAt,url,primaryLanguage";
+    let out = gh(dir, &["repo", "list", "--limit", "200", "--json", fields])?;
+    serde_json::from_str(&out).map_err(|e| GitError::Gh(format!("bad gh output: {e}")))
+}
+
+/// `owner/name` out of what the person typed or picked: `owner/name`, `https://github.com/owner/name(.git)(/...)`,
+/// `git@github.com:owner/name.git`. None for anything else, and for a part that starts with `-` or `.` (it would
+/// reach gh and git as a flag or a path trick).
+pub fn gh_full_name(s: &str) -> Option<String> {
+    let s = s.trim();
+    let (rest, link) = match ["https://github.com/", "http://github.com/", "github.com/", "git@github.com:"].iter().find_map(|p| s.strip_prefix(p)) {
+        Some(r) => (r, true),
+        None => (s, false),
+    };
+    let parts: Vec<&str> = rest.trim_end_matches('/').split('/').collect();
+    // a link may go on (`/tree/main`); a bare `a/b/c` is not a repository
+    if parts.len() < 2 || (!link && parts.len() != 2) {
+        return None;
+    }
+    let (owner, name) = (parts[0], parts[1].strip_suffix(".git").unwrap_or(parts[1]));
+    let ok = |w: &str, extra: &[char]| {
+        !w.is_empty() && w.len() <= 100 && !w.starts_with(['-', '.']) && w.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || extra.contains(&c))
+    };
+    (ok(owner, &[]) && ok(name, &['.', '_'])).then(|| format!("{owner}/{name}"))
+}
+
+/// Clones `owner/name` into `dest` (which must not exist) with `gh repo clone`: gh's login reaches private repositories.
+pub fn gh_clone(full: &str, dest: &Path) -> Result<(), GitError> {
+    let full = gh_full_name(full).ok_or_else(|| GitError::Gh("bad_repo_name".into()))?;
+    if dest.symlink_metadata().is_ok() {
+        return Err(GitError::Gh(format!("folder_exists: {}", dest.display())));
+    }
+    let parent = dest.parent().ok_or_else(|| GitError::Gh("path_missing".into()))?;
+    gh(parent, &["repo", "clone", &full, &dest.to_string_lossy()]).map(|_| ())
 }
 
 /// "open" | "merged" | "closed"
@@ -1062,7 +1252,7 @@ fn safe_rel(p: &str) -> Result<(), GitError> {
 fn inside(root: &Path, full: &Path, shown: &str) -> Result<(), GitError> {
     let mut dir = full.parent();
     while let Some(d) = dir {
-        if let Ok(real) = d.canonicalize() {
+        if let Ok(real) = crate::proc::canon(&d) {
             return if real.starts_with(root) { Ok(()) } else { Err(GitError::Other(format!("path leaves the copy: {shown}"))) };
         }
         dir = d.parent();
@@ -1145,7 +1335,10 @@ pub fn diff_file(wt: &Path, base: &str, path: &str, max_lines: usize) -> FileDif
 /// Output of a git diff command read as a stream and cut at `max_lines` lines or the byte limit.
 fn stream_diff(dir: &Path, args: &[&str], max_lines: usize) -> (String, bool) {
     use std::io::BufRead;
-    let Ok(mut child) = git_cmd(dir).args(args).stdin(std::process::Stdio::null()).stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::null()).spawn() else {
+    let Ok(mut cmd) = git_cmd(dir) else {
+        return (String::new(), false);
+    };
+    let Ok(mut child) = cmd.args(args).stdin(std::process::Stdio::null()).stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::null()).spawn() else {
         return (String::new(), false);
     };
     let mut reader = std::io::BufReader::new(child.stdout.take().expect("piped"));
@@ -1223,7 +1416,7 @@ pub fn changed_paths(wt: &Path, from: &str, to: &str) -> Vec<String> {
 /// not exist in `from` is deleted. For a part of a crew that touched files it does not own.
 pub fn restore_paths(wt: &Path, from: &str, paths: &[String]) -> Result<(), GitError> {
     // every path is checked first, so a bad one changes nothing
-    let root = wt.canonicalize().map_err(|e| GitError::Other(format!("{}: {e}", wt.display())))?;
+    let root = crate::proc::canon(&wt).map_err(|e| GitError::Other(format!("{}: {e}", wt.display())))?;
     for p in paths {
         safe_rel(p)?;
         inside(&root, &wt.join(p), p)?;
@@ -1280,7 +1473,7 @@ fn clone_source(url: &str) -> Result<String, GitError> {
     let local = Path::new(u);
     if local.is_absolute() && local.is_dir() {
         // file:// so that --depth is honoured (a plain path makes a full local clone)
-        let canon = local.canonicalize().map_err(|e| GitError::Other(e.to_string()))?;
+        let canon = crate::proc::canon(&local).map_err(|e| GitError::Other(e.to_string()))?;
         return Ok(format!("file://{}", canon.display()));
     }
     Err(bad("not a remote and not an existing local folder"))
@@ -1290,7 +1483,7 @@ fn clone_source(url: &str) -> Result<String, GitError> {
 pub fn clone_shallow(url: &str, dest: &Path) -> Result<(), GitError> {
     let src = clone_source(url)?;
     let parent = dest.parent().unwrap_or(Path::new("."));
-    let o = Command::new("git")
+    let o = crate::proc::cmd("git")
         .current_dir(parent)
         .env("GIT_TERMINAL_PROMPT", "0")
         .env("LC_ALL", "C")
@@ -1335,7 +1528,7 @@ impl TmpIndex {
         Ok(TmpIndex(gd.with_file_name(format!("ns-snap-index-{}", std::process::id()))))
     }
     fn run(&self, wt: &Path, args: &[&str]) -> Result<String, GitError> {
-        let o = git_cmd(wt).env("GIT_INDEX_FILE", &self.0).args(args).output().map_err(|e| GitError::Other(format!("git {}: {e}", args.join(" "))))?;
+        let o = git_cmd(wt)?.env("GIT_INDEX_FILE", &self.0).args(args).output().map_err(|e| GitError::Other(format!("git {}: {e}", args.join(" "))))?;
         if o.status.success() {
             Ok(String::from_utf8_lossy(&o.stdout).trim_end().to_string())
         } else {

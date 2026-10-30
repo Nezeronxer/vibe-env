@@ -105,7 +105,7 @@ impl Adapter for Goose {
         cli_version(&self.bin)
     }
     fn command(&self, run: &Run) -> Command {
-        let mut c = Command::new(find_bin(&self.bin).unwrap_or_else(|| self.bin.clone().into()));
+        let mut c = crate::proc::cmd(find_bin(&self.bin).unwrap_or_else(|| self.bin.clone().into()));
         c.current_dir(&run.cwd).args(["run", "--output-format", "stream-json"]);
         if let Some(m) = cli_model(run) {
             c.args(["--model", m]);
@@ -130,7 +130,7 @@ impl Adapter for Goose {
         crate::agent::resume_words(&self.bin, &["session", "--resume", "--session-id"], session)
     }
     fn interactive_resume(&self, session: &str, cwd: &std::path::Path) -> Option<Command> {
-        let mut c = Command::new(find_bin(&self.bin).unwrap_or_else(|| self.bin.clone().into()));
+        let mut c = crate::proc::cmd(find_bin(&self.bin).unwrap_or_else(|| self.bin.clone().into()));
         c.current_dir(cwd).args(["session", "--resume", "--session-id", super::claude::valid_session(session)?]);
         Some(c)
     }

@@ -44,7 +44,7 @@ impl Adapter for Qwen {
         cli_version(&self.bin)
     }
     fn command(&self, run: &Run) -> Command {
-        let mut c = Command::new(find_bin(&self.bin).unwrap_or_else(|| self.bin.clone().into()));
+        let mut c = crate::proc::cmd(find_bin(&self.bin).unwrap_or_else(|| self.bin.clone().into()));
         c.current_dir(&run.cwd).args(["-o", "stream-json"]);
         // No read-only flag in `qwen --help` 0.22: a read-only role just does not get --yolo (and the engine
         // runs it in a throwaway copy).
@@ -82,7 +82,7 @@ impl Adapter for Qwen {
         crate::agent::inventory::home().map(|h| crate::agent::inventory::scan("qwen", &h, cwd)).unwrap_or_default()
     }
     fn interactive_resume(&self, session: &str, cwd: &std::path::Path) -> Option<Command> {
-        let mut c = Command::new(find_bin(&self.bin).unwrap_or_else(|| self.bin.clone().into()));
+        let mut c = crate::proc::cmd(find_bin(&self.bin).unwrap_or_else(|| self.bin.clone().into()));
         c.current_dir(cwd).args(["--resume", super::claude::valid_session(session)?]);
         Some(c)
     }

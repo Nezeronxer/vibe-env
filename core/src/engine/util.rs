@@ -2,7 +2,6 @@
 use chrono::{DateTime, Local, NaiveTime, Timelike};
 use regex::Regex;
 use std::path::{Path, PathBuf};
-use std::process::Command;
 use std::sync::atomic::AtomicBool;
 
 pub fn title_of(prompt: &str) -> String {
@@ -43,8 +42,9 @@ fn char_start(s: &str, mut i: usize) -> usize {
 /// Runs `sh -c cmd` in `cwd` with stderr merged into stdout. None = cancelled (process group killed). Only the last
 /// `OUT_MAX` bytes of the output are kept.
 pub fn sh(cwd: &Path, cmd: &str, envs: &[(String, String)], cancel: &AtomicBool) -> Option<(bool, String)> {
-    let mut c = Command::new("sh");
-    c.arg("-c").arg(format!("exec 2>&1\n{cmd}")).current_dir(cwd).envs(envs.iter().map(|(k, v)| (k, v)));
+    let line = if cfg!(windows) { format!("({cmd}) 2>&1") } else { format!("exec 2>&1\n{cmd}") };
+    let mut c = crate::proc::shell(&line);
+    c.current_dir(cwd).envs(envs.iter().map(|(k, v)| (k, v)));
     let mut out = String::new();
     let mut cut = false;
     match crate::agent::run_lines(c, cancel, &mut |l| {
