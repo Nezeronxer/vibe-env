@@ -262,9 +262,11 @@ impl nightshift_core::net::Fetch for ArcFetch {
 #[ignore]
 fn live_check_of_the_installed_clis() {
     let adapters: Vec<Arc<dyn Adapter>> = vec![Arc::new(Claude::new()), Arc::new(OpenCode::new()), Arc::new(Qwen::new())];
+    let installed: Vec<_> = adapters.iter().filter(|a| a.cli_path().is_some()).map(|a| a.id().to_string()).collect();
+    assert!(!installed.is_empty(), "the live check needs at least one installed CLI");
     let u = Updates::new(Box::new(nightshift_core::net::CurlFetch), adapters);
-    for env in ["claude", "opencode", "qwen"] {
-        let st = u.check(env);
+    for env in installed {
+        let st = u.check(&env);
         eprintln!("LIVE {env}: {st:?}");
         let st = st.unwrap();
         assert!(st.installed.is_some() && st.latest.is_some(), "{env}: {st:?}");

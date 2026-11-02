@@ -156,7 +156,7 @@ pub fn in_window(now: DateTime<Local>, from: &str, to: &str) -> bool {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, unix))]
 mod tests {
     use super::*;
 

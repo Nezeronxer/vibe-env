@@ -223,17 +223,15 @@ pub fn open(l: &Launch, scratch: &Path) -> Res<()> {
     }
 }
 
-/// Windows: a new console window with cmd in the folder, the words after `/k`.
-/// shortcut: the banner is not shown on Windows; add it when hand-offs need it there.
+/// Windows: a console with the same literal argument handling as the embedded terminal.
 #[cfg(windows)]
 fn win_console(l: &Launch) -> Res<()> {
     use std::os::windows::process::CommandExt;
     const CREATE_NEW_CONSOLE: u32 = 0x10;
-    let mut c = std::process::Command::new("cmd.exe");
+    let launch = nightshift_core::proc::windows_terminal(&l.argv, l.banner.as_deref(), true).map_err(|e| e.to_string())?;
+    let mut c = std::process::Command::new(&launch.argv[0]);
+    c.args(&launch.argv[1..]).envs(launch.env);
     c.creation_flags(CREATE_NEW_CONSOLE).envs(l.env.iter().filter(|(k, v)| carried(k, v)).map(|(k, v)| (k, v)));
-    if !l.argv.is_empty() {
-        c.arg("/k").args(&l.argv);
-    }
     if let Some(d) = &l.cwd {
         c.current_dir(d);
     }

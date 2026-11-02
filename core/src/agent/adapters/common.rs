@@ -10,16 +10,17 @@ use std::sync::OnceLock;
 
 /// Resolve `bin` in PATH plus the usual user install dirs (a GUI app starts with a thin PATH).
 pub fn find_bin(bin: &str) -> Option<PathBuf> {
-    if bin.contains('/') {
-        return std::path::Path::new(bin).is_file().then(|| PathBuf::from(bin));
-    }
     let mut dirs: Vec<PathBuf> = std::env::var_os("PATH").map(|p| std::env::split_paths(&p).collect()).unwrap_or_default();
     if let Some(h) = std::env::var_os("HOME").map(PathBuf::from) {
         // `.kimi-code/bin` and `.amp/bin`: where the Kimi Code and Amp install scripts put the binary
         dirs.extend([h.join(".local/bin"), h.join(".npm-global/bin"), h.join(".cargo/bin"), h.join(".kimi-code/bin"), h.join(".amp/bin")]);
     }
     dirs.extend(["/opt/homebrew/bin", "/usr/local/bin"].map(PathBuf::from));
-    dirs.into_iter().map(|d| d.join(bin)).find(|p| p.is_file())
+    #[cfg(windows)]
+    if let Some(appdata) = std::env::var_os("APPDATA") {
+        dirs.push(PathBuf::from(appdata).join("npm"));
+    }
+    crate::proc::find_in_dirs(bin, dirs)
 }
 
 pub fn check_installed(bin: &str, hint: &str) -> Result<(), String> {
@@ -229,13 +230,18 @@ pub fn capture(bin: &str, args: &[&str], timeout: std::time::Duration) -> Result
         .stderr(Stdio::piped())
         .spawn()
         .map_err(|e| format!("{bin}: {e}"))?;
-    let (mut out, mut err) = (child.stdout.take().unwrap(), child.stderr.take().unwrap());
-    let reader = std::thread::spawn(move || {
-        let (mut o, mut e) = (String::new(), String::new());
-        let _ = out.read_to_string(&mut o);
-        let _ = err.read_to_string(&mut e);
-        (o, e)
-    });
+    // Both pipes must drain concurrently: a CLI can fill stderr before it closes stdout.
+    // A descendant may keep either pipe open after the CLI exits, so reads share the deadline too.
+    let (tx, rx) = std::sync::mpsc::channel();
+    for (is_stdout, mut pipe) in [(true, Box::new(child.stdout.take().unwrap()) as Box<dyn Read + Send>), (false, Box::new(child.stderr.take().unwrap()) as Box<dyn Read + Send>)] {
+        let tx = tx.clone();
+        std::thread::spawn(move || {
+            let mut text = String::new();
+            let _ = pipe.read_to_string(&mut text);
+            let _ = tx.send((is_stdout, text));
+        });
+    }
+    drop(tx);
     let start = std::time::Instant::now();
     let status = loop {
         match child.try_wait() {
@@ -249,7 +255,12 @@ pub fn capture(bin: &str, args: &[&str], timeout: std::time::Duration) -> Result
             Err(e) => return Err(format!("{bin}: {e}")),
         }
     };
-    let (o, e) = reader.join().unwrap_or_default();
+    let (mut o, mut e) = (String::new(), String::new());
+    for _ in 0..2 {
+        let (is_stdout, text) = rx.recv_timeout(timeout.saturating_sub(start.elapsed()))
+            .map_err(|_| format!("{bin} {}: timed out", args.join(" ")))?;
+        if is_stdout { o = text; } else { e = text; }
+    }
     if status.success() {
         Ok(o)
     } else {
