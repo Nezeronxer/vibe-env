@@ -469,8 +469,8 @@ async function f11(b, base, out) {
   await p.fill('.composer textarea', 'Сделай кнопку входа'); await p.keyboard.press('Enter'); await p.waitForTimeout(400);
   const sent = await p.evaluate(() => ({ menu: !document.querySelector('.newchat-empty .pj-pop').hidden, chats: NS.store.s.chats ? [...NS.store.s.chats.values()].flat().length : 0, left: document.querySelector('.composer textarea').value, pending: document.querySelectorAll('.me.sending').length }));
   ok('F11 2: «Сделай…» without a project is not sent, the project menu opens and the text stays', sent.menu && sent.left === 'Сделай кнопку входа' && sent.pending === 0, sent);
-  const m = await p.evaluate(() => ({ rows: [...document.querySelectorAll('.pj-pop .mrow .mn')].map((x) => x.firstChild.textContent), w: document.querySelector('.pj-pop').getBoundingClientRect().width }));
-  ok('F11 3: the menu lists the recent projects, then «Открыть папку…» and «Создать проект…»', JSON.stringify(m.rows) === JSON.stringify(['billing-api', 'web-site', 'docs-tool', 'Открыть папку…', 'Создать проект…']), m);
+  const m = await p.evaluate(() => { const menu = document.querySelector('.newchat-empty .pj-pop'); return { rows: [...menu.querySelectorAll('.mrow .mn')].map((x) => x.firstChild.textContent), w: menu.getBoundingClientRect().width }; });
+  ok('F11 3: the menu lists the recent projects, then «Открыть папку…» and «Создать проект…»', JSON.stringify(m.rows) === JSON.stringify(['billing-api', 'web-site', 'docs-tool', 'Открыть папку…', 'Создать проект…', 'С GitHub…']), m);
   await p.click('.pj-pop .mrow:has-text("web-site")'); await p.waitForTimeout(300);
   const after = await p.evaluate(() => ({ text: document.querySelector('.newchat-empty .pj-btn').textContent.trim(), last: NS.store.s.lastProject, hdr: document.querySelector('.pane-sub') && document.querySelector('.pane-sub').textContent }));
   ok('F11 3: picking a recent project changes the project of the chat and is remembered', after.text === 'Проект: web-site' && after.last === 'p2' && /web-site/.test(after.hdr || ''), after);

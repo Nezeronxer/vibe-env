@@ -51,7 +51,7 @@
   let box = null;
   const readRecent = () => { try { return JSON.parse(NS.storage.get(KEY) || '[]'); } catch (e) { return []; } };
   const plat = () => (/Mac/i.test(navigator.platform || '') || /[?&]platform=mac/.test(location.search) ? 'mac' : 'linux');
-  const keyText = (accel) => (accel ? window.NSLogic.keyLabel(accel, plat()).join('') : '');
+  const keyText = (accel) => { const p = plat(); return accel ? window.NSLogic.keyLabel(p === 'mac' ? accel : String(accel).replace(/\bCmd\b/g, 'Ctrl'), p).join('') : ''; };
   function commands(ctx) {
     return NS.registry.points('command').filter((c) => !c.when || c.when(ctx))
       .map((c) => ({ id: c.id, label: c.label || t(c.labelKey), keywords: [c.group ? t(c.group) : '', c.keywordsKey ? t(c.keywordsKey) : ''].join(' '), group: c.group, keys: typeof c.keys === 'function' ? c.keys() : c.keys, badge: null, def: c }))

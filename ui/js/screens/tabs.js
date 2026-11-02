@@ -290,7 +290,7 @@
     const strip = h('div', { class: 'tabstrip rail7-list', role: 'tablist', 'aria-orientation': 'vertical', 'aria-label': t('agents.rail') });
     const corner = h('div', { class: 'tabs-corner' });
     const nav = h('nav', { class: 'ws-nav rail7-foot', 'aria-label': t('nav.label') });
-    const newBtn = h('button', { type: 'button', class: 'rail7-new', 'aria-haspopup': 'dialog', title: t('agents.new_d') + ' · ' + (platform() === 'mac' ? '⌘T' : 'Ctrl+T'),
+    const newBtn = h('button', { type: 'button', class: 'rail7-new', 'aria-haspopup': 'dialog', title: t('agents.new_d'),
       onclick: (e) => { e.stopPropagation(); if (NS.agents) NS.agents.launcher(e.currentTarget); else openPlus(e.currentTarget); } }, ic('i-plus'), h('span', { text: t('agents.new') }));
     // v8: the mark and the name, the project under them (recent, open a folder, create); the agents column on the far left
     const head = h('div', { class: 'rail7-h' }, h('span', { class: 'rail7-brand' }, ic('i-ns', 'rail7-logo'), h('span', { text: 'Nightshift' })), corner);
