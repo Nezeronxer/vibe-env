@@ -1,13 +1,14 @@
 <!-- autopilot:start -->
 # vibe-env (Nightshift)
 
-Среда для вайб-кодинга (macOS/Linux): человек ставит задачу, агенты доводят сами; человека зовут только за вопросом, после «не вышло» и за разрешением на push/PR. Новая функция проверяется этим принципом.
+Среда для вайб-кодинга (macOS/Linux/Windows): человек ставит задачу, агенты доводят сами; человека зовут только за вопросом, после «не вышло» и за разрешением на push/PR. Новая функция проверяется этим принципом.
 
 ## Команды
 
 ```sh
 cargo build
-cargo test --workspace                                                 # ~2 мин, 2 живых теста ignored
+cargo test --workspace                                                 # Unix: 6 ignored (4 дочерних fixture + 2 живых)
+cargo test -p nightshift-core --lib --test platform_smoke              # Windows CI: ядро и native workflow
 cargo test -p nightshift-core --test engine_e2e                        # один тест-файл: имена в core/tests/
 cargo test -p nightshift-core --test market -- --ignored --nocapture   # живой, нужна сеть
 cargo test -p nightshift-core --test updates -- --ignored --nocapture  # живой, нужна сеть
@@ -30,6 +31,7 @@ cd app && cargo tauri build --bundles app,dmg                          # Nightsh
 ## Подводные камни
 
 - Живые тесты `market` и `updates` ходят в сеть и помечены `#[ignore]`: `cargo test --workspace` их пропускает.
+- Windows-регрессии и прогон настоящего окна с локальным CLI fixture - в [отчёте QA](docs/qa/windows-2026-11-02/REPORT.ru.md); облачные входы и Windows 11 им не покрыты.
 - `tauri-plugin-single-instance` (`app/src/main.rs`): запущенный старый экземпляр не даёт подняться новому, закрой его перед проверкой сборки.
 - Системные диалоги рисует `tauri-plugin-dialog` (`app/src/main.rs`), не страница: в `ui/dev-mock.js` и в скриншоте окна их нет.
 - Терминалы: при скрытии окна сессии надо отключать (`visibilitychange` в `ui/js/v4/term.js`), иначе WebKit глушит таймеры, xterm не подтверждает запись, flow control ставит процесс на паузу.

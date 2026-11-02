@@ -215,8 +215,12 @@ cd app && cargo tauri build      # установщики в target/release/bund
 ```
 
 `ui/` - обычные HTML, CSS и JavaScript без сборщика. Быстрая проверка интерфейса без окна: `node scripts/ui-selftest.js`.
-CI: `.github/workflows/ci.yml` (тесты на macOS и Ubuntu, сборка приложения на Windows), `.github/workflows/release.yml` (установщики по тегу `v*`, черновик релиза).
+CI: `.github/workflows/ci.yml` (тесты ядра на macOS и Ubuntu; native-тесты ядра и рабочего цикла, JavaScript self-test и сборка приложения на Windows), `.github/workflows/release.yml` (установщики по тегу `v*`, черновик релиза).
 Чтобы позже подписывать сборки macOS, задайте секреты репозитория с именами из `release.yml`.
+
+[Отчёт Windows QA](docs/qa/windows-2026-11-02/REPORT.ru.md) описывает прогон настоящего приложения в ВМ Windows 10:
+ввод в терминал, изменения, merge и перезапуск. В сценариях агента использован локальный deterministic CLI fixture;
+облачные входы и Windows 11 в этом прогоне не проверялись.
 
 ## Что не сделано и что вне рамок
 

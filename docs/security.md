@@ -56,7 +56,7 @@ file with mode 0600 (the app says so). Git copies live in a worktrees folder nex
 
 ## Audit report
 
-Status: **run.** Last audit: 29.10.2026 (1.0.0: Windows, «С GitHub…»). Each audit was a set of independent checkers, and every finding
+Status: **run.** Last full audit: 29.10.2026 (1.0.0: Windows, «С GitHub…»); supplementary Windows terminal verification: 02.11.2026 (see below). Each audit was a set of independent checkers, and every finding
 was re-checked by a fresh agent before it counted. Threat model: the attacker is the author of a foreign kit or
 catalog item, a models.dev entry, or the contents of a repository an agent works on; the user and the machine
 are trusted.
