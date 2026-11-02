@@ -105,10 +105,23 @@ secrets). Each finding below was reproduced (a marker file a hostile program cre
 Kept by design, written down: a project's setup and test commands come from its files (`package.json`) and run
 outside the agent's sandbox, as they would in the person's own terminal; a "custom" agent template that hands
 `{prompt}` to an inner shell (`bash -lc '… {prompt}'`) makes the prompt code - write such templates with `"$1"`.
-Not reproduced (no Windows machine at hand; the release runner only installs and starts the app): how
-`explorer`, `cmd /k` and npm `.cmd` shims split arguments.
+Windows batch argument handling was subsequently reproduced and fixed in the 2026-11-02 verification below.
+The earlier limitation no longer applies to npm `.cmd` argument handling; explorer associations were not re-audited.
 
 No v4 finding was refuted. gitleaks v4 (tree and whole history): only false positives, `api_message_id` in a test
 fixture and the minified xterm bundle.
 
 gitleaks clean (`gitleaks git .` and `gitleaks dir .`: no leaks found), allowlist in `.gitleaks.toml`: it extends the default rules and allows only checked false positives, by path (the `claude_stream_partial.jsonl` fixture with its `msg_...` ids, the minified `ui/vendor/xterm/*.js`, and `target/` plus `graphify-out/`, which git ignores) and by regex (the fake `tok-123456789` of the kits test and the `keys3.*` i18n keys); no rule is switched off.
+
+
+## Windows terminal verification, 2026-11-02
+
+A native Windows 10 KVM regression reproduced command interpretation of batch arguments through portable-pty
+(`&` created a test marker and `%PATH%` expanded). An independent reviewer reproduced it. Batch launch now uses
+Rust std-style cmd escaping (`/e:ON /v:OFF /d`) and a fixed PowerShell launcher; JSON data is kept out of its source
+and removed from the environment before starting the child. No temporary command script is written.
+Native regressions cover metacharacters, quotes, empty/Unicode/long arguments, exit ordering and process-tree shutdown.
+Windows install banners are literal text too. The prior ConPTY EOF-before-wait hang and an attach/exit race are fixed.
+
+Changed-source gitleaks: zero findings. The full directory scan reports only pre-existing fixtures/translation keywords;
+it is not reported as a clean zero-finding scan. Evidence and coverage limits: [Windows QA report](qa/windows-2026-11-02/REPORT.ru.md).

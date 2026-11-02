@@ -1,0 +1,15 @@
+   Compiling nightshift-core v1.0.1 (/home/nezeronxer/Projects/nightshift/core)
+    Finished `test` profile [unoptimized] target(s) in 2.40s
+     Running tests/market.rs (/home/nezeronxer/.cache/nightshift-target/debug/deps/market-74b93f31900ec259)
+
+running 1 test
+test live_each_enabled_source_answers ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 18 filtered out; finished in 4.07s
+
+     Running tests/updates.rs (/home/nezeronxer/.cache/nightshift-target/debug/deps/updates-54accbf31ed23b86)
+
+running 1 test
+test live_check_of_the_installed_clis ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 10 filtered out; finished in 1.02s

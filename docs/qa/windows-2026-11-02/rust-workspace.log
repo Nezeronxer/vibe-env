@@ -1,0 +1,1027 @@
+   Compiling nightshift-core v1.0.1 (/home/nezeronxer/Projects/nightshift/core)
+   Compiling nightshift-app v1.0.1 (/home/nezeronxer/Projects/nightshift/app)
+warning: constant `CLOSE_WINDOW_ID` is never used
+    --> app/src/main.rs:1200:7
+     |
+1200 | const CLOSE_WINDOW_ID: &str = "close_window";
+     |       ^^^^^^^^^^^^^^^
+     |
+     = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: constant `QUIT_ID` is never used
+    --> app/src/main.rs:1202:7
+     |
+1202 | const QUIT_ID: &str = "app_quit";
+     |       ^^^^^^^
+
+warning: `nightshift-app` (bin "nightshift-app" test) generated 2 warnings
+    Finished `test` profile [unoptimized] target(s) in 38.49s
+     Running unittests src/main.rs (/home/nezeronxer/.cache/nightshift-target/debug/deps/nightshift_app-99470f7562660d6e)
+
+running 98 tests
+test agentcmds::tests::a_click_finds_its_pane_and_forgets_the_old_ones ... ok
+test agentcmds::tests::quiet_hours_and_a_sound_set_to_none_silence_the_notification ... ok
+test agentcmds::tests::a_folder_must_be_absolute_and_errors_are_scrubbed ... ok
+test auto::tests::doing_an_issue_makes_a_task_with_the_text_as_data_and_refusing_it_sticks ... ok
+test auto::tests::a_disabled_schedule_never_starts_and_turning_on_does_not_replay_the_past ... ok
+test auto::tests::bad_schedules_are_refused ... ok
+test auto::tests::a_schedule_fires_once_after_sleep_through_the_normal_task_path ... ok
+test auto::tests::nothing_starts_while_everything_is_paused ... ok
+test auto::tests::low_limits_hold_the_run_and_it_goes_when_they_recover ... ok
+test claudetrust::tests::a_copy_inherits_the_trust_of_its_project_and_nothing_else_is_answered ... ok
+test custom::tests::the_command_runs_with_the_test_prompt_in_an_empty_temporary_folder_and_its_output_and_code_come_back ... ok
+test auto::tests::issues_stand_next_to_the_todos_only_for_a_github_project ... ok
+test envs::tests::install_opens_the_terminal_with_the_command_as_words_or_only_shows_a_line_that_needs_a_shell_and_login_opens_the_cli ... ok
+test envs::tests::the_badge_stops_at_nine_plus ... ok
+test auto::tests::no_gh_is_a_quiet_reason_and_the_todos_go_on ... ok
+test gitcmds::tests::sha_must_be_hex_of_4_to_64 ... ok
+test auto::tests::suggestions_scan_dismiss_and_do ... ok
+test auto::tests::the_pass_over_all_projects_does_not_wait_for_the_store_lock_it_holds ... ok
+test hub::tests::a_new_chat_gets_the_answer_of_the_model_and_a_moved_folder_stops_the_next_one ... ok
+test kitcmds::tests::a_kit_for_the_project_only_adds_its_files_to_the_copy_list_and_the_window_cannot_forge_the_plan ... ok
+test custom::tests::a_command_that_does_not_end_is_stopped_with_its_children ... ok
+test notifier::tests::a_call_sounds_by_day_and_is_silent_in_quiet_hours_while_still_shown ... ok
+test notifier::tests::a_refusal_of_the_system_gives_the_window_its_line_once_and_again_after_it_worked ... ok
+test notifier::tests::done_is_off_by_default_and_silent_when_switched_on ... ok
+test notifier::tests::quiet_hours_cover_midnight_and_end_at_the_morning_minute ... ok
+test notifier::tests::the_russian_count_has_the_right_form ... ok
+test notifier::tests::the_same_unanswered_call_does_not_sound_twice_and_a_new_call_after_the_answer_does ... ok
+test notifier::tests::three_calls_in_a_minute_make_one_notification_for_three_tasks_and_a_click_opens_the_first ... ok
+test hub::tests::thoughts_and_text_of_one_message_are_joined_each_by_its_kind ... ok
+test open::tests::open_allows_web_links_and_listed_file_types_inside_projects_only ... ok
+test open::tests::terminal_and_editor_take_only_existing_folders ... ok
+test hub::tests::five_hundred_lines_of_output_in_100_ms_give_at_most_three_window_events_and_the_last_has_them_all ... ok
+test envs::tests::the_list_has_the_builtin_envs_and_the_own_command_with_what_waits_and_what_works ... ok
+test envs::tests::install_is_the_line_and_its_words_or_null_words_for_a_pipe ... ok
+test open::tests::a_process_started_for_the_person_is_waited_for_and_does_not_stay_a_zombie ... ok
+test auto::tests::a_missing_gh_is_a_hint_and_a_merged_pr_is_forgotten ... ok
+test kitcmds::tests::a_secret_goes_to_the_keyring_only_and_reaches_the_runs_of_its_env_as_a_variable ... ok
+test ops::tests::the_chat_terminal_opens_in_the_chats_copy_and_the_warning_goes_through_the_chats_with_its_own_id_each_time ... ok
+test auto::tests::the_watchman_is_off_until_the_person_turns_it_on ... ok
+test auto::tests::keeping_an_issue_closes_nothing_and_a_pr_asks_when_it_is_merged ... ok
+test presence::tests::away_after_the_idle_minutes_or_a_locked_screen_and_never_on_an_unknown_idle_time ... ok
+test presence::tests::the_hold_is_on_while_agents_work_and_off_when_they_stop_or_the_setting_is_off ... ok
+test presence::tests::the_hold_on_sleep_command_waits_for_the_app_and_takes_the_pid_as_a_word ... ok
+test presence::tests::the_idle_time_and_the_lock_are_read_from_what_ioreg_prints ... ok
+test preview::tests::base64_matches_the_rfc_examples ... ok
+test preview::tests::no_capability_reaches_the_preview_window ... ok
+test preview::tests::the_preview_may_show_only_local_pages_that_are_not_the_app ... ok
+test ops::tests::a_convoy_opens_its_chat_at_once_and_makes_the_tasks_of_the_phrase ... ok
+test proj::tests::a_github_repository_is_cloned_by_gh_into_the_parent_and_becomes_a_project_once ... ok
+test auto::tests::a_merged_issue_task_asks_and_closes_only_after_close ... ok
+test proj::tests::a_folder_is_added_once_even_through_a_link_and_a_project_with_unfinished_tasks_is_not_removed ... ok
+test proj::tests::a_unified_diff_becomes_rows_without_the_file_header ... ok
+46f16e66a4414fca111b0f54039ccd1fc8a84852
+test proj::tests::a_moved_folder_is_reported_and_blocks_new_work_and_the_new_place_of_the_same_repository_takes_it_back ... ok
+test ops::tests::a_pr_task_that_was_not_pushed_is_brought_to_done_by_retry_with_the_branch_on_origin_and_one_pr ... ok
+test ptycmds::tests::a_session_taken_by_another_window_tells_the_old_one_and_is_not_detached_by_it ... ok
+test ptycmds::tests::raw_bytes_go_to_the_terminal_as_they_are_and_text_as_utf8 ... ok
+test ptycmds::tests::the_terminal_snapshot_is_private_and_gone_after_the_start ... ok
+test sessions::tests::a_page_says_how_many_there_are_and_whether_more_follow ... ok
+test proj::tests::a_new_project_is_a_folder_with_git_and_one_commit_and_bad_names_and_existing_folders_are_refused ... ok
+test ops::tests::the_answer_to_the_outward_question_decides_and_a_refused_push_of_a_push_project_is_repeated_by_push_base ... ok
+test proj::tests::another_repository_cannot_take_the_place_of_a_project_whose_folder_is_still_there ... ok
+test settings_check::tests::arguments_are_split_like_words_with_quotes_and_never_run ... ok
+test shellcmds::tests::base64_round_trips_through_the_cores_reader ... ok
+test shellcmds::tests::with_no_project_the_menu_still_reads_the_persons_own_folders ... ok
+test startup::tests::an_unreadable_state_file_is_not_replaced_on_its_own_and_a_fresh_start_keeps_everything_it_moved ... ok
+test startup::tests::broken_settings_start_with_the_defaults_a_copy_and_the_projects_kept ... ok
+test startup::tests::two_files_put_aside_in_the_same_instant_keep_their_own_names ... ok
+test term::tests::a_banner_runs_through_a_fixed_script_and_the_words_stay_positional ... ok
+test term::tests::a_carried_variable_whose_value_is_out_of_its_shape_stays_out_of_the_terminal ... ok
+test term::tests::a_hand_off_needs_a_terminal_to_open_and_foot_wezterm_ghostty_count ... ok
+test term::tests::install_hints_run_only_when_they_are_plain_words ... ok
+test term::tests::linux_terminals_get_the_words_as_a_list_and_the_folder_as_their_own_flag ... ok
+test term::tests::only_plain_session_ids_are_taken ... ok
+test ops::tests::the_terminal_gets_the_command_as_a_list_in_the_copy_and_a_forged_session_id_is_refused_before_anything_changes ... ok
+test term::tests::the_mac_script_quotes_every_word_so_nothing_is_parsed ... ok
+test term::tests::the_variables_of_the_adapters_command_go_into_the_terminal_as_env_words_but_only_the_allowed_ones ... ok
+test tests::a_second_quit_while_the_question_is_open_shows_no_second_question ... ok
+test tests::the_menu_bar_leaves_the_tab_keys_to_the_page ... ok
+test tests::the_system_items_of_the_menu_speak_the_language_of_the_window ... ok
+test tests::the_terminal_snapshot_is_removed_at_start_in_every_branch ... ok
+test tests::the_security_config_has_no_outside_source_and_the_capabilities_stay_small ... ok
+test tray::tests::closing_the_window_hides_it_only_where_an_icon_will_bring_it_back ... ok
+test tray::tests::quitting_with_live_sessions_asks_once_for_everything ... ok
+test tray::tests::quitting_with_work_asks_in_the_persons_words_and_without_work_does_not_ask ... ok
+test tray::tests::the_counter_has_only_the_non_zero_parts_and_thirty_calls_show_thirty ... ok
+test tray::tests::wayland_is_told_by_the_session_and_the_second_start_with_the_flag_is_a_request_for_the_window ... ok
+test tray::tests::what_works_and_what_waits_are_counted_from_the_statuses ... ok
+test tray::tests::a_missing_notification_server_is_told_and_a_missing_busctl_is_not ... ok
+test ops::tests::a_failed_task_continues_in_its_copy_with_the_hint_and_the_hint_reaches_the_next_run ... ok
+test settings_check::tests::a_bad_value_is_refused_with_its_field_and_nothing_is_applied ... ok
+test ops::tests::the_digest_has_what_finished_and_the_limit_windows_that_matter_in_the_shape_the_window_reads ... ok
+test sessions::tests::continuing_makes_a_task_that_resumes_the_session_and_only_for_a_session_of_the_project ... ok
+test ops::tests::freeze_holds_new_runs_until_it_is_lifted ... ok
+test auto::tests::red_ci_makes_one_fix_task_then_waits_for_it_then_gives_up_at_the_limit ... ok
+test proj::tests::the_diff_of_one_file_comes_from_the_copy_while_it_exists_and_from_the_commit_after_the_merge_and_a_bad_path_is_refused ... ok
+test settings_check::tests::a_good_change_is_stored_extra_arguments_become_separate_words_and_an_own_command_is_seen_by_new_runs ... ok
+test presence::tests::a_night_task_waits_in_the_day_and_starts_when_the_person_is_reported_away ... ok
+test envs::tests::an_env_that_came_back_is_seen_after_the_recheck_and_the_one_that_left_is_marked_missing ... ok
+
+test result: ok. 98 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.57s
+
+     Running unittests src/lib.rs (/home/nezeronxer/.cache/nightshift-target/debug/deps/nightshift_core-dac4b3e3f7671443)
+
+running 31 tests
+test chat::attach::tests::base64_reads_what_a_browser_writes ... ok
+test agent::actions::tests::thinking_without_secrets_passes_as_it_comes ... ok
+test agent::actions::tests::a_secret_cut_between_two_thinking_pieces_never_reaches_the_window ... ok
+test agent::actions::tests::the_whole_thought_that_follows_its_pieces_comes_once_and_equal_to_them ... ok
+test ci::tests::a_failing_gh_is_an_error_not_a_decision ... ok
+test ci::tests::a_conflict_is_fixed_once_per_conflict ... ok
+test ci::tests::green_and_pending_and_closed_do_nothing ... ok
+test ci::tests::a_busy_task_makes_it_wait_and_the_same_failure_is_not_fixed_twice ... ok
+test net::tests::last_block_of_a_redirect_dump_wins ... ok
+test ci::tests::attempts_run_out ... ok
+test ci::tests::red_makes_a_fix_task_with_the_trimmed_log ... ok
+test ci::tests::merge_when_green_is_off_by_default_and_asks_before_the_first_time ... ok
+test schedule::tests::a_bad_time_never_fires ... ok
+test ci::tests::the_log_is_cut_to_its_tail ... ok
+test schedule::tests::a_new_schedule_waits_for_its_first_time_and_off_never_fires ... ok
+test schedule::tests::sleeping_through_many_firings_gives_one_catch_up ... ok
+test schedule::tests::limits_under_ten_percent_left_block ... ok
+test schedule::tests::weekdays_skip_the_weekend ... ok
+test schedule::tests::daily_before_and_after_the_time_and_across_midnight ... ok
+test schedule::tests::weekly_waits_for_its_day ... ok
+test suggest::tests::grep_lines_become_cards_with_clean_text ... ok
+test suggest::tests::dismissed_fingerprints_stay_hidden_even_when_the_line_moves ... ok
+test term::platform_tests::windows_cli_paths_keep_the_agent_identity ... ok
+test suggest::tests::the_same_comment_twice_is_one_card_and_the_list_is_capped ... ok
+test models::radar::tests::shapes ... ok
+test chat::reply::tests::warnings_alone_or_an_interrupt_mean_stopped_but_a_real_error_does_not ... ok
+test kits::units::runs_tests::a_skill_with_an_inline_or_a_fenced_bang_command_runs_code ... ok
+test proc::tests::shell_runs_a_line_and_which_finds_a_program_on_path ... ok
+test suggest::tests::scan_reads_tracked_files_only ... ok
+test agent::adapters::claude::tests::version_is_reread_after_ten_minutes ... ok
+test engine::util::tests::a_runaway_output_keeps_its_end_and_not_the_whole ... ok
+
+test result: ok. 31 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.66s
+
+     Running tests/adapters.rs (/home/nezeronxer/.cache/nightshift-target/debug/deps/adapters-66c4c51522f8e040)
+
+running 78 tests
+test adapters_lists_the_builtin_engines_then_the_custom_ones ... ok
+test a_symlinked_env_file_in_the_copy_is_read ... ok
+test a_multiline_secret_across_the_head_of_a_new_file_is_scrubbed_before_the_cut ... ok
+test a_plan_tool_becomes_a_checklist ... ok
+test a_refused_model_is_retried_as_latest_of_the_family_then_without_a_flag ... ok
+test a_pinned_older_version_says_a_newer_one_exists ... ok
+test a_removed_version_moves_to_the_next_newer_one_else_the_newest ... ok
+test claude_blocked_status_is_a_limit_with_the_reset_time ... ok
+test catalog_uses_the_snapshot_when_the_cli_fails_and_the_hint_list_without_one ... ok
+test claude_rate_limit_event_gives_the_five_hour_and_weekly_windows ... ok
+test a_secret_across_the_cut_of_a_one_line_summary_is_scrubbed_before_the_cut ... ok
+test a_secret_on_the_edge_of_the_diff_cut_is_scrubbed_before_the_cut ... ok
+test claude_reports_the_cost_of_the_run_before_done_and_only_claude_does ... ok
+test a_secret_cut_between_two_gemini_pieces_is_held_until_it_is_whole ... ok
+test claude_real_run_text_tool_and_done_with_session ... ok
+test claude_runs_with_partial_messages ... ok
+test an_env_file_is_found_even_beside_a_folder_with_hundreds_of_folders ... ok
+test claude_network_note_explains_why_the_network_is_closed ... ok
+test claude_live_stream_gives_each_action_with_its_result_and_the_text_word_by_word ... ok
+test broad_words_in_the_tail_of_the_output_are_not_a_login_or_model_error ... ok
+test codex_worker_writes_only_in_workspace_and_reviewer_reads_only ... ok
+test crush_and_aider_print_text_and_their_login_complaints_are_auth_required ... ok
+test cursor_crash_without_result_is_a_failed_done ... ok
+test cursor_events_tool_text_done ... ok
+test custom_command_cannot_shadow_a_builtin_engine ... ok
+test cli_path_from_the_env_settings_replaces_the_binary ... ok
+test claude_in_a_repository_with_its_own_mcp_servers_starts_none_of_them ... ok
+test a_model_that_reads_as_a_flag_never_reaches_argv ... ok
+test claude_reviewer_is_read_only_and_resume_continues_the_session ... ok
+test claude_budget_schema_and_model_reach_the_command ... ok
+test envs_without_a_list_command_have_only_the_built_in_hint_list ... ok
+test edits_and_new_files_are_unified_diffs ... ok
+test codex_run_fails_loudly_when_the_schema_file_cannot_be_written ... ok
+test claude_worker_bans_push_remote_sudo_and_reads_of_ssh_only ... ok
+test every_engine_hands_the_system_rules_to_the_model ... ok
+test json_schema_goes_only_to_claude_and_codex ... ok
+test extra_args_are_separate_arguments_and_extra_env_reaches_the_process ... ok
+test codex_events_text_tool_done_and_error ... ok
+test interactive_resume_is_an_argument_list_and_checks_the_session_id ... ok
+test latest_is_the_alias_at_claude_and_the_first_version_elsewhere ... ok
+test gemini_events_join_deltas_and_report_errors ... ok
+test limit_without_time_and_ordinary_errors ... ok
+test kimi_copilot_and_goose_login_and_limit_errors_from_docs ... ok
+test kimi_copilot_and_goose_streams_have_no_result_line_and_done_is_built_at_the_end ... ok
+test missing_engine_reports_an_install_hint ... ok
+test limit_with_epoch_clock_and_relative_times ... ok
+test model_flag_is_the_envs_own_and_absent_without_a_model ... ok
+test only_claude_is_guarded ... ok
+test codex_and_cursor_list_parsing_rule_on_samples_from_docs_not_cli_output ... ok
+test opencode_real_error_becomes_failed_done ... ok
+test network_allow_rule_is_emitted_only_for_claude_code_2_1_186_or_newer ... ok
+test opencode_uses_session_and_dir_and_has_no_read_only_flag ... ok
+test opencode_real_run_text_tool_and_done_with_session ... ok
+test own_models_are_added_to_every_catalog ... ok
+test amp_grok_and_droid_speak_the_claude_result_shape ... ok
+test prompt_with_a_leading_dash_reaches_every_builtin_cli_as_text ... ok
+test model_refusal_rule_matches_the_messages_we_know_from_docs_not_cli_output ... ok
+test paths_in_actions_are_relative_to_the_copy_and_outside_ones_start_with_home ... ok
+test ordinary_failures_and_limits_are_not_mistaken_for_login_or_model_errors ... ok
+test read_only_flag_is_set_where_the_env_has_one ... ok
+test custom_resume_template_gets_the_session ... ok
+test stronger_is_the_first_listed_model_that_is_not_the_current_one ... ok
+test opencode_models_come_from_the_saved_list ... ok
+test sandbox_info_and_install_hints ... ok
+test the_text_of_a_secret_file_never_shows_only_its_path ... ok
+test the_thinking_level_goes_as_the_cli_flag_only_when_the_cli_takes_that_word ... ok
+test values_of_env_files_below_the_top_of_the_copy_are_scrubbed_too ... ok
+test qwen_real_output_without_login_is_auth_required_even_with_a_bad_model ... ok
+test v8_commands_put_each_option_where_the_cli_takes_it ... ok
+test real_cli_output_for_a_refused_model_is_model_rejected ... ok
+test custom_command_never_pastes_values_into_shell_text ... ok
+test the_structured_answer_of_our_roles_is_a_log_line_not_an_action ... ok
+test claude_rejected_status_with_the_extra_usage_allowed_is_no_limit ... ok
+test login_rule_matches_the_messages_we_know_from_docs_not_cli_output ... ok
+test qwen_stream_text_tool_done_and_real_auth_error ... ok
+test custom_command_nonzero_exit_is_a_failed_done ... ok
+test custom_placeholder_inside_a_longer_quoted_string_is_one_literal_word ... ok
+test long_output_and_diff_are_cut_and_secrets_never_leave_the_run ... ok
+
+test result: ok. 78 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.21s
+
+     Running tests/agent.rs (/home/nezeronxer/.cache/nightshift-target/debug/deps/agent-809bcd0c06f7f64e)
+
+running 10 tests
+test fake_models_default_to_an_error_like_envs_without_a_list_command ... ok
+test each_invocation_takes_the_next_script_and_resume_keeps_session ... ok
+test scripted_steps_write_files_and_emit_events ... ok
+test scripts_are_picked_by_role_and_swarm_variant_not_by_order ... ok
+test failing_script_ends_with_an_error_done ... ok
+test calls_show_the_model_and_the_read_only_flag_of_each_run ... ok
+test usage_cost_refusals_and_sign_in_are_scripted_events ... ok
+test cancel_also_kills_grandchildren ... ok
+test leftover_background_process_does_not_hold_run_blocking ... ok
+test cancel_kills_the_run_before_the_script_finishes ... ok
+
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.42s
+
+     Running tests/agentdesk.rs (/home/nezeronxer/.cache/nightshift-target/debug/deps/agentdesk-6508563bd71cff10)
+
+running 21 tests
+test changes_list_modified_added_deleted_renamed_and_untracked_files_with_line_counts ... ok
+test changes_of_a_subfolder_are_relative_to_it_and_a_plain_folder_is_no_repo ... ok
+test a_hidden_file_is_refused_in_any_case_of_its_name ... ok
+test paths_that_leave_the_folder_are_refused_by_diff_and_revert ... ok
+test merge_is_for_the_apps_term_branches_only ... ok
+test a_file_diff_is_unified_for_tracked_and_untracked_files_cut_and_scrubbed ... ok
+test a_repository_with_no_commit_yet_lists_its_files ... ok
+test a_copy_is_removed_without_force_and_git_keeps_work_written_after_the_check ... ok
+test a_worktree_is_on_a_term_branch_in_the_task_copies_folder_with_the_env_files_kept_out ... ok
+test reading_the_changes_never_runs_the_fsmonitor_of_the_repository ... ok
+test revert_of_a_rename_does_not_overwrite_a_new_file_at_the_old_name ... ok
+test revert_leaves_copied_env_files_of_an_agents_copy_alone ... ok
+test merge_refuses_to_overwrite_an_ignored_file_of_the_person ... ok
+test revert_refuses_a_nested_git_repository_and_keeps_it ... ok
+test merge_refuses_a_dirty_base_and_changes_nothing_there ... ok
+test revert_restores_tracked_files_removes_untracked_ones_and_undoes_a_rename ... ok
+test merge_rebases_onto_a_base_that_moved_and_undoes_a_conflicting_rebase ... ok
+test merge_commits_the_copy_and_fast_forwards_the_base_without_keys_or_ai_marks ... ok
+test a_gitattributes_the_base_lacks_is_kept_out_of_the_panel_and_the_merge ... ok
+test the_panel_of_an_agents_copy_lists_its_own_commits_and_diffs_and_reverts_them ... ok
+test remove_needs_force_for_uncommitted_work_and_touches_only_term_copies ... ok
+
+test result: ok. 21 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.43s
+
+     Running tests/chat.rs (/home/nezeronxer/.cache/nightshift-target/debug/deps/chat-24e599e84eb558db)
+
+running 32 tests
+test a_command_in_either_language_becomes_a_task_at_once_with_the_last_choice_of_the_env ... ok
+test a_chat_with_a_going_task_cannot_be_removed_and_one_with_finished_tasks_goes_while_the_tasks_stay ... ok
+test a_chat_of_one_env_never_calls_the_adapter_of_another ... ok
+test a_limit_hit_in_the_chat_is_told_to_the_whole_app_like_a_task_limit_is ... ok
+test a_question_is_answered_in_the_feed_and_changes_nothing ... ok
+test a_lost_session_gets_a_recap_of_the_last_20_messages_of_the_person_and_the_model_only ... ok
+test a_failed_answer_shows_the_reason_and_retry_repeats_it ... ok
+test a_run_of_the_chat_is_accounted_like_a_run_of_a_task ... ok
+test a_message_while_a_task_goes_on_is_a_note_that_is_marked_delivered_when_the_executor_gets_it ... ok
+test after_shutdown_nothing_new_is_taken ... ok
+test a_side_question_is_answered_read_only_with_the_chat_context_and_leaves_the_feed_alone ... ok
+test a_new_session_that_fails_too_is_a_cli_error_and_the_lost_session_is_forgotten ... ok
+test a_missing_login_a_refused_model_and_a_run_without_a_result_are_told_by_key_with_details ... ok
+test ns_task_at_the_end_of_the_answer_makes_a_task_and_stays_out_of_the_feed_but_in_the_middle_it_does_not ... ok
+test a_used_up_limit_holds_the_message_and_it_goes_by_itself_after_the_reset ... ok
+test the_list_shows_the_most_urgent_state_of_each_chat_and_the_swarm_and_convoy_entries_and_the_archive ... ok
+test images_of_a_command_message_go_with_the_task_and_those_of_a_note_join_them ... ok
+test the_answer_streams_into_its_own_message_and_its_actions_come_with_their_result_and_stay_in_the_feed ... ok
+test retry_takes_only_a_message_of_the_person_in_that_chat ... ok
+test a_message_on_a_question_of_the_task_is_the_answer ... ok
+test the_same_message_id_twice_is_one_message_and_one_task_and_an_empty_message_is_refused ... ok
+test a_long_feed_comes_in_pages_of_200_newest_first_page_then_older_ones ... ok
+test the_chat_and_the_tasks_of_one_env_get_the_same_vendor_and_the_same_model ... ok
+test what_the_model_writes_while_answering_is_thrown_away_before_the_next_message ... ok
+test an_image_sent_as_the_answer_to_a_question_of_the_task_reaches_the_resumed_run ... ok
+test the_next_message_continues_the_session_and_a_lost_session_starts_a_new_one_with_a_recap ... ok
+test two_notes_with_the_same_words_are_each_reported_delivered_under_their_own_message ... ok
+test this_was_a_question_cancels_the_task_before_the_code_step_and_later_only_cancel_works ... ok
+test the_messages_of_the_roles_and_the_actions_of_the_agents_come_into_the_feed_of_the_chat_once_and_in_order ... ok
+test a_double_click_on_retry_queues_one_answer ... ok
+test a_task_that_lands_before_the_note_arrives_is_not_passed_and_the_message_is_handled_as_an_ordinary_one ... ok
+test deleting_a_chat_while_it_answers_stops_the_answer_and_leaves_no_file_behind ... ok
+
+test result: ok. 32 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.38s
+
+     Running tests/chat_shell.rs (/home/nezeronxer/.cache/nightshift-target/debug/deps/chat_shell-b1e83ff98ea989e9)
+
+running 15 tests
+test claude_codex_and_opencode_take_images_the_others_do_not ... ok
+test a_block_description_in_the_frontmatter_is_read_as_text_and_not_as_its_mark ... ok
+test the_menu_of_the_other_envs_comes_from_their_own_folders_and_an_own_command_has_none ... ok
+test every_env_continues_a_session_with_the_words_of_the_table_and_a_bad_id_gets_none ... ok
+test an_attached_image_goes_to_the_cli_as_a_path_in_the_prompt_and_its_own_flag ... ok
+test each_cli_reports_the_tokens_it_says ... ok
+test the_terminal_continues_the_session_in_the_chats_copy_and_marks_the_chat ... ok
+test not_an_image_too_big_too_many_a_foreign_path_or_an_env_without_images_are_refused ... ok
+test without_a_session_or_a_cli_the_person_gets_a_reason_and_may_start_a_new_conversation ... ok
+test the_menu_shows_the_skills_commands_mcp_and_mods_of_claude_code ... ok
+test an_image_is_kept_in_the_apps_data_0600_goes_to_the_agent_as_a_path_and_is_gone_with_the_chat ... ok
+test a_claude_session_continued_in_the_terminal_is_read_back_into_the_feed ... ok
+test a_chat_open_in_a_terminal_keeps_what_the_terminal_made_and_takes_no_second_terminal ... ok
+test the_tokens_of_a_task_reach_the_spending_history ... ok
+test a_queued_message_keeps_its_images ... ok
+
+test result: ok. 15 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.67s
+
+     Running tests/chat_v6.rs (/home/nezeronxer/.cache/nightshift-target/debug/deps/chat_v6-889724bfd2e3d9e0)
+
+running 9 tests
+test without_spinner_verbs_or_with_a_broken_file_there_are_no_words_and_other_envs_have_none ... ok
+test claude_thinking_blocks_and_deltas_become_thinking_events_and_the_text_stays_text ... ok
+test the_spinner_words_come_from_spinner_verbs_of_the_claude_settings_of_the_project_the_local_file_last ... ok
+test a_message_sent_while_the_model_answers_waits_in_the_queue_and_stop_ends_the_answer_calmly ... ok
+test the_thoughts_of_the_model_come_to_the_window_under_the_id_of_the_answer_once ... ok
+test a_queued_message_is_edited_or_dropped_by_its_id_and_the_edit_survives_a_restart ... ok
+test the_same_message_id_again_after_a_restart_makes_no_second_chat_and_no_second_answer ... ok
+test a_queued_message_and_a_limit_wait_come_back_after_a_restart_and_go_by_themselves_after_the_reset ... ok
+test an_answer_cut_by_a_restart_gets_a_retry_line_and_is_not_run_again_by_itself ... ok
+
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.64s
+
+     Running tests/config.rs (/home/nezeronxer/.cache/nightshift-target/debug/deps/config-4dcb75c36e938e96)
+
+running 4 tests
+test a_wrong_value_is_an_error_with_its_line_and_the_rest_applies ... ok
+test a_missing_file_is_created_with_commented_defaults ... ok
+test writing_a_key_keeps_comments_and_order ... ok
+test a_change_of_the_file_is_seen ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.00s
+
+     Running tests/diag.rs (/home/nezeronxer/.cache/nightshift-target/debug/deps/diag-ef3ebd2df27c7c0e)
+
+running 2 tests
+test the_app_log_rotates_at_its_size_and_keeps_five_files ... ok
+test the_report_holds_versions_settings_states_and_the_log_but_no_token_and_no_text ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.27s
+
+     Running tests/engine_actions.rs (/home/nezeronxer/.cache/nightshift-target/debug/deps/engine_actions-d4264b719632d38c)
+
+running 3 tests
+test a_secret_in_an_actions_output_is_replaced_by_its_name_in_the_log_and_in_the_event ... ok
+test a_cli_without_the_text_of_its_edits_gets_an_edit_per_changed_file_from_the_copy_after_the_step ... ok
+test after_a_restart_the_log_gives_the_actions_with_output_and_diff_and_old_lines_still_read ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.50s
+
+     Running tests/engine_e2e.rs (/home/nezeronxer/.cache/nightshift-target/debug/deps/engine_e2e-f6ebc97f66dfc704)
+
+running 38 tests
+test cancel_while_working_kills_the_agent_and_removes_worktree_and_branch ... ok
+test an_agent_cannot_turn_protected_paths_off_from_inside_its_copy ... ok
+test crash_between_squash_and_save_does_not_land_the_task_twice ... ok
+test cancel_racing_the_scheduler_stays_cancelled_and_never_starts ... ok
+test double_approve_opens_one_pr ... ok
+test answer_given_before_a_quit_reaches_the_worker_after_restart ... ok
+test a_panic_after_the_task_is_done_leaves_it_done ... ok
+test a_panic_while_driving_fails_the_task_once_and_the_engine_keeps_working ... ok
+test dirty_main_postpones_the_merge_keeps_the_humans_edit_and_retries_each_minute ... ok
+test env_files_of_a_project_made_by_init_repo_reach_the_worktree_but_never_main ... ok
+test files_from_copy_files_and_worktreeinclude_reach_the_worktree_but_never_main ... ok
+test conflict_the_integrator_leaves_unresolved_fails_as_conflict_with_main ... ok
+test pr_finish_pushes_the_branch_and_records_the_pr_url ... ok
+test cancel_while_waiting_for_another_tasks_merge_returns_promptly ... ok
+test agent_errors_are_retried_in_the_same_session_and_do_not_use_up_check_rounds ... ok
+test push_base_after_a_refused_push_marks_the_waiting_tasks_done ... ok
+test needs_human_question_then_answer_resumes_the_same_session ... ok
+test push_finish_asks_first_then_pushes_to_origin ... ok
+test keys_and_env_files_the_agent_writes_are_not_committed_and_the_feed_says_why ... ok
+test copied_env_never_lands_whatever_the_worker_does_with_gitignore_or_git ... ok
+test refused_push_keeps_the_commit_locally_as_done_not_pushed ... ok
+test red_checks_three_times_fail_the_task_and_leave_main_alone ... ok
+test red_check_is_fixed_by_the_worker_then_done_with_one_attempt ... ok
+test task_reaches_done_alone_with_exactly_one_commit_on_main ... ok
+test restart_in_the_middle_of_working_resends_the_pending_prompt_in_one_instance ... ok
+test pause_lets_the_current_agent_step_finish_then_holds_everything_until_unpaused ... ok
+test reviewer_changes_go_to_the_worker_then_approve_is_done ... ok
+test rebase_conflict_is_resolved_by_the_integrator_in_a_fresh_session_then_done ... ok
+test retry_of_a_failed_task_starts_over_from_a_clean_branch ... ok
+test undo_reverts_the_task_commit_on_main ... ok
+test two_reviewer_rejections_fail_with_the_issues_on_the_card ... ok
+test undo_of_a_pushed_task_asks_before_pushing_the_revert ... ok
+test reviewer_bad_json_is_retried_once_then_counts_as_changes ... ok
+test usage_limit_with_a_fallback_model_continues_there_on_the_same_branch_in_a_new_session ... ok
+test two_parallel_tasks_on_different_files_both_land_with_a_commit_each ... ok
+test usage_limit_pauses_until_reset_and_then_continues_by_itself ... ok
+test with_max_parallel_one_the_second_task_of_the_env_waits_queued ... ok
+test shutdown_racing_the_scheduler_leaves_one_instance_after_restart ... ok
+
+test result: ok. 38 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 3.55s
+
+     Running tests/engine_folder.rs (/home/nezeronxer/.cache/nightshift-target/debug/deps/engine_folder-1dd0fa68a13f572c)
+
+running 1 test
+test tasks_of_a_project_with_a_missing_folder_wait_and_go_on_after_the_new_place_is_given ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.54s
+
+     Running tests/engine_prompt.rs (/home/nezeronxer/.cache/nightshift-target/debug/deps/engine_prompt-06e7528c2c89817e)
+
+running 19 tests
+test a_short_vendor_word_inside_another_word_does_not_place_the_model ... ok
+test alibaba_names_context_objective_steps_and_response_apart_with_unique_separators ... ok
+test google_keeps_one_xml_structure_constraints_first_context_then_the_task_last_with_an_anchor ... ok
+test an_answer_that_is_not_a_breakdown_is_refused_with_a_reason ... ok
+test steps_whose_order_matters_are_a_numbered_list_in_every_template ... ok
+test anthropic_asks_for_a_general_solution_only_when_the_project_has_tests ... ok
+test every_role_of_every_vendor_carries_the_data_rule_and_the_safety_rules_in_its_system_prompt ... ok
+test anthropic_puts_the_data_first_and_the_instructions_after_it_in_xml_tags ... ok
+test openai_worker_persists_to_the_end_and_is_not_asked_for_preambles_or_an_upfront_plan ... ok
+test anthropic_gives_the_role_in_the_system_prompt_as_its_first_sentence ... ok
+test signals_count_only_in_the_closing_block_of_the_reply ... ok
+test the_plain_template_when_the_breakdown_failed_has_goal_constraints_done_when_and_says_why ... ok
+test openai_uses_markdown_headings_with_the_context_last ... ok
+test text_from_outside_is_fenced_with_its_own_uuid_label_in_every_role ... ok
+test the_vendor_comes_from_the_family_of_the_model_not_from_the_env ... ok
+test the_reviewer_gets_the_task_the_diff_and_the_output_of_the_checks_and_nothing_else ... ok
+test the_breakdown_is_read_from_the_last_json_object_not_from_the_first_brace_to_the_last ... ok
+test the_persons_words_stand_verbatim_in_a_block_of_their_own_under_a_uuid_label_in_every_template ... ok
+test templates_state_things_plainly_without_shouting_or_pleading ... ok
+
+test result: ok. 19 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/engine_swarm_convoy.rs (/home/nezeronxer/.cache/nightshift-target/debug/deps/engine_swarm_convoy-e90fbbbf51df9247)
+
+running 2 tests
+test a_convoy_of_thirteen_tasks_is_not_accepted_and_a_vague_request_becomes_a_question ... ok
+test a_convoy_of_four_makes_a_chat_with_cards_and_each_task_starts_after_the_ones_it_waits_for_have_landed ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.66s
+
+     Running tests/engine_swarm_council.rs (/home/nezeronxer/.cache/nightshift-target/debug/deps/engine_swarm_council-5b4daa1420e5d287)
+
+running 4 tests
+test a_throwaway_folder_that_cannot_be_removed_at_start_is_told_and_does_not_hang_the_engine ... ok
+test the_council_proposes_votes_once_the_winner_is_built_and_the_council_approves_by_majority ... ok
+test a_tie_of_the_proposals_and_a_tie_on_the_review_are_decided_by_the_reviewer ... ok
+test a_member_whose_throwaway_copy_fails_does_not_read_in_the_real_folder ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.46s
+
+     Running tests/engine_swarm_crew.rs (/home/nezeronxer/.cache/nightshift-target/debug/deps/engine_swarm_crew-bbb898e602f62328)
+
+running 3 tests
+test a_split_that_overlaps_is_made_again_once_and_a_good_second_split_runs_side_by_side ... ok
+test parts_without_overlap_land_in_the_task_branch_one_by_one_then_the_whole_task_goes_to_main ... ok
+test a_split_that_overlaps_twice_runs_its_parts_one_after_the_other ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.97s
+
+     Running tests/engine_swarm_envs.rs (/home/nezeronxer/.cache/nightshift-target/debug/deps/engine_swarm_envs-284d57255b13f05e)
+
+running 2 tests
+test two_races_at_once_in_two_envs_keep_their_runs_to_their_own_adapter ... ok
+test a_race_a_crew_a_council_and_a_convoy_in_one_env_never_call_the_adapter_of_the_other ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.32s
+
+     Running tests/engine_swarm_lanes.rs (/home/nezeronxer/.cache/nightshift-target/debug/deps/engine_swarm_lanes-352370e7e5658b08)
+
+running 12 tests
+test a_cli_that_goes_away_in_the_middle_of_a_race_makes_the_task_wait_for_it_as_for_any_role ... ok
+test a_copy_that_cannot_be_removed_is_a_line_in_the_feed_not_silence ... ok
+test when_the_limit_is_known_and_the_env_has_another_model_every_lane_starts_on_it ... ok
+test a_question_of_a_part_of_a_crew_names_the_part_and_the_answer_goes_back_to_it ... ok
+test a_limit_of_the_env_in_the_middle_of_a_race_pauses_the_whole_task_and_only_the_stopped_variant_goes_again ... ok
+test a_question_of_a_variant_reaches_the_person_once_naming_the_variant_and_the_answer_goes_back_to_it ... ok
+test a_question_of_a_member_of_the_council_names_the_member_and_the_answer_goes_back_to_it ... ok
+test the_budget_spent_in_a_lane_is_asked_of_the_person_as_for_a_role_and_the_answer_lets_the_lane_go_on ... ok
+test a_lane_that_goes_silent_is_nudged_in_its_session_after_a_diagnosis_by_a_run_of_the_watcher ... ok
+test five_more_minutes_of_silence_start_a_new_session_in_the_lane_and_count_an_attempt ... ok
+test a_limit_of_one_lane_pauses_only_that_lane_and_it_goes_on_by_itself_after_the_reset ... ok
+test copies_of_a_swarm_made_and_merged_at_once_with_other_tasks_never_write_into_the_git_of_the_project_together ... ok
+
+test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 11.92s
+
+     Running tests/engine_swarm_race.rs (/home/nezeronxer/.cache/nightshift-target/debug/deps/engine_swarm_race-10322c376abacdff)
+
+running 8 tests
+test notes_reach_the_next_run_of_their_addressee_only_and_the_feed_of_the_swarm_names_role_model_and_variant ... ok
+test freeze_stops_every_run_of_the_swarm_and_the_watcher_does_not_tick_while_frozen ... ok
+test a_race_prepares_once_runs_three_variants_in_copies_of_their_own_and_the_picked_one_lands_in_main ... ok
+test stopping_the_swarm_stops_every_run_keeps_what_passed_and_the_copies_until_the_task_is_removed ... ok
+test one_failed_variant_does_not_stop_the_others_and_says_why ... ok
+test when_every_variant_fails_the_task_fails_with_the_best_attempt_and_resume_goes_on_from_it ... ok
+test variants_wait_for_seats_when_the_env_has_fewer_than_n_and_a_swarm_of_one_or_six_is_refused ... ok
+test without_an_answer_the_recommended_variant_is_taken_after_autopick_minutes_and_nobody_is_called ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.78s
+
+     Running tests/engine_swarm_rules.rs (/home/nezeronxer/.cache/nightshift-target/debug/deps/engine_swarm_rules-74b3cdf8bfc7ee2e)
+
+running 7 tests
+test passed_variants_are_ranked_by_their_four_scores ... ok
+test a_split_whose_parts_share_a_file_or_a_folder_is_refused ... ok
+test the_best_failed_attempt_is_the_one_with_most_green_tests ... ok
+test the_most_votes_win_and_a_shared_top_is_a_tie ... ok
+test variants_take_the_models_of_the_env_round_the_circle_from_the_executors_model ... ok
+test the_app_accepts_only_a_split_whose_paths_are_exact_and_inside_the_project ... ok
+test a_convoy_of_more_than_twelve_tasks_or_with_a_broken_chain_of_dependencies_is_refused ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/engine_swarm_watch.rs (/home/nezeronxer/.cache/nightshift-target/debug/deps/engine_swarm_watch-3612acd298c58d79)
+
+running 6 tests
+test nothing_runs_for_the_watcher_when_nobody_is_silent ... ok
+test with_quality_off_the_executor_gets_the_words_as_they_are_and_the_feed_says_so_once ... ok
+test silence_of_15_minutes_stops_the_run_and_goes_on_in_the_same_session_with_a_diagnosis ... ok
+test nudge_by_hand_stops_the_run_and_goes_on_in_the_same_session ... ok
+test five_more_minutes_restart_the_role_in_a_new_session_and_count_an_attempt_until_none_is_left ... ok
+test two_tasks_merge_one_at_a_time_and_their_steps_tell_who_is_first_and_who_waits ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 3.38s
+
+     Running tests/engine_v2.rs (/home/nezeronxer/.cache/nightshift-target/debug/deps/engine_v2-63f945849c033040)
+
+running 27 tests
+test a_task_text_is_taken_up_to_a_hundred_thousand_characters_the_title_is_eighty_of_the_first_line ... ok
+test a_broken_git_step_fails_the_task_with_the_command_and_what_git_said ... ok
+test a_risky_task_is_marked_in_the_feed_and_still_runs_with_one_executor_for_now ... ok
+test a_project_without_a_test_runner_skips_the_tests_step_with_the_reason_and_no_test_author_runs ... ok
+test a_breakdown_in_the_wrong_format_after_one_repeat_sends_the_task_on_in_the_plain_template ... ok
+test a_one_phrase_edit_skips_the_plan_and_the_critic_and_says_why ... ok
+test a_vague_task_gets_a_spec_step_that_writes_it_out_and_the_executor_gets_the_spec_and_the_criteria ... ok
+test a_model_that_is_not_in_the_catalog_runs_without_a_flag_and_the_feed_says_so ... ok
+test a_kit_variable_with_a_value_out_of_its_shape_is_not_put_on_the_run_and_the_feed_names_it_without_the_value ... ok
+test a_red_extra_check_keeps_the_task_from_going_on_like_red_tests ... ok
+test an_env_with_a_read_only_flag_runs_its_reading_roles_in_the_task_copy_with_the_flag ... ok
+test a_verifier_that_answers_in_the_wrong_format_is_a_failure_not_a_pass ... ok
+test a_conflict_the_integrator_leaves_in_the_files_fails_the_task_as_conflict_with_main ... ok
+test quality_off_is_the_short_path_code_gates_review_merge_with_no_planner_and_the_raw_text ... ok
+test any_role_can_ask_the_person_and_its_own_session_goes_on_with_the_answer ... ok
+test full_pipeline_records_steps_and_each_role_gets_the_flag_of_its_own_model ... ok
+test latest_becomes_a_number_when_a_run_starts_and_a_resumed_session_stays_on_its_model ... ok
+test a_conflict_goes_to_the_integrator_a_fresh_run_with_both_sides_and_the_gates_run_again ... ok
+test preparatory_steps_that_fail_twice_are_skipped_and_the_task_goes_on_with_gates_and_review_intact ... ok
+test a_task_of_env_a_never_calls_env_b_each_role_has_its_own_session_and_the_v1_settings_only_leave_a_line ... ok
+test text_diff_and_output_in_every_roles_prompt_are_fenced_with_a_uuid_label_and_the_rule_is_in_the_system_prompt ... ok
+test structured_roles_are_given_a_schema_and_the_executor_is_not_and_the_gates_are_recorded_check_by_check ... ok
+test the_critics_remarks_and_corrected_plan_reach_the_executor ... ok
+test the_reviewer_sees_the_task_the_diff_and_the_gate_output_only_and_cannot_change_anything ... ok
+test the_e2e_step_runs_the_verifier_read_only_and_a_failed_check_sends_the_executor_back ... ok
+test the_executor_cannot_rewrite_the_test_authors_files_the_edit_is_undone_counted_and_said ... ok
+test when_the_spare_model_takes_over_the_prompt_is_made_by_the_template_of_its_vendor ... ok
+
+test result: ok. 27 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.21s
+
+     Running tests/engine_v2_control.rs (/home/nezeronxer/.cache/nightshift-target/debug/deps/engine_v2_control-1f66f32ccaa0e5cb)
+
+running 26 tests
+test a_message_that_was_no_task_cancels_it_before_the_code_step_and_not_after ... ok
+test a_note_to_a_task_that_has_landed_is_not_delivered_so_the_chat_can_treat_it_as_a_message ... ok
+test a_snoozed_card_leaves_the_waiting_list_until_the_time_and_stays_so_after_a_restart ... ok
+test a_merge_that_began_before_the_freeze_is_carried_to_its_end ... ok
+test a_note_to_a_task_waiting_for_an_answer_is_the_answer ... ok
+test a_note_whose_run_never_started_is_not_marked_delivered_and_reaches_the_next_run ... ok
+test a_note_written_while_the_executor_works_reaches_its_next_run_and_the_delivery_is_marked ... ok
+test a_hint_alone_resumes_the_same_session_with_the_hint ... ok
+test is_active_names_the_stages_that_are_worked_on ... ok
+test a_failed_task_is_lifted_in_the_same_copy_with_a_hint_and_a_stronger_model_attempts_start_again ... ok
+test an_answer_to_a_snoozed_question_goes_on_at_once_not_when_the_snooze_ends ... ok
+test a_writing_role_that_has_a_session_goes_on_with_it_after_a_restart ... ok
+test deferred_puts_the_task_back_in_the_queue_with_its_copy_and_session_at_most_twice ... ok
+test a_task_with_a_limit_and_a_conflict_reaches_done_without_calling_the_person_once ... ok
+test switching_the_model_of_a_running_reviewer_restarts_the_reviewer_not_the_executor ... ok
+test swapped_adapters_are_seen_by_the_next_task_and_a_task_in_flight_still_finishes ... ok
+test switching_the_model_restarts_the_current_role_on_the_other_model_of_the_same_env ... ok
+test when_the_session_cannot_be_continued_the_hand_off_says_a_new_one_is_opened ... ok
+test switching_the_model_while_the_reviewer_waits_for_an_answer_switches_the_reviewer ... ok
+test a_task_handed_to_the_terminal_stays_untouched_also_after_a_restart_until_it_is_taken_back_through_gates_and_review ... ok
+test freeze_leaves_a_waiting_question_and_a_handed_over_task_exactly_as_they_were ... ok
+test freeze_stops_the_runs_at_once_keeps_status_and_session_and_unfreeze_goes_on_from_the_same_place ... ok
+test the_digest_is_built_from_the_logs_on_disk_after_a_restart ... ok
+test a_freeze_between_two_conflicting_commits_holds_the_next_integrator_and_unfreeze_goes_on_with_the_rebase ... ok
+test an_unanswered_call_makes_exactly_one_notice_however_long_it_waits ... ok
+test a_restart_in_the_middle_of_any_step_goes_on_from_that_step_once_and_the_finished_steps_are_not_run_again ... ok
+
+test result: ok. 26 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.43s
+
+     Running tests/engine_v2_limits.rs (/home/nezeronxer/.cache/nightshift-target/debug/deps/engine_v2_limits-5abe35cd1bf9b910)
+
+running 22 tests
+test an_env_that_does_not_report_cost_gets_no_budget_and_says_so_once ... ok
+test a_pinned_version_that_left_the_list_runs_on_the_nearest_and_the_feed_says_so ... ok
+test a_used_up_limit_with_a_spare_model_does_not_hold_tasks_they_start_on_the_spare ... ok
+test a_model_the_cli_refuses_is_not_an_attempt_the_next_model_of_the_chain_runs_and_the_feed_says_which ... ok
+test a_cancelled_task_that_asked_for_a_login_does_not_hold_the_queue_of_its_env ... ok
+test the_catalog_is_refreshed_from_the_envs_list_kept_as_the_snapshot_and_announced ... ok
+test the_daily_budget_of_an_env_asks_in_the_same_way_and_adding_five_raises_the_cap_for_the_day ... ok
+test a_used_up_limit_holds_the_night_queue_and_new_tasks_say_what_they_wait_for_until_the_reset ... ok
+test a_limit_with_the_spare_model_also_used_up_pauses_until_the_reset_the_run_reported_and_then_goes_on ... ok
+test a_task_waiting_for_a_login_does_not_go_on_by_itself_while_its_branch_is_in_the_project_folder ... ok
+test a_night_task_takes_no_seat_waits_outside_the_window_and_starts_when_the_person_is_away ... ok
+test a_night_task_starts_inside_the_night_window_by_itself_and_start_now_starts_it_at_once ... ok
+test the_budget_of_a_task_asks_add_five_or_stop_when_reached ... ok
+test an_env_that_is_gone_makes_its_tasks_wait_and_go_on_when_it_is_back_never_in_another_env ... ok
+test seats_are_counted_per_env_the_second_task_of_a_full_env_waits_while_another_env_starts_at_once ... ok
+test a_login_is_asked_once_per_env_retried_every_minute_and_the_task_goes_on_after_it ... ok
+test without_a_spare_model_the_wait_is_half_an_hour_when_the_time_is_not_known_and_the_limit_is_stored ... ok
+test the_day_spend_outlives_retry_and_removal_and_caps_the_next_run_by_what_is_left_of_the_day ... ok
+test usage_events_are_stored_in_limits_json_announced_and_an_env_without_data_says_why ... ok
+test two_tasks_of_one_env_asking_for_a_login_make_one_call_between_them ... ok
+test a_task_retrying_its_login_keeps_the_queue_of_its_env_closed_and_the_person_is_called_once ... ok
+test pressing_login_while_still_logged_out_keeps_the_queue_of_the_env_closed_and_calls_once ... ok
+
+test result: ok. 22 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.63s
+
+     Running tests/engine_v2_outward.rs (/home/nezeronxer/.cache/nightshift-target/debug/deps/engine_v2_outward-2634d436c04d15e7)
+
+running 6 tests
+test pr_project_no_keeps_the_work_local_done_not_pushed ... ok
+54f52c915ede000acda026f6a066195405ed448a
+test pr_project_push_and_pr_opens_the_pull_request ... ok
+54f52c915ede000acda026f6a066195405ed448a
+test pr_project_push_only_puts_the_branch_on_origin_without_a_pr_and_is_done_with_a_note ... ok
+54f52c915ede000acda026f6a066195405ed448a
+test a_refused_push_of_a_pr_task_is_repeated_by_retry_which_sends_the_branch_and_opens_the_pr ... ok
+test push_project_push_and_no_and_the_answers_that_do_not_fit_are_refused ... ok
+test the_question_is_asked_when_the_project_asks_or_the_env_asks_and_not_when_neither_does ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.92s
+
+     Running tests/engine_v2_tails.rs (/home/nezeronxer/.cache/nightshift-target/debug/deps/engine_v2_tails-2dea5d3b60c220b0)
+
+running 7 tests
+test data_of_v1_and_of_the_first_v2_reads_with_defaults ... ok
+test the_engine_hands_every_adapter_a_folder_of_its_data_and_codex_writes_its_schema_there_with_mode_0600 ... ok
+test a_codex_that_was_never_given_a_folder_says_so_instead_of_picking_one ... ok
+test a_hidden_files_list_that_cannot_be_read_stops_the_task_with_no_commit ... ok
+test a_missing_hidden_files_list_just_means_nothing_is_hidden ... ok
+test check_output_in_cp1251_and_with_binary_bytes_reaches_the_tail_whole_and_nothing_crashes ... ok
+test a_task_that_landed_can_be_retried_and_the_new_work_reaches_main_the_old_marker_does_not_get_in_the_way ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.47s
+
+     Running tests/engine_v5_tasks.rs (/home/nezeronxer/.cache/nightshift-target/debug/deps/engine_v5_tasks-19130fdf32e95591)
+
+running 4 tests
+test the_merge_waits_for_an_open_item_and_goes_on_when_it_is_ticked ... ok
+test take_refuses_a_dirty_folder_switches_a_clean_one_and_give_returns_the_branch ... ok
+test a_finding_of_the_reviewer_becomes_an_item_and_the_approval_closes_it ... ok
+test a_snapshot_is_taken_before_each_run_and_the_rollback_returns_the_code_and_can_be_undone ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.31s
+
+     Running tests/gh.rs (/home/nezeronxer/.cache/nightshift-target/debug/deps/gh-8687799457cbbc0a)
+
+running 1 test
+test gh_status_pr_state_and_open_pr_use_gh_output ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+
+     Running tests/git.rs (/home/nezeronxer/.cache/nightshift-target/debug/deps/git-78d115544ecde655)
+
+running 53 tests
+test a_github_repository_is_named_owner_slash_name_from_a_name_or_a_link_and_flags_never_pass ... ok
+test cloning_refuses_a_bad_name_and_an_existing_folder_before_gh_runs ... ok
+test config_guard::a_filter_or_diff_driver_added_after_the_app_looked_is_refused_and_never_runs ... ok
+test config_guard::a_dot_git_pointed_into_the_copy_itself_is_refused ... ok
+test a_copy_turned_into_a_repository_of_its_own_with_a_diff_driver_is_refused ... ok
+test commit_all_returns_none_when_nothing_changed ... ok
+test config_guard::a_driver_added_later_is_shown_with_its_command_and_works_once_the_person_trusts_what_they_saw ... ok
+test advance_rule1_human_on_clean_main_gets_fast_forward ... ok
+test detect_commands_by_project_type ... ok
+test advance_rule3_human_on_other_branch_main_moves_and_files_stay ... ok
+test config_guard::a_first_look_on_which_git_failed_is_not_remembered ... ok
+test config_guard::a_hook_an_agent_wrote_into_the_main_git_does_not_run_on_the_apps_commit ... ok
+test config_guard::a_merge_driver_the_person_had_before_keeps_working ... ok
+test clean_rebase_moves_branch_onto_new_base ... ok
+test config_guard::what_an_agent_planted_is_still_refused_after_a_restart_of_the_app ... ok
+test base_checked_out_in_linked_worktree_follows_the_same_rules ... ok
+test clone_shallow_takes_a_local_folder_and_refuses_dangerous_sources ... ok
+test advance_rule2_dirty_main_blocks_and_keeps_humans_edit ... ok
+test diff_and_diffstat_describe_the_task_changes ... ok
+test a_changed_tracked_key_is_seen_by_the_merge_check_and_a_deleted_one_is_not ... ok
+test diff_file_cuts_at_max_lines_and_flags_binary_files ... ok
+test init_repo_makes_a_repo_with_one_commit_and_skips_env_files ... ok
+test diff_file_also_stops_at_a_byte_limit ... ok
+test protected_paths_off_commits_them_as_any_file ... ok
+test paths_with_spaces_and_cyrillic_work ... ok
+test config_guard::config_hooks_remote_programs_ext_remotes_and_gpg_key_commands_added_later_are_refused ... ok
+test old_git_revert_of_a_line_changed_again_is_a_conflict_and_leaves_no_scratch ... ok
+test fetch_ff_brings_in_remote_commits ... ok
+test push_to_local_bare_origin_works ... ok
+test repo_info_on_non_repo ... ok
+test ff_branch_moves_forward_only ... ok
+test readonly_copy_is_clean_after_refresh_and_the_humans_folder_is_untouched ... ok
+test refresh_leaves_the_humans_own_detached_worktree_alone ... ok
+test protected_paths_stay_out_of_every_commit_and_the_branch ... ok
+test refresh_refuses_a_folder_that_is_not_an_app_copy ... ok
+test remove_worktree_can_keep_the_branch ... ok
+test old_git_revert_of_a_submodule_changed_twice_is_a_conflict_not_an_empty_blob ... ok
+test restore_paths_refuses_a_folder_swapped_for_a_link_to_the_outside ... ok
+test old_git_revert_gives_the_tree_merge_tree_gives_and_merges_lines_of_one_file ... ok
+test rebase_conflict_is_reported_and_can_be_resolved ... ok
+test only_merged_ns_branches_are_deleted ... ok
+test restore_paths_returns_files_to_the_state_of_from ... ok
+test repo_info_reports_ahead_behind_dirty_and_origin ... ok
+test the_base_does_not_move_under_a_rebase_the_person_has_going ... ok
+test revert_undoes_the_squash_commit ... ok
+test revert_works_while_human_is_on_another_branch ... ok
+test squash_after_main_moved_asks_for_a_new_rebase ... ok
+test worktree_is_created_and_removed_with_its_branch ... ok
+test squash_gives_exactly_one_commit_with_the_task_message ... ok
+test rejected_push_is_a_push_error_and_remote_is_untouched ... ok
+test revert_that_cannot_apply_cleanly_is_a_conflict ... ok
+test web_url_from_ssh_and_https_origins ... ok
+test two_worktrees_and_humans_uncommitted_file_stay_independent ... ok
+
+test result: ok. 53 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.00s
+
+     Running tests/git_v4.rs (/home/nezeronxer/.cache/nightshift-target/debug/deps/git_v4-59580eb8d3e2e372)
+
+running 9 tests
+test a_key_anywhere_in_the_history_refuses_publishing_before_gh_is_called ... ok
+test separator_bytes_in_a_subject_do_not_forge_a_history_row ... ok
+test task_commits_are_known_by_trailer_or_ns_branch_and_an_empty_repo_has_no_history ... ok
+test publish_errors_come_as_keys ... ok
+test a_key_added_only_in_a_merge_commit_refuses_publishing_before_gh_is_called ... ok
+test publish_calls_gh_repo_create_with_the_right_arguments_and_returns_the_url ... ok
+test lanes_and_edges_of_a_branch_and_its_merge ... ok
+test revert_commit_undoes_any_commit_of_the_current_branch_locally ... ok
+test two_pages_of_200_are_the_same_as_one_page_of_400 ... ok
+
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.12s
+
+     Running tests/git_v5.rs (/home/nezeronxer/.cache/nightshift-target/debug/deps/git_v5-020457345a913227)
+
+running 5 tests
+test give_refuses_when_the_person_left_edits_on_the_task_branch ... ok
+test snapshots_are_numbered_listed_and_dropped_with_the_copy ... ok
+test take_refuses_a_dirty_folder_and_switches_a_clean_one_and_give_returns ... ok
+test snapshot_leaves_copied_env_files_alone_and_out_of_the_object_store ... ok
+test snapshot_restores_uncommitted_and_new_files_and_hides_its_ref ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.11s
+
+     Running tests/identity.rs (/home/nezeronxer/.cache/nightshift-target/debug/deps/identity-d8c872ed3aa064c2)
+
+running 2 tests
+test fallback_signature_when_nothing_is_configured ... ok
+test repos_own_signature_is_never_overridden ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+
+     Running tests/issues_sessions.rs (/home/nezeronxer/.cache/nightshift-target/debug/deps/issues_sessions-54e259497ef4ad3b)
+
+running 10 tests
+test closing_an_issue_is_one_gh_call_with_the_comment ... ok
+test the_key_of_a_folder_is_its_path_with_every_non_ascii_letter_or_digit_as_a_dash ... ok
+test the_text_of_an_issue_reaches_the_agent_only_inside_a_data_block ... ok
+test a_session_is_copied_to_the_key_of_the_copy_and_the_source_is_not_touched ... ok
+test gh_output_is_cut_and_bad_rows_are_dropped ... ok
+test heads_show_the_first_words_the_date_and_the_count_and_bad_files_do_not_break_the_list ... ok
+test no_sessions_is_an_empty_list_and_hundreds_come_in_pages_of_fifty ... ok
+test open_issues_become_cards_with_a_number_and_a_link_only_for_github_projects ... ok
+test no_gh_or_no_login_is_a_reason_not_a_crash ... ok
+test continuing_a_session_is_a_task_in_a_git_copy_that_resumes_it ... ok
+
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.22s
+
+     Running tests/kits.rs (/home/nezeronxer/.cache/nightshift-target/debug/deps/kits-9127dfda1e4b0fe0)
+
+running 42 tests
+test a_kit_sets_only_secret_like_names ... ok
+test a_dash_line_that_is_not_a_closing_fence_holds_the_skill ... ok
+test a_skill_key_hidden_by_yaml_quoting_is_held ... ok
+test an_indented_frontmatter_holds_the_skill ... ok
+test a_kit_goes_only_into_its_own_environment_and_unverified_groups_are_off ... ok
+test endpoints_proxies_and_tls_that_would_take_the_keys_elsewhere_are_refused ... ok
+test every_kit_error_serializes_with_its_kind_and_fields ... ok
+test codex_inline_hooks_and_mcp_are_reported_not_moved ... ok
+test a_failed_write_rolls_back_at_once ... ok
+test a_config_the_running_cli_overwrote_right_after_the_write_is_reported_not_applied ... ok
+test an_install_cut_short_is_rolled_back_by_recover_at_next_start ... ok
+test keys_go_to_the_runs_and_values_out_of_their_shape_do_not ... ok
+test codex_config_toml_mcp_server_is_held_and_merged_on_enable ... ok
+test names_of_the_dynamic_loader_are_refused ... ok
+test names_that_choose_the_programs_and_their_start_files_are_refused ... ok
+test names_that_steer_git_and_ssh_are_refused ... ok
+test mcp_server_with_a_command_is_held_until_enabled ... ok
+test install_does_not_follow_a_symlink_out_of_the_home ... ok
+test programs_a_cli_starts_by_name_are_refused ... ok
+test install_refuses_a_link_into_a_key_store_even_inside_the_home ... ok
+test rollback_keeps_a_file_new_to_the_install_once_the_human_wrote_into_it ... ok
+test export_replaces_secrets_and_home_paths_and_keeps_names ... ok
+test quotes_in_a_comment_or_a_bracket_in_a_string_do_not_hide_a_provider_behind_a_safe_key ... ok
+test preview_writes_nothing_and_shows_add_replace_same ... ok
+test rollback_keeps_a_replaced_file_the_person_edited_since_and_says_so ... ok
+test rollback_keeps_a_kit_key_the_human_changed_after_install_and_reports_it ... ok
+test search_paths_and_options_of_interpreters_are_refused ... ok
+test secrets_go_to_the_keyring_or_a_0600_file_and_come_back_as_run_env ... ok
+test rolling_back_an_older_kit_does_not_take_away_a_newer_one ... ok
+test skills_and_subagents_that_carry_something_to_run_are_held_and_shown_whole ... ok
+test only_into_the_project_files_land_there_uncommitted_and_their_paths_come_back ... ok
+test export_to_zip_and_to_a_local_git_repository ... ok
+test settings_that_move_the_provider_or_its_key_are_held ... ok
+test snapshots_are_private_and_only_the_newest_twenty_are_kept ... ok
+test hooks_mcp_and_scripted_skills_are_installed_off_and_turned_on_from_the_snapshot ... ok
+test rollback_of_shared_configs_returns_only_the_kits_keys_and_keeps_what_the_cli_wrote_since ... ok
+test rollback_puts_back_old_bytes_and_removes_what_was_added ... ok
+test a_cloned_kit_never_lets_git_lfs_fetch_from_the_address_in_its_lfsconfig ... ok
+test a_repository_blob_left_out_by_the_clone_filter_is_refused_not_fetched_later ... ok
+test a_repository_with_a_big_file_or_a_symlink_is_refused_before_checkout ... ok
+test check_update_of_a_repository_kit_shows_changes_installs_nothing_and_holds_changed_hooks ... ok
+test bad_kits_are_refused_with_a_reason_and_nothing_written ... ok
+
+test result: ok. 42 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.86s
+
+     Running tests/market.rs (/home/nezeronxer/.cache/nightshift-target/debug/deps/market-aa0adbaf2a8ebcd7)
+
+running 19 tests
+test live_each_enabled_source_answers ... ignored
+test an_id_met_twice_keeps_its_first_item_as_the_window_does ... ok
+test a_package_name_that_looks_like_an_option_is_not_run ... ok
+test mods_come_from_the_playground_folder ... ok
+test net_refuses_plain_http_and_answers_over_the_limit_with_too_large ... ok
+test offline_source_shows_its_saved_list_with_the_date_and_fresh_copy_is_not_asked_again ... ok
+test mcp_registry_pages_by_next_cursor_and_github_registry_gives_stars ... ok
+test skills_sh_search_reads_the_recorded_answer ... ok
+test skillsmp_and_smithery_page_by_number ... ok
+test marketplace_lists_skills_of_a_plugin_and_pages_a_big_index ... ok
+test a_catalog_install_is_not_updated_from_its_homepage_as_a_kit ... ok
+test broken_json_from_any_source_is_an_error_not_a_panic ... ok
+test a_remote_server_may_send_only_variables_the_person_is_asked_for ... ok
+test remote_mcp_shows_its_address_and_its_token_by_name ... ok
+test skill_goes_where_each_environment_reads_it_and_remove_puts_back_what_was_there ... ok
+test a_mod_from_a_folder_installs_off_and_only_into_claude_code ... ok
+test mcp_with_a_secret_variable_writes_only_its_name_and_the_value_goes_to_the_keyring ... ok
+test clawd_run_mod_moves_with_a_kit_marked_executable_and_off_until_ticked ... ok
+test bad_archives_are_refused_and_nothing_is_written ... ok
+
+test result: ok. 18 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 1.60s
+
+     Running tests/platform_smoke.rs (/home/nezeronxer/.cache/nightshift-target/debug/deps/platform_smoke-2f2e10e7ce6cb76c)
+
+running 7 tests
+test agent_process_fixture ... ignored, native child CLI fixture, launched by the engine
+test inherited_pipe_fixture ... ignored, child fixture, launched by the parent test
+test native_child_fixture ... ignored, child fixture, launched by the parent test
+test sleeping_child_fixture ... ignored, child fixture, launched by the parent test
+test version_capture_drains_stderr_while_stdout_is_open ... ok
+test native_agent_task_is_reviewed_merged_and_survives_a_store_reopen ... ok
+test capture_deadline_also_covers_inherited_output_pipes ... ok
+
+test result: ok. 3 passed; 0 failed; 4 ignored; 0 measured; 0 filtered out; finished in 0.50s
+
+     Running tests/practices.rs (/home/nezeronxer/.cache/nightshift-target/debug/deps/practices-afbca92422f048f0)
+
+running 11 tests
+test the_startup_tax_counts_the_text_of_a_block_description_too ... ok
+test the_startup_tax_counts_rules_skill_descriptions_and_mcp_servers_and_flags_long_rules ... ok
+test claude_reports_the_context_in_use_and_the_window_of_a_real_run ... ok
+test without_squeezing_the_agent_gets_the_tail_as_it_was_and_still_the_path ... ok
+test a_switch_to_the_spare_model_leaves_a_handoff_note_in_the_copy_and_the_next_prompt_starts_with_it ... ok
+test the_worker_session_context_share_comes_from_the_run ... ok
+test the_commit_body_is_the_first_paragraph_cut_at_a_sentence_never_mid_word ... ok
+test five_hundred_same_lines_reach_the_agent_as_a_counter_and_a_failed_check_gives_the_raw_output_path ... ok
+test roles_get_their_tools_allowed_and_claude_passes_them_one_value_each ... ok
+test compact_runs_the_compact_command_in_the_session_before_the_next_turn ... ok
+test two_tasks_of_a_project_with_isolated_ports_get_different_ports_and_without_the_flag_none ... ok
+
+test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 3.54s
+
+     Running tests/proof.rs (/home/nezeronxer/.cache/nightshift-target/debug/deps/proof-dbdc80eb206ca01b)
+
+running 8 tests
+test only_http_localhost_and_127_0_0_1_pass_the_address_check ... ok
+test a_pick_from_the_page_is_capped_and_cleaned ... ok
+test a_machine_without_node_has_no_capture_tool ... ok
+test an_address_that_is_not_local_is_refused_and_nothing_is_shot ... ok
+test the_step_is_off_by_default_and_nothing_is_started_or_shot ... ok
+test an_app_that_does_not_come_up_is_a_note_not_a_failure ... ok
+test without_a_capture_tool_the_step_is_skipped_with_a_note_and_the_task_still_lands ... ok
+test with_the_app_up_the_shots_go_onto_the_task_and_the_app_is_stopped ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 3.36s
+
+     Running tests/release.rs (/home/nezeronxer/.cache/nightshift-target/debug/deps/release-8710b9321072580c)
+
+running 4 tests
+test an_answer_that_is_not_a_release_is_refused ... ok
+test without_a_feed_the_check_is_off_fetches_nothing_and_says_why ... ok
+test a_failure_is_kept_quietly_with_its_time_and_what_was_known_stays ... ok
+test a_newer_release_shows_the_bar_once_closed_it_stays_closed_until_the_next_version ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/spend.rs (/home/nezeronxer/.cache/nightshift-target/debug/deps/spend-7adb9e00e1cdbb92)
+
+running 4 tests
+test days_older_than_four_hundred_fold_into_their_month ... ok
+test runs_of_the_same_day_project_and_env_add_up_and_money_after_no_data_is_money ... ok
+test an_env_that_says_nothing_of_money_is_no_data_not_zero ... ok
+test what_a_task_costs_is_a_row_of_its_day_project_and_env ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.26s
+
+     Running tests/spread.rs (/home/nezeronxer/.cache/nightshift-target/debug/deps/spread-54fa44001743a226)
+
+running 8 tests
+test a_json_config_keeps_its_key_order_and_indent ... ok
+test a_secret_without_a_secret_name_goes_to_the_keyring_or_the_server_stays_home ... ok
+test a_deeply_nested_codex_config_does_not_crash_the_app ... ok
+test an_undone_spread_cannot_be_undone_twice ... ok
+test codex_reads_and_gets_servers_in_toml_and_skills_in_its_catalog_folder ... ok
+test the_audit_cases_are_closed ... ok
+test a_codex_server_written_with_quotes_or_spaces_is_not_declared_twice ... ok
+test every_env_gets_what_the_others_have_in_its_own_format_once_and_the_undo_puts_back_every_byte ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.10s
+
+     Running tests/store.rs (/home/nezeronxer/.cache/nightshift-target/debug/deps/store-80956de9e4ba595e)
+
+running 14 tests
+test fresh_store_has_spec_defaults ... ok
+test chat_message_with_a_known_id_is_not_written_twice ... ok
+test log_is_line_per_event_and_limit_returns_latest ... ok
+test torn_last_log_line_is_skipped ... ok
+test catalog_and_limits_survive_reopen_per_env ... ok
+test failed_save_leaves_disk_and_memory_on_the_old_state ... ok
+test chat_is_read_in_pages_from_the_end ... ok
+test chats_are_listed_per_env_and_removed_with_their_feed ... ok
+test v1_state_file_opens_with_spec_defaults_for_new_fields ... ok
+test a_saved_v1_file_keeps_telegram_reviewer_and_fallback ... ok
+test interrupted_write_does_not_corrupt_state ... ok
+test unreadable_settings_fall_back_to_defaults_and_unreadable_state_is_never_replaced ... ok
+test state_survives_reopen ... ok
+test tab_state_and_tab_keys_from_the_ui_survive_a_save_and_a_reopen_and_old_files_get_defaults ... ok
+
+test result: ok. 14 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/term.rs (/home/nezeronxer/.cache/nightshift-target/debug/deps/term-67b3b9fc3f9bd6b6)
+
+running 9 tests
+test resize_changes_what_stty_size_says ... ok
+test the_pty_gets_no_secrets_of_the_app ... ok
+test what_is_typed_comes_back_through_the_pty ... ok
+test attach_after_output_returns_the_buffer_and_the_snapshot_keeps_text_and_folder ... ok
+test the_pty_gets_its_own_folder_as_pwd ... ok
+test the_end_of_the_process_gives_its_code ... ok
+test ctrl_c_gets_through_while_reading_waits_for_an_ack ... ok
+test a_sink_that_reads_the_list_on_exit_does_not_hang_the_session ... ok
+test without_ack_reading_stops_and_ack_lets_it_go_on ... ok
+
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.92s
+
+     Running tests/termusage.rs (/home/nezeronxer/.cache/nightshift-target/debug/deps/termusage-ec72ad2b1e7e75c1)
+
+running 3 tests
+test claude_usage_is_not_priced_by_us_and_is_empty_without_files_or_for_other_envs ... ok
+test claude_usage_sums_messages_once_and_counts_cache_as_input ... ok
+test codex_usage_takes_the_last_totals_of_the_sessions_in_the_folder ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/ui_ranges.rs (/home/nezeronxer/.cache/nightshift-target/debug/deps/ui_ranges-6554798b86419492)
+
+running 1 test
+test the_window_checks_the_settings_with_the_same_ranges_as_the_core ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+
+     Running tests/updates.rs (/home/nezeronxer/.cache/nightshift-target/debug/deps/updates-998140da07f0f630)
+
+running 11 tests
+test live_check_of_the_installed_clis ... ignored
+test install_method_comes_from_the_real_path ... ok
+test update_commands_are_native_or_the_same_manager_and_never_sudo ... ok
+test versions_are_read_from_real_cli_output ... ok
+test codex_offers_only_what_its_cli_lists ... ok
+test a_models_dev_id_that_reads_as_a_flag_never_becomes_a_family ... ok
+test a_new_model_is_announced_once ... ok
+test check_reads_installed_latest_and_the_command ... ok
+test a_major_jump_is_only_reported ... ok
+test a_cli_broken_by_the_update_is_rolled_back_with_the_same_manager ... ok
+test update_waits_while_the_env_has_running_launches ... ok
+
+test result: ok. 10 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.90s
+
+   Doc-tests nightshift_core
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s

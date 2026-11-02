@@ -1,0 +1,1 @@
+{"status":"ok","output":"\r\nrunning 1 test\r\ntest batch_terminal_preserves_the_child_exit_code ... ok\r\n\r\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 14 filtered out; finished in 0.28s\r\n\r\n\r\nexit: 0\r\n"}
