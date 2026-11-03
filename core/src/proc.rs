@@ -42,24 +42,27 @@ pub fn shell(line: &str) -> Command {
 /// A bare name without an extension -> its file on PATH (with a PATHEXT extension); else as given.
 #[cfg(windows)]
 fn resolve(program: &OsStr) -> std::ffi::OsString {
-    let p = std::path::Path::new(program);
-    if p.extension().is_some() || p.components().count() != 1 {
-        return program.to_os_string();
-    }
     which(&program.to_string_lossy()).map(|f| f.into_os_string()).unwrap_or_else(|| program.to_os_string())
 }
 
 /// The file `name` runs from PATH: `<dir>/<name>`; on Windows `<dir>\<name><ext>` for the PATHEXT extensions only
 /// (npm puts an sh script `claude` next to `claude.cmd`, and Windows cannot run the script).
 pub fn which(name: &str) -> Option<std::path::PathBuf> {
-    let exts: Vec<String> = if cfg!(windows) {
+    find_in_dirs(name, std::env::split_paths(&std::env::var_os("PATH").unwrap_or_default()))
+}
+
+/// Shared by process launch and adapter discovery, including explicit paths without a suffix.
+pub(crate) fn find_in_dirs(name: &str, dirs: impl IntoIterator<Item = std::path::PathBuf>) -> Option<std::path::PathBuf> {
+    if name.is_empty() { return None; }
+    let p = std::path::Path::new(name);
+    let exts: Vec<String> = if cfg!(windows) && p.extension().is_none() {
         let pe = std::env::var("PATHEXT").unwrap_or_else(|_| ".COM;.EXE;.BAT;.CMD".into());
         pe.split(';').filter(|e| !e.is_empty()).map(|e| e.to_ascii_lowercase()).collect()
     } else {
         vec![String::new()]
     };
-    std::env::split_paths(&std::env::var_os("PATH").unwrap_or_default())
-        .filter(|d| !d.as_os_str().is_empty())
+    let dirs = if p.components().count() > 1 { vec![std::path::PathBuf::new()] } else { dirs.into_iter().filter(|d| !d.as_os_str().is_empty()).collect() };
+    dirs.into_iter()
         .flat_map(|d| exts.iter().map(move |e| d.join(format!("{name}{e}"))))
         .find(|f| f.is_file())
 }
@@ -74,3 +77,8 @@ mod tests {
         assert!(super::which("ns-no-such-program-here").is_none());
     }
 }
+
+#[cfg(windows)]
+mod windows;
+#[cfg(windows)]
+pub use windows::{batch_terminal, windows_terminal};

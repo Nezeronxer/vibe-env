@@ -217,8 +217,12 @@ cd app && cargo tauri build      # installers in target/release/bundle/
 ```
 
 `ui/` is plain HTML, CSS and JavaScript with no bundler. Quick UI checks without a window: `node scripts/ui-selftest.js`.
-CI: `.github/workflows/ci.yml` (tests on macOS and Ubuntu, the app build on Windows), `.github/workflows/release.yml` (installers on a `v*` tag, draft release).
+CI: `.github/workflows/ci.yml` (core tests on macOS and Ubuntu; native core/workflow tests, JavaScript self-test and the app build on Windows), `.github/workflows/release.yml` (installers on a `v*` tag, draft release).
 To sign macOS builds later, set the repository secrets named in `release.yml`.
+
+The [Windows QA report](docs/qa/windows-2026-11-02/REPORT.ru.md) records a Windows 10 VM run of the real app,
+including terminal input, changes, merge and restart. Agent scenarios use a local deterministic CLI fixture;
+cloud logins and Windows 11 were not tested in that run.
 
 ## Not done yet, and out of scope
 

@@ -12,3 +12,10 @@ graphify-out/
 
 # live-run recordings (big binaries, kept in Dropbox only)
 docs/live-run/*.mp4
+
+# Local QA binaries; reports and screenshots remain reviewable.
+docs/qa/**/artifacts/
+
+# Machine-local progress and synchronization metadata.
+/TASK.md
+docs/qa/**/sync.json

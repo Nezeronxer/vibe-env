@@ -13,7 +13,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # Windows: the app builds (the core tests drive sh-script stand-ins of the CLIs, so they run on macOS and Linux)
+  # Native process/repository regressions run on Windows; Unix shell fixtures stay in the Unix matrix.
   windows-build:
     runs-on: windows-latest
     steps:
@@ -21,6 +21,10 @@ jobs:
         with:
           persist-credentials: false
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      - name: Native Windows core and workflow tests
+        run: cargo test -p nightshift-core --lib --test platform_smoke
+      - name: UI self-test on Windows
+        run: node scripts/ui-selftest.js
       - name: App builds on Windows
         run: cargo build -p nightshift-app
 

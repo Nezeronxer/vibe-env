@@ -91,7 +91,7 @@ struct Session {
     title: String,
     cwd: PathBuf,
     pid: Option<u32>,
-    master: Mutex<Box<dyn MasterPty + Send>>,
+    master: Mutex<Option<Box<dyn MasterPty + Send>>>,
     writer: Mutex<Box<dyn Write + Send>>,
     killer: Mutex<Box<dyn ChildKiller + Send + Sync>>,
     shared: Mutex<Shared>,
@@ -110,7 +110,9 @@ pub fn set_cli_version(env: &str, version: &str) {
 
 /// The env whose CLI `argv0` starts (by the binary's name).
 fn env_of(argv0: &str) -> Option<&'static str> {
-    match argv0.rsplit('/').next()? {
+    let name = argv0.rsplit(['/', '\\']).next()?.to_ascii_lowercase();
+    let name = [".exe", ".cmd", ".bat", ".com"].iter().find_map(|ext| name.strip_suffix(ext)).unwrap_or(&name);
+    match name {
         "claude" => Some("claude"),
         "codex" => Some("codex"),
         "gemini" => Some("gemini"),
@@ -172,8 +174,14 @@ impl Terms {
             _ if cfg!(windows) => vec!["powershell.exe".into(), "-NoLogo".into()],
             _ => vec![std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".into()), "-l".into()],
         };
-        let mut cmd = CommandBuilder::new(&argv[0]);
-        cmd.args(&argv[1..]);
+        #[cfg(windows)]
+        let launch = crate::proc::batch_terminal(&argv).map_err(pty_err)?;
+        #[cfg(windows)]
+        let command_argv = launch.as_ref().map(|l| &l.argv).unwrap_or(&argv);
+        #[cfg(not(windows))]
+        let command_argv = &argv;
+        let mut cmd = CommandBuilder::new(&command_argv[0]);
+        cmd.args(&command_argv[1..]);
         cmd.cwd(&cwd);
         // the app's own variables stay in the app; the person's environment goes in as it is
         for (k, _) in std::env::vars_os() {
@@ -185,6 +193,10 @@ impl Terms {
             if !secret_name(k) && crate::kits::env_value_ok(k, v) {
                 cmd.env(k, v);
             }
+        }
+        #[cfg(windows)]
+        if let Some(launch) = &launch {
+            for (k, v) in &launch.env { cmd.env(k, v); }
         }
         // the app's own PWD (wherever it was started from) would send node CLIs like opencode to a wrong folder
         cmd.env("PWD", &cwd);
@@ -200,13 +212,13 @@ impl Terms {
         drop(pair.slave);
         let mut reader = pair.master.try_clone_reader().map_err(pty_err)?;
         let writer = pair.master.take_writer().map_err(pty_err)?;
-        let title = if spec.title.is_empty() { argv[0].rsplit('/').next().unwrap_or("").to_string() } else { spec.title };
+        let title = if spec.title.is_empty() { argv[0].rsplit(['/', '\\']).next().unwrap_or("").to_string() } else { spec.title };
         let s = Arc::new(Session {
             id: uuid::Uuid::new_v4().simple().to_string()[..12].to_string(),
             title,
             cwd,
             pid: child.process_id(),
-            master: Mutex::new(pair.master),
+            master: Mutex::new(Some(pair.master)),
             writer: Mutex::new(writer),
             killer: Mutex::new(child.clone_killer()),
             shared: Mutex::new(Shared { ring: VecDeque::new(), sink: None, in_flight: 0, exit: None, closed: false }),
@@ -241,6 +253,22 @@ impl Terms {
                 }
             }
         });
+        // ConPTY keeps its output pipe open while the master exists. Reap the process independently,
+        // release flow control for its remaining output, then close the console on this separate thread.
+        #[cfg(windows)]
+        let (exit_tx, exit_rx) = mpsc::sync_channel(1);
+        #[cfg(windows)]
+        {
+            let ending = s.clone();
+            std::thread::spawn(move || {
+                let code = child.wait().ok().and_then(|st| if st.signal().is_some() { None } else { Some(st.exit_code() as i32) });
+                lk(&ending.shared).closed = true;
+                ending.wake.notify_all();
+                let master = lk(&ending.master).take();
+                drop(master);
+                let _ = exit_tx.send(code);
+            });
+        }
         // pump: glues the pieces of ~4 ms, keeps them in the ring, hands them to the window; at the end, the exit code
         let p = s.clone();
         std::thread::spawn(move || {
@@ -260,7 +288,10 @@ impl Terms {
                     sink(TermChunk::Data(data));
                 }
             }
+            #[cfg(not(windows))]
             let code = child.wait().ok().and_then(|st| if st.signal().is_some() { None } else { Some(st.exit_code() as i32) });
+            #[cfg(windows)]
+            let code = exit_rx.recv().unwrap_or(None);
             let mut g = lk(&p.shared);
             g.exit = Some(code);
             // called without the lock: the sink may read `list()` (the app's tray does)
@@ -288,7 +319,7 @@ impl Terms {
     pub fn resize(&self, id: &str, cols: u16, rows: u16) -> Result<()> {
         let s = self.get(id)?;
         let m = lk(&s.master);
-        m.resize(size(cols, rows)).map_err(pty_err)
+        m.as_ref().ok_or_else(|| pty_err("terminal exited"))?.resize(size(cols, rows)).map_err(pty_err)
     }
 
     /// Ends the process and forgets the session.
@@ -297,6 +328,8 @@ impl Terms {
         lk(&self.sessions).retain(|x| x.id != id);
         lk(&s.shared).closed = true;
         s.wake.notify_all();
+        #[cfg(windows)]
+        if let Some(pid) = s.pid.filter(|_| lk(&s.shared).exit.is_none()) { crate::agent::kill_group(pid); }
         let _ = lk(&s.killer).kill();
         Ok(())
     }
@@ -366,7 +399,20 @@ impl Terms {
 impl Drop for Terms {
     fn drop(&mut self) {
         for s in lk(&self.sessions).iter() {
+            #[cfg(windows)]
+            if let Some(pid) = s.pid.filter(|_| lk(&s.shared).exit.is_none()) { crate::agent::kill_group(pid); }
             let _ = lk(&s.killer).kill();
+        }
+    }
+}
+
+#[cfg(test)]
+mod platform_tests {
+    #[test]
+    fn windows_cli_paths_keep_the_agent_identity() {
+        for path in [r"C:\Users\tester\AppData\Roaming\npm\codex.cmd", "C:/Program Files/Claude/claude.exe", "GEMINI.CMD"] {
+            let expected = if path.contains("codex") { "codex" } else if path.contains("claude") { "claude" } else { "gemini" };
+            assert_eq!(super::env_of(path), Some(expected), "{path}");
         }
     }
 }

@@ -1,0 +1,197 @@
+ALL PASSED: 405 of 405
+
+PASS css: no colour outside tokens.css (screens use tokens only)
+PASS tokens.css carries the theme table of theme.js (Dark and Light)
+PASS F10: tokens.css gives the window a radial-gradient ground (--window-fx) and .app paints it
+PASS F10: both themes carry the studio tokens (amber, cream, brass, needle, onair)
+PASS v7: the dark canvas is graphite (B >= R, near black) and the light canvas is near white
+PASS corners: pane, task card, input field, cards and the bar are rounded (border-radius > 0 from the tokens)
+PASS G82: «/» starts the menu at the start of the field or after a space, not inside a word or after a space after the name
+PASS G82: the search takes the name (the start first) and then the description; sections Скиллы, Команды, MCP, Моды in that order; only skills and commands insert
+PASS G82: a choice puts «/name » in place of the typed word and the caret after it
+PASS main view: at most 24 visible buttons outside the feed and the agents column (14 + the three entrances of F8 + "Новый чат" of the chat list that F9 shows by default + "Спросить" of F12 + "Автоматика" of F14 + "Приложить картинку" of v6 G65.2, shown only for an env that reads images + v8 the project and "+" of the session tabs + v8 the GitHub panel toggle) (22)
+PASS computed border-radius > 0: pane 12, card 12, field 16, bar 12
+PASS v10 settings menu: 10 items, every section in exactly one, names in ru and en
+PASS F5 249: palette, catalog, history and key search fields carry autocorrect/autocapitalize off, spellcheck false, autocomplete off
+PASS F5 253: ⌘W on a busy terminal in a split asks, and until the answer the layout is the same
+PASS F5 253: "Отмена" leaves the same split with the same pane in focus
+PASS F5 260: the button of the extra window speaks the language of the window («Вернуть в главное окно»)
+PASS F5 260: the terminal of the extra window gets the buffer of the session (its scrollback)
+PASS F7 1: the model menu is <= 320 px wide, inside the window, above the button; every model is one row <= 36 px
+PASS F7 2: ↓ ↓ Enter saves the second model and closes the menu
+PASS F7 2: Esc closes the menu and the focus is back on the button
+PASS F7 2: a version chip saves the version and closes the menu
+PASS F7 3: "sonnet" in the palette gives "Модель: Sonnet 5.5"; Enter saves it for the env
+PASS F7 3: the label in the input field follows a model chosen in the palette
+PASS F7 1: a long list opens with the focus in the search field, the menu stays <= 360 px and inside the window
+PASS F7 1: the search filters the rows as you type
+PASS F7 4: xterm defaults - fontSize >= 13, lineHeight >= 1.25, cursorStyle bar
+PASS F7 4: size and cursor set in the config win over the defaults
+PASS v10 F8 1: no Рой / Качество switches in the field; the bar keeps them in its middle
+PASS F8 1: "⋯" is a gear with the word "Настроить" and a title
+PASS v10 F8 2: the settings gear is under the agents, "⌘K Поиск и команды" by the search, no second settings button
+PASS v12: an agent card opens on its icon, closes on the same icon, opens again, closes outside
+PASS F8 2: "Новый агент → Фабрика" opens the factory, the gear and ⌘, open the settings
+PASS F8 2: "⌘K Поиск и команды" opens the palette
+PASS v7 F8 3: "Новый агент" shows the installed envs, "Запустить" and the chat, a plain terminal, the swarm and the factory
+PASS F8 3: "Пустой терминал" opens a terminal tab with the >_ icon, named "Терминал · …"; the launcher closes
+PASS F8 3: "Чат с агентом" opens a chat tab with the icon of the environment, not >_
+PASS F8 4: the empty chat carries the hint about the terminal
+PASS F8 3: the status bar button reads ">_ Терминал" and says what it opens
+PASS F8 5: after the process exits the card shows "Запустить снова" and "Закрыть вкладку"
+PASS F8 5: "Запустить снова" restarts the process
+PASS F8 5: "Закрыть вкладку" closes the tab
+PASS v10 F9 5: no chat list and no button for it; the agents column is there
+PASS v10 F9 5: ⌘B does not bring it back, nor a saved "on" after a reload
+PASS v10: "+" opens a chat, not a bare terminal
+PASS v10: a saved CLI terminal of Claude reopens as a chat, a plain shell stays a terminal
+PASS v11: an agent started with a task in its own copy comes back as its terminal, not an empty chat
+PASS v10: «Чат | Терминал» in the head; «Терминал» puts the CLI in the same pane, «Чат» brings the feed back
+PASS F9 1: the feed column is at most 780 px wide on a 1440 window
+PASS F9 1: the answer text is proportional (not the mono stack), 14-15 px
+PASS F9 3: my message is a grey bubble pushed to the right edge of the column, the answer has no background
+PASS F9 2: the demo chat has step lines and groups ("3 действия") folded, no diff is visible
+PASS F9 2: a click on "Изменил …" opens the tinted diff in a monospace font
+PASS F9 2: a second click folds it again
+PASS F9 4: the empty chat shows "Что сделать?", the field with a short placeholder and three examples
+PASS F9 4: a click on an example puts the text into the field and does not send it
+PASS F9 6: while the agent works a plate "Исполнитель · правит …" and "Стоп" show over the field, the round button is a stop square
+PASS F9 6: "Стоп" cancels the task and the plate goes away
+PASS F9 3: a failed command is a red line, open by default when it is the last event
+PASS F9 3: a failed command that is not the last event is folded
+PASS v7 1 dark: the window ground is a faint radial wash of the live accent over the canvas
+PASS v7 1 dark: the canvas is graphite (B >= R, near black)
+PASS v8 dark: the limits in the status bar are bars named by the agent (no VU meter, no model in the name), the numbers stay
+PASS F10 4 dark: message text >= 7:1 and the quiet line >= 4.5:1 against what is drawn behind them
+PASS F10 3 dark: the stages of the task card are one signal line of stations
+PASS v7 1 light: the window ground is a faint radial wash of the live accent over the canvas
+PASS v7 1 light: the canvas is near white (B >= R)
+PASS v8 light: the limits in the status bar are bars named by the agent (no VU meter, no model in the name), the numbers stay
+PASS F10 4 light: message text >= 7:1 and the quiet line >= 4.5:1 against what is drawn behind them
+PASS F10 3 light: the stages of the task card are one signal line of stations
+PASS v7 2: a working agent card wears a running light (aura7) in the colour of its env
+PASS v7 2: agents that went quiet out of sight breathe (breathe7) and «Ждут: N ⌘J» shows in the foot
+PASS v7 2: the last line of a terminal joins a line wrapped at its width
+PASS v7 2: hovering a pane shows its tools and «Изменения» stays where it was
+PASS v7 2: with prefers-reduced-motion the aura does not run and the waiting card does not breathe
+PASS F11 2: a new chat on a clean start has no project: the button says «Выбрать проект»
+PASS F11 2: «Сделай…» without a project is not sent, the project menu opens and the text stays
+PASS F11 3: the menu lists the recent projects, then «Открыть папку…» and «Создать проект…»
+PASS F11 3: picking a recent project changes the project of the chat and is remembered
+PASS F11 3: «Открыть папку…» adds the folder and selects it
+PASS F11 3: «Создать проект…» needs a folder and a clean name, then creates and selects the project
+PASS F11 1: with a chosen project the message goes
+PASS F13 1: my reply to a task has «Вернуть код сюда»; a plain chat question has none
+PASS F13 1: the rollback asks once more before it moves the code
+PASS F13 1: after the second click the code goes back (to the snapshot after the message) and the state before is kept
+PASS F13 2: the card lists «До мержа» (one open, one from the reviewer ticked) and every turn has a rollback
+PASS F13 2: an item can be added and ticked; the count of open ones follows
+PASS F13 2: a task held by the list says so in «Ждёт тебя», with the list and «Проверить ещё раз»
+PASS F13 3: a failed task offers «Забрать к себе»
+PASS F13 3: taken: the card says the folder is on the task branch and offers «Отдать агенту»
+PASS F13 3: given back: «Забрать к себе» is offered again
+PASS F12 1: while the agent works a message waits grey «в очереди» and nothing is sent yet
+PASS F12 1: with a typed message and a working agent the button «Сразу» shows
+PASS F12 1: «Править» takes the message back to the field and out of the queue
+PASS F12 1: «×» removes a queued message
+PASS F12 1: «Сразу» puts the message first in the core queue, cancels the run, then the message goes and stops being grey
+PASS F12 2: ⌘; opens a narrow panel «Спросить» on the right with the focus in its field
+PASS F12 2: the question gets an answer in the panel, the feed of the task does not change and nothing is sent to the agent
+PASS F12 2: Esc closes the panel
+PASS F12 2: the button «Спросить» in the chat header opens it too
+PASS F12 4: the ```bash block of the answer has a «Выполнить» button
+PASS F12 4: the command is in the terminal line of the project, not run (no Enter)
+PASS F12 3: after a finished task the empty field shows a grey suggestion and «Tab»
+PASS F12 3: Tab puts the suggestion into the field (Enter would send it)
+PASS F12 3: any key hides the suggestion
+PASS F12 3: the setting «Подсказывать следующий шаг» turns it off (and a reload remembers)
+PASS F12 5: a stopped run reads «Остановлено» in a calm colour, with «Повторить»
+PASS v10 F14: the entrance «Автоматика» sits after «⌘K Поиск» in the foot of the sessions column (the settings are the gear under the agents) and carries the count of suggestions
+PASS F14 1: the schedule lists the tasks with preset, time and the next firing; the held one says why (limit under 10%)
+PASS F14 1: the schedule panel leads with the nearest run and wears a soft accent gradient
+PASS F14 1: the switch turns a schedule off (the core agrees after a reload) and its «next» disappears
+PASS F14 1: a template fills the name and the task text
+PASS F14 1: a bad time is refused, nothing is added
+PASS F14 1: «Раз в неделю» shows the day of the week; saving adds a row that is still off (the person switches it on)
+PASS F14 1: «Править» loads the row into the form
+PASS F14 1: «Удалить» asks first, then removes the row
+PASS F14 2: «Предлагаю» lists file:line, the text and the project; the button carries the same count
+PASS F14 2: «Не предлагать такое» removes the card and the count drops
+PASS F14 2: «Сделать» queues a task through submit_task and the card is gone
+PASS F14 2: «Искать по ночам» is a switch, off until the person turns it on
+PASS F14 3: the watchman lists the pull requests with their state and attempts; «слить, когда зелёное» is off by default
+PASS F14 3: turning «слить, когда зелёное» on asks for a confirmation the first time; «Отмена» leaves it off
+PASS F14 3: after «Включить» the setting and its confirmation are stored
+PASS F14: every automation word exists in ru and en, and so do the ones built from a state
+PASS F14: the screen has no horizontal scroll at 1440 and two columns
+PASS F14 3: without gh the watchman says so and lists nothing
+PASS F14: a clean start - empty lists, no count on the button, the watchman off
+PASS F15 2: the done card carries the strip of proof screenshots (page, after the click, phone), each a loaded picture
+PASS F15 2: «Проверки» lists the step «Как пользователь» with the count of shots
+PASS F15 2: a click on a thumbnail shows it big; arrows step through, Esc closes and the card stays open
+PASS F15 1: «Превью» opens a pane beside the chat with the project address, widths 390/768/desktop and «Указать элемент» off until the window is open
+PASS F15 1: an address that is not localhost is refused before anything opens
+PASS F15 1: a local address opens the preview window and the tools come alive
+PASS F15 1: «Телефон 390» is the chosen width
+PASS F15 1: «Указать элемент» puts the element (selector, text, size) into the task chat field
+PASS F15: every preview word exists in ru and en
+PASS F15: no horizontal scroll at 1440 with the preview pane
+PASS G80: «думает» shows in the same frame as the sent bubble, where the answer will be
+PASS G84: the indicator speaks the words of `spinnerVerbs` when the settings give them
+PASS G80: the word changes after ~2 s, the timer counts seconds, the word shimmers
+PASS G80.1: the thoughts are one grey folded line «Думает»
+PASS G80.1: a click opens the text of the thoughts
+PASS G80.2: after 60 s «Долго думает · 1:05» and «Стоп»
+PASS G80: «думает» goes away with the first text of the answer
+PASS G80.2: with reduced motion nothing shimmers or pulses and the word does not turn
+PASS G81: a streamed answer grows in one node, ≤ 40 characters a frame, then markdown takes its place
+PASS G81: a whole message of a CLI without deltas prints the same way (one node, ≤ 40 a frame)
+PASS G81.1: a person who scrolled up stays where they are while the answer prints
+PASS G62: system lines are in words, not raw keys; an interrupted answer has «Повторить»
+PASS G67: the issues of the project stand in «Предлагаю» next to the TODO cards, marked «issue #N» with a link; the TODOs are all still there
+PASS G67: the bar button counts suggestions and the open question (5 + 2 + 1)
+PASS G67.2: a merged issue task asks «Закрыть issue #44?» with «Закрыть» and «Оставить» and says nothing is closed before the answer
+PASS G67.2: after «Закрыть» the question is gone for good
+PASS G67.1: «Сделать» on an issue queues a task from it and the card is gone
+PASS G67.1: «Не предлагать такое» removes an issue card
+PASS G67: without gh the issues give a quiet line with the reason and the TODO cards work as before
+PASS G68: the project shows its sessions from the terminal: date, first words, the number of messages, the branch
+PASS G68.2: a file that cannot be read is marked «не читается», cannot be continued, and the others are shown
+PASS G68.1: «Продолжить» queues a task that resumes that session and the button goes off
+PASS G68: the sessions screen has no horizontal scroll at 1440
+PASS G68.2: no sessions - a plain sentence, not an empty screen
+PASS G68.3: hundreds of sessions come by fifty, the newest on top, and «Показать ещё» ends with the last page
+PASS G67/G68: every new word exists in ru and en
+PASS G64.1: a lane on the limit says «ждёт лимит до HH:MM» on its track and its card, the other lanes stay
+PASS G70: «Расходы» is a table day × project with money and tokens; the chat is a row «чат»; an env without money says «нет данных»
+PASS G70.1: «Всё время» shows days older than 400 folded into a month row
+PASS G70.1: no spending yet - «Расходов пока нет», not an empty table
+PASS G69: without release_feed the check is off and «О программе» says «адрес обновлений не задан»; no bar
+PASS G71: «Собрать отчёт об ошибке» makes the zip in Downloads and says where
+PASS G69.1: a failed check is quiet (no bar) and «О программе» shows its time and error
+PASS G69: «Вышла версия X» with a link to the release; closed, it is gone and not shown again for that version
+PASS G64/G69/G70/G71: every new word exists in ru and en
+PASS G82: «/» in the field opens the menu of the env: Скиллы, Команды, MCP, Моды
+PASS G84.1: the section «Моды» says «рисуют в терминале - открыть»
+PASS G82: the typed name filters the menu
+PASS G82: Enter puts «/release-notes » into the field and closes the menu, nothing is sent
+PASS G82: Esc closes the menu
+PASS G65: the clip «Приложить картинку» shows for an env that reads images
+PASS G65: ⌘V of a screenshot shows its thumbnail over the field with ×
+PASS G65: × takes the image off
+PASS G65: the image goes with the text as a path in the app's data; the strip empties; the message shows it
+PASS G65.2: a file dropped on the field is attached (not «open the folder»); elsewhere the window keeps its own drop
+PASS G65.2: an env without images has no clip and a pasted image says «Эта среда не принимает картинки»
+PASS G82: an env with nothing says «В среде нет скиллов - открыть Каталог»
+PASS G83/v10: «Терминал» shows the session in the chat's copy in the same pane (no new tab), no second «В терминале» in the menu
+PASS G83/v10: «Чат» ends the CLI and brings the feed back
+PASS G83.2: no session - the reason in words and the choice «Новый разговор в терминале», not silently
+PASS G83.2: after the choice a new conversation opens in the terminal of the same pane
+PASS G82/G83/G65: every new word exists in ru and en
+PASS look8 1: «Внешний вид → Тема» shows sixteen cards - the system one and fifteen ready themes (v9: designer palettes)
+PASS look8 2: a card applies the theme at once and saves it (OLED: canvas #000000, data-theme dark, data-look oled)
+PASS look8 3: own theme - the editor previews on the whole window while typing, refuses text under 4.5:1, saves a named theme and selects it
+PASS look8 4: transparency 40% - the page ground is see-through (body transparent, the canvas at 60%); gradients wash the panes with the accent
+PASS look8 5: deleting the selected own theme (after a confirmation) falls back to the system theme; glass 0 takes data-glass away
+PASS look8 6: a terminal under a see-through window keeps one translucent ground (no stacked layers) and draws with the DOM renderer; glass 0 brings the solid ground and WebGL back
+PASS look8: no page errors

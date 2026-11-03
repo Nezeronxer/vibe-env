@@ -422,7 +422,7 @@ fn result_input(r: &serde_json::Value) -> Option<ActionInput> {
     hits.map(|h| ActionInput::Search { pattern: String::new(), hits: Some(h as u32) })
 }
 
-#[cfg(test)]
+#[cfg(all(test, unix))]
 mod tests {
     use super::*;
     use std::os::unix::fs::PermissionsExt;
